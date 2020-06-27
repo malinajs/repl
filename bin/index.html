@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Malina.js</title>
+    <script defer src='./app.js'></script>
+    <script lang="javascript">
+        document.addEventListener('DOMContentLoaded', function() {
+            widget(document.body);
+        }, false);
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+    <script type="text/javascript">
+        require.config({
+            paths: {
+                "acorn": "https://cdnjs.cloudflare.com/ajax/libs/acorn/7.3.1/acorn.min",
+                "astring": "https://cdn.jsdelivr.net/npm/astring@1.4.3/dist/astring.min",
+                "malina": "./malina",
+                'cm/lib/codemirror': 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.55.0/codemirror.min',
+                'cm/mode/xml/xml': 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.55.0/mode/xml/xml.min',
+
+                'cm/mode/javascript/javascript': 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.55.0/mode/javascript/javascript.min',
+                'cm/mode/css/css': 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.55.0/mode/css/css.min',
+                'cm/mode/htmlmixed/htmlmixed': 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.55.0/mode/htmlmixed/htmlmixed.min'
+            },
+            waitSeconds: 40
+        });
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.55.0/codemirror.min.css">
+
+    <!--
+    <script src="./malina.js"></script>
+-->
+
+
+    <style>
+        .CodeMirror {
+            height: 100%;
+        }
+
+        body { margin: 0 }
+        .row, .col { overflow: hidden; position: absolute; }
+        .row { left: 0; right: 0; }
+        .col { top: 0; bottom: 0; }
+        .scroll-x { overflow-x: auto; }
+        .scroll-y { overflow-y: auto; }
+
+        .header.row {
+            height: 75px;
+            top: 0;
+            padding-left: 20px;
+            background-color: #f5f7f8;
+        }
+        .header > h2 {margin: 4px;}
+        .body.row { top: 75px; bottom: 50px; }
+        .footer.row {
+            height: 50px;
+            bottom: 0;
+            background-color: #f5f7f8;
+            border-top: solid 1px #aeaeae;
+        }
+        .wrapper {
+            border:1px solid #aeaeae;
+            margin:0 0 10px 0;
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+        .left {
+            background-color: white;
+            overflow-y: auto;
+            border-right: solid 1px #aeaeae;
+        }
+        .left, .right {
+            width: 50%;
+            padding: 5px;
+        }
+        .iframe-container {
+            position:relative;
+            height: 100%;
+        }
+        .iframe-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+
+    </style>
+
+</head>
+<body></body>
+</html>

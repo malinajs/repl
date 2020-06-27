@@ -1,0 +1,98 @@
+<script lang="javascript">
+
+    let code, error;
+
+    function codeMirror(el) {
+        let debounce;
+        require([
+            'cm/lib/codemirror',
+            'cm/mode/htmlmixed/htmlmixed',
+            'cm/mode/xml/xml',
+            'cm/mode/javascript/javascript',
+            'cm/mode/css/css'
+        ], function(CodeMirror) {
+            code = CodeMirror(el, {
+                value: '<script>\n  let name = \'world\';\n</script>\n\n<h1>Hello {name}!</h1>',
+                mode: 'htmlmixed',
+                scrollbarStyle: 'null',
+                height: 'auto',
+                width: 'auto',
+                lineWrapping: true,
+                lineNumbers: true
+            });
+            code.on('change', () => {
+                if(debounce) clearTimeout(debounce);
+                debounce = setTimeout(() => {
+                    debounce = 0;
+                    run();
+                }, 1000);
+            });
+        });
+
+    }
+
+    const template = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script lang="javascript">
+        document.addEventListener('DOMContentLoaded', function() {
+            widget(document.body);
+        }, false);
+        {runtime};
+    </script>
+</head>
+<body></body>
+</html>`;
+
+    function run() {
+        error = null;
+        let source = code.getValue();
+        require(['malina'], function(malina) {
+            try {
+                var runtime = malina.compile(source);
+            } catch (e) {
+                error = e;
+                return;
+            }
+
+            let result = template.split('{runtime}').join(runtime);
+
+            var doc = iframe.contentWindow.document;
+            doc.open();
+            doc.write(result);
+            doc.close();
+
+        });
+    };
+
+    setTimeout(run, 1000);
+
+    function share() {
+
+    };
+</script>
+
+<div class="header row">
+    <h2>Malina.js - repl</h2>
+    <button on:click={share()}>Share</button>
+</div> 
+<div class="body row">
+    <div class="wrapper">
+        <div class="left">
+            <div use={codeMirror($element)}></div>
+        </div>
+        <div class="right">
+            <div class="iframe-container">
+                <iframe use={iframe=$element} frameborder="0"></iframe>
+            </div>
+        </div>
+    </div>
+</div> 
+<div class="footer row">
+    {#if error}
+        <div style="color: red;">
+            {error}
+        </div>
+    {/if}
+</div>
