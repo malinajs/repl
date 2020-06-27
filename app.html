@@ -1,6 +1,7 @@
 <script lang="javascript">
 
     let code, error;
+    let templates = [];
 
     function codeMirror(el) {
         let debounce;
@@ -19,7 +20,8 @@
                 lineWrapping: true,
                 lineNumbers: true
             });
-            code.on('change', () => {
+            code.on('change', (_, change) => {
+                if(change.origin == 'setValue') return;
                 if(debounce) clearTimeout(debounce);
                 debounce = setTimeout(() => {
                     debounce = 0;
@@ -27,17 +29,29 @@
                 }, 1000);
             });
 
+            // load templates
+            document.body.childNodes.forEach(t => {
+                if(t.nodeType != 8) return;
+                let content = t.textContent.trim();
+                let r = content.match(/^name: ([^\n]+)\n([\S\s]+)$/);
+                if(!r) return;
+                templates.push({
+                    name: r[1],
+                    content: r[2].trim()
+                })
+            });
+
             let hash = document.location.hash;
             if(hash.startsWith('#src=')) {
                 code.setValue(decodeURIComponent(hash.substring(5)));
             } else {
-                code.setValue('<script>\n  let name = \'world\';\n</script>\n\n<h1>Hello {name}!</h1>');
+                code.setValue(templates[0].content);
             }
+            run();
         });
-
     }
 
-    const template = `
+    const iframeTemplate = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -59,10 +73,11 @@
                 var runtime = malina.compile(source);
             } catch (e) {
                 error = e;
+                console.trace(e);
                 return;
             }
 
-            let result = template.split('{runtime}').join(runtime);
+            let result = iframeTemplate.split('{runtime}').join(runtime);
 
             var doc = iframe.contentWindow.document;
             doc.open();
@@ -72,17 +87,27 @@
         });
     };
 
-    setTimeout(run, 1000);
-
     function share() {
         let source = code.getValue();
         document.location.hash = 'src=' + encodeURIComponent(source);
     };
+
+    function useTemplate(n) {
+        if(!n) return;
+        code.setValue(templates[Number(n)].content);
+        run();
+    };
+
 </script>
 
 <div class="header row">
     <h2>Malina.js - repl</h2>
     <button on:click={share()}>Share</button>
+    <select on:input={useTemplate($event.target.value)}>
+        {#each templates as tpl}
+        <option value={$index}>{tpl.name}</option>
+        {/each}
+    </select>
 </div> 
 <div class="body row">
     <div class="wrapper">
@@ -103,3 +128,200 @@
         </div>
     {/if}
 </div>
+
+
+<!-- TEMPLATES BELOW -->
+
+<!--
+name: Hello world
+
+<script>
+  let name = 'world';
+</script>
+
+<h1>Hello {name.toUpperCase()}!</h1>
+-->
+
+
+<!--
+name: Binding
+
+<script>
+  let name = 'world';
+  let active = false;
+</script>
+
+Enter name: <input type="text" bind:value={name} />
+Hello {name}!
+<br/>
+<input type="checkbox" bind:checked={active} /> {active}
+-->
+
+
+<!--
+name: Events
+<script>
+  let name = '';
+  let event = '';
+  const click = (e) => {
+    event = e.x + 'x' + e.y;
+  }
+</script>
+
+Enter word and press enter:
+<input bind:value={name} on:keydown|enter={name=''} /> {name}
+<br />
+<button on:click={click($event)}>Click!</button>
+<a href on:click|preventDefault={event=$element.textContent}>Click</a>
+{event}
+
+<ul>
+  <li>
+    <b>on:event</b> to listen event, available locals: <i>$element, $event</i>
+  </li>  
+  <li>
+    modifier "preventDefault" to use <i>event.preventDefault()</i>
+  </li>
+  <li>
+    modifier "enter": on:keydown|enter - listen work if keyCode == 13 (Enter)
+  </li>
+</ul>
+-->
+
+
+<!--
+name: Class and style
+
+<script>
+  let value;
+</script>
+
+<input type="checkbox" bind:checked={value} /> switch
+ 
+<div class:blue={value} class:red={!value}>Linux</div>
+<div class="{value?'red':'blue'}">MacOS</div>
+<b style="color: {value?'green':'red'};">Windows</b>
+
+<style>
+  .blue {background-color: cornflowerblue;}
+  .red {background-color: tomato;}
+</style>
+-->
+
+
+<!--
+name: if - else block
+
+<script>
+  let value;
+</script>
+
+<input type="checkbox" bind:checked={value} /> switch
+<br/>
+
+{#if value}
+	checkbox is on
+{:else}
+	[else] block, switch checkbox
+{/if}
+-->
+
+<!--
+name: Each/repeat blocks
+
+<script>
+  let items = [];
+  let name;
+  
+  const add = () => {
+    items.push({name: name});
+    name = '';
+  };
+  const remove = i => {
+    items.splice(i, 1);
+  }
+  const reverse = (item) => {
+    item.name = item.name.split('').reverse().join('');
+  }
+</script>
+
+Enter text and press enter:
+<input type="text" bind:value={name} on:keydown|enter={add()} />
+
+<ul>
+  {#each items as item}
+  <li>
+    {$index}: {item.name}
+    <a href on:click|preventDefault={reverse(item)}>reverse</a>
+    <a href on:click|preventDefault={remove($index)}>remove</a>
+  </li>
+  {/each}
+</ul>
+-->
+
+
+<!--
+name: Directive 'use'
+
+<script>
+  let visible = false;
+  const setStyle = el => {
+    el.style.color = 'red';
+  }
+  let boldElement;
+</script>
+
+<input type="checkbox" bind:checked={visible} />
+<span use={setStyle($element)}>set focus input on render</span>
+
+<div>
+  {#if visible}
+	<input type="text" use={$element.focus()} />
+  {/if}
+</div>
+
+save element in <b use={boldElement=$element}>variable</b>
+-->
+
+<!--
+name: Todo app
+
+<script>
+  let name = '';
+  let todos = [];
+  let active;
+  
+  function add() {
+    if(!name) return;
+    todos.push({name: name});
+    name = '';
+  }
+  
+  const remove = i => todos.splice(i, 1);
+  const numDone = () => todos.filter(t => t.done).length;
+</script>
+
+{#if active}
+Edit: <input type="text" on:keydown|enter={active=null} bind:value={active.name} use={$element.focus()} />
+{:else}
+<input type="text" on:keydown|enter={add()} bind:value={name} />
+{/if}
+
+<ul>
+  {#each todos as todo}
+  <li class:active={todo == active} class:inactive={todo.done}>
+    <input type="checkbox" bind:checked={todo.done} />
+    <span on:click={active=todo}>{$index}:  {todo.name}</span>
+    <a href on:click|preventDefault={remove($index)}>remove</a>
+  </li>
+  {/each}
+</ul>
+
+Total done: {numDone()} of {todos.length}
+
+<style>
+  li {cursor: pointer;}
+  .active {background-color: #cfc;}
+  .inactive {text-decoration-line: line-through; color: gray;}
+</style>
+-->
