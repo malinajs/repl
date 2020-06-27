@@ -12,7 +12,6 @@
             'cm/mode/css/css'
         ], function(CodeMirror) {
             code = CodeMirror(el, {
-                value: '<script>\n  let name = \'world\';\n</script>\n\n<h1>Hello {name}!</h1>',
                 mode: 'htmlmixed',
                 scrollbarStyle: 'null',
                 height: 'auto',
@@ -27,6 +26,13 @@
                     run();
                 }, 1000);
             });
+
+            let hash = document.location.hash;
+            if(hash.startsWith('#src=')) {
+                code.setValue(decodeURIComponent(hash.substring(5)));
+            } else {
+                code.setValue('<script>\n  let name = \'world\';\n</script>\n\n<h1>Hello {name}!</h1>');
+            }
         });
 
     }
@@ -69,7 +75,8 @@
     setTimeout(run, 1000);
 
     function share() {
-
+        let source = code.getValue();
+        document.location.hash = 'src=' + encodeURIComponent(source);
     };
 </script>
 
