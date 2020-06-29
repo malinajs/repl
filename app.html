@@ -26,7 +26,7 @@
                 debounce = setTimeout(() => {
                     debounce = 0;
                     run();
-                }, 1000);
+                }, 300);
             });
 
             // load templates
@@ -107,12 +107,13 @@
         <a style="vertical-align: top;" target="_blank" href="https://github.com/malinajs/malinajs">GitHub Malina.js</a>
     </div>
     <h2>Malina.js - repl</h2>
-    <button on:click={share()}>Share</button>
+    <span style="color: red;">Select example</span>
     <select on:input={useTemplate($event.target.value)}>
         {#each templates as tpl}
         <option value={$index}>{tpl.name}</option>
         {/each}
     </select>
+    <button on:click={share()}>Share code</button>
 </div> 
 <div class="body row">
     <div class="wrapper">
@@ -329,4 +330,56 @@ Total done: {numDone()} of {todos.length}
   .active {background-color: #cfc;}
   .inactive {text-decoration-line: line-through; color: gray;}
 </style>
+-->
+
+
+<!--
+name: Custom directive, actions, onMount
+
+<script>
+  let colors = ['red', 'blue', 'green', 'deeppink', 'brown'];
+  let list = [
+    {name: 'Linux', n: 0},
+    {name: 'MacOS', n: 1},
+    {name: 'Windows', n: 2},
+    {name: 'Ubuntu', n: 3},
+    {name: 'FreeBSD', n: 4}
+  ];
+
+  let div;
+
+  const color = (element, item, n) => {
+    // on mount
+    function inc() {item.n++;}
+    element.addEventListener('click', inc);
+    element.style.color = colors[n];
+
+    return {
+      update: (item, n) => {
+        // on update
+        if(n < colors.length) {
+          element.style.color = colors[n];
+          div.style.backgroundColor = colors[n];
+        }
+        else list.splice(list.indexOf(item), 1);
+      },
+      destroy: () => {
+        // on destroy
+        element.removeEventListener('click', inc);
+      }
+    }
+  }
+
+  function onMount() {
+    // on mount
+  }
+</script>
+
+<div use={div=$element}>Run code from html, e.g. save element into variable</div>
+
+<ul style="cursor: pointer; user-select: none;">
+  {#each list as it}
+  <li use:color={it, it.n}>{it.name} - {it.n}</li>
+  {/each}
+</ul>
 -->
