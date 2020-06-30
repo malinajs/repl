@@ -1,6 +1,6 @@
 <script lang="javascript">
 
-    let code, error;
+    let code, error, version = '';
     let templates = [];
 
     function codeMirror(el) {
@@ -69,10 +69,12 @@
         error = null;
         let source = code.getValue();
         require(['malina'], function(malina) {
+            version = malina.version;
             try {
                 var runtime = malina.compile(source);
             } catch (e) {
-                error = e;
+                if(e.details) error = e.message + ': ' + e.details;
+                else error = e;
                 console.trace(e);
                 return;
             }
@@ -128,6 +130,10 @@
     </div>
 </div> 
 <div class="footer row">
+    <div style="float: right; margin: 16px; color: cornflowerblue;">
+        {version}
+    </div>
+
     {#if error}
         <div style="color: red;">
             {error}
@@ -349,29 +355,31 @@ name: Custom directive, actions, onMount
   let div;
 
   const color = (element, item, n) => {
-    // on mount
+    // on mount action
     function inc() {item.n++;}
     element.addEventListener('click', inc);
     element.style.color = colors[n];
 
     return {
+      
+      // on update action
       update: (item, n) => {
-        // on update
         if(n < colors.length) {
           element.style.color = colors[n];
           div.style.backgroundColor = colors[n];
         }
         else list.splice(list.indexOf(item), 1);
       },
+      
+      // on destroy action
       destroy: () => {
-        // on destroy
         element.removeEventListener('click', inc);
       }
     }
   }
 
   function onMount() {
-    // on mount
+    // on mount component
   }
 </script>
 
