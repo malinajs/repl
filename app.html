@@ -391,3 +391,41 @@ name: Custom directive, actions, onMount
   {/each}
 </ul>
 -->
+
+
+<!--
+name: Reactivity, detecting changes
+
+<script>
+  let name = 'world';
+  let header;
+  let div;
+ 
+  // 1) assignation, variable is changed when expression give another result
+  // variable = expression
+  $: header = name.toUpperCase();
+
+  // 2) when expression gives another result, function is called
+  // expression, function(valueOfExpression) {}
+  $: name.length, (len) => {div.innerText = len};
+
+  $: name, () => console.log(name);
+</script>
+
+<h1>Hello {header}!</h1>
+<input type="text" bind:value={name} />
+
+<div>
+  Length: <span use={div=$element}></span>
+</div>
+
+
+<style>
+  div {
+    border: 1px solid red;
+    min-height: 12px;
+    margin: 2px;
+    padding: 2px;
+  }
+</style>
+-->
