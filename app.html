@@ -80,12 +80,11 @@
             }
 
             let result = iframeTemplate.split('{runtime}').join(runtime);
-
-            var doc = iframe.contentWindow.document;
+            iframe.innerHTML = '<iframe frameborder="0"></iframe>';
+            var doc = iframe.firstChild.contentWindow.document;
             doc.open();
             doc.write(result);
             doc.close();
-
         });
     };
 
@@ -123,9 +122,7 @@
             <div use={codeMirror($element)}></div>
         </div>
         <div class="right">
-            <div class="iframe-container">
-                <iframe use={iframe=$element} frameborder="0"></iframe>
-            </div>
+            <div class="iframe-container" use={iframe=$element}></div>
         </div>
     </div>
 </div> 
@@ -400,14 +397,14 @@ name: Reactivity, detecting changes
   let name = 'world';
   let header;
   let div;
- 
-  // 1) assignation, variable is changed when expression give another result
-  // variable = expression
-  $: header = name.toUpperCase();
 
-  // 2) when expression gives another result, function is called
-  // expression, function(valueOfExpression) {}
-  $: name.length, (len) => {div.innerText = len};
+  // 1) with assignment: variable is changed when expression give another result
+  // $: variable = expression
+  $: header = name.toUpperCase();
+ 
+  // 2) with function: function is called when any expression is changed
+  // $: exp1, exp2, exp3, function(valueOfExpression) {}
+  $: name.length, div, (len, el) => {if(el) el.innerText = len};
 
   $: name, () => console.log(name);
 </script>
@@ -415,17 +412,18 @@ name: Reactivity, detecting changes
 <h1>Hello {header}!</h1>
 <input type="text" bind:value={name} />
 
-<div>
-  Length: <span use={div=$element}></span>
-</div>
+<div on:click={div=$element}>Click here</div>
+<div on:click={div=$element}>Click here</div>
 
 
 <style>
   div {
-    border: 1px solid red;
+    border: 1px solid gray;
     min-height: 12px;
     margin: 2px;
     padding: 2px;
+    width: 100px;
+    cursor: pointer;
   }
 </style>
 -->
