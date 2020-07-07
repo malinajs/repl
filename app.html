@@ -103,7 +103,6 @@
 
 <div class="header row">
     <div style="float: right;margin: 16px 40px 4px 40px;">
-        <a target="_blank" href="https://github.com/malinajs/repl/blob/master/app.html">Source code of this REPL-app</a> <br>
         <img style="height: 18px;" src="https://help.github.com/assets/images/site/favicon.ico" />
         <a style="vertical-align: top;" target="_blank" href="https://github.com/malinajs/malinajs">GitHub Malina.js</a>
     </div>
@@ -240,7 +239,7 @@ name: if - else block
 name: Each/repeat blocks
 
 <script>
-  let items = [];
+  let items = [{name: 'first task'}, {name: 'second task'}];
   let name;
   
   const add = () => {
@@ -298,7 +297,7 @@ name: Todo app
 
 <script>
   let name = '';
-  let todos = [];
+  let todos = [{name: 'first task'}, {name: 'second task', done: true}];
   let active;
   
   function add() {
