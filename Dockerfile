@@ -22,4 +22,4 @@ RUN npm install -g sirv-cli && npm cache clean --force
 
 EXPOSE 80
 
-ENTRYPOINT ["sirv", "start", "/app", "--single"]
+ENTRYPOINT ["sirv", "/app", "--single"]
