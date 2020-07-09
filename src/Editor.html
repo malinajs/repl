@@ -11,24 +11,19 @@
     hljs.registerLanguage('css', css);
     svelte(hljs);
 
-    export let source = {};
+    export let files = {};
     export let oninput = _ => console.log('No oninput callback for editor!');
-    
-    //TODO: remove when props will be fixed
-    let fix = false;
+
+
+    let editor = null;
 
     function codeJarAction(node){
 
-        node.textContent = source['./App.html'];
-
         function inputHandler(){
-            //TODO: remove when props will be fixed
-            if(!fix) fix = node.textContent = source['./App.html'];
             oninput(node.textContent);
-            
         }
 
-        const editor = new CodeJar(node,e => {
+        editor = new CodeJar(node,e => {
            e.innerHTML = hljs.highlight('svelte',e.textContent).value;
         });
 
@@ -38,6 +33,14 @@
             destroy: () => node.removeEventListener('input',inputHandler)
         }
     }
+
+    function loadSource(code){
+        if(editor.updateCode && editor.toString){
+            if(editor.toString() !== code) editor.updateCode(code)
+        }
+    }
+
+    $: files,()=>loadSource(files['./App.html']);
 </script>
 
 <div class="editor" use:codeJarAction></div>

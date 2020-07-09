@@ -3,6 +3,8 @@
     import Result from './Result.html';
     import Examples from './ExamplesList.html';
 
+    let fix = null;
+
     let files = {
         './App.html':'<scr'+'ipt></scr'+'ipt><h1>HELLO!</h1>'
     }
@@ -15,12 +17,14 @@
         files = example.files;
     }
 
+    console.log(fix)
+
 </script>
 
 <div class="wrapper">
     <div class="header"><Examples onchange={onLoadExample}></Examples></div>
     <div class="body">
-        <div class="left"><Editor source={files} oninput={onEditorInput}></Editor></div>
+        <div class="left"><Editor files={files} oninput={onEditorInput}></Editor></div>
         <div class="right"><Result files={files}></Result></div>
     </div>
     <div class="footer">Footer</div>

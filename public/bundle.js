@@ -3201,21 +3201,19 @@
       core.registerLanguage('javascript', javascript_1);
       core.registerLanguage('css', css_1);
       svelte(core);
-      let source = {};
+      let files = {};
       let oninput = _ => {
         $$apply();
         return console.log('No oninput callback for editor!');
       };
-      let fix = false;
+      let editor = null;
       function codeJarAction(node) {
         $$apply();
-        node.textContent = source['./App.html'];
         function inputHandler() {
           $$apply();
-          if (!fix) fix = node.textContent = source['./App.html'];
           oninput(node.textContent);
         }
-        const editor = new CodeJar(node, e => {
+        editor = new CodeJar(node, e => {
           $$apply();
           e.innerHTML = core.highlight('svelte', e.textContent).value;
         });
@@ -3226,6 +3224,12 @@
             return node.removeEventListener('input', inputHandler);
           }
         };
+      }
+      function loadSource(code) {
+        $$apply();
+        if (editor.updateCode && editor.toString) {
+          if (editor.toString() !== code) editor.updateCode(code);
+        }
       }
       
             function $$apply() {
@@ -3418,8 +3422,8 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build328($cd, $parentElement) {
-    let el327 = $parentElement[$$childNodes][1];{let useObject = codeJarAction(el327);
+                }    function $$build42($cd, $parentElement) {
+    let el41 = $parentElement[$$childNodes][1];{let useObject = codeJarAction(el41);
      if(useObject) {if(useObject.destroy) $cd.d(useObject.destroy);}}}        const rootTemplate = `
 
 <div class="editor"></div>
@@ -3443,16 +3447,19 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build328($cd, $element);
+                $$build42($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build328($cd, $element);
+                $$build42($cd, $element);
             }
-        
-                    $component.setProp_source = (value) => {
-                        if(source == value) return;
-                        source = value;
+        $cd.once(() => {
+    $watch($cd, () => (files), ()=>loadSource(files['./App.html']));
+    $$apply();
+    });
+                    $component.setProp_files = (value) => {
+                        if(files == value) return;
+                        files = value;
                         $$apply();
                     };
                 
@@ -4019,23 +4026,23 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build18($cd, $parentElement) {
-    let el13 = $parentElement[$$childNodes][1];function ifBlock14($cd, $parentElement) {
+                }    function $$build11($cd, $parentElement) {
+    let el6 = $parentElement[$$childNodes][1];function ifBlock7($cd, $parentElement) {
 
                 let elsefr = $$htmlToFragment(`
 
 	<iframe title="Result" sandbox="allow-popups-to-escape-sandbox allow-scripts allow-popups 
                             allow-forms allow-pointer-lock allow-top-navigation allow-modals allow-scripts"></iframe>
 `);
-                function $$build17($cd, $parentElement) {
-    let el16 = $parentElement[$$childNodes][1];{let useObject = frameCommunicator(el16, frameHandler);
+                function $$build10($cd, $parentElement) {
+    let el9 = $parentElement[$$childNodes][1];{let useObject = frameCommunicator(el9, frameHandler);
      if(useObject) {
                     if(useObject.update) {
                         let w = $cd.wa(() => [frameHandler], (args) => {useObject.update.apply(useObject, args);});
                         w.value = w.fn();
                     }if(useObject.destroy) $cd.d(useObject.destroy);}}
     {
-                        let $element=el16;
+                        let $element=el9;
                         $cd.wf(() => ((getSrcdoc())), (value) => {
                             if(value) $element.setAttribute('srcdoc', value);
                             else $element.removeAttribute('srcdoc');
@@ -4045,7 +4052,7 @@
             let mainfr = $$htmlToFragment(`
     <p>Loading Bundler and Malina compiler...</p>
 `);
-            function $$build15($cd, $parentElement) {
+            function $$build8($cd, $parentElement) {
     }    
 
             let childCD;
@@ -4070,14 +4077,14 @@
             $cd.wf(() => !!(loading), (value) => {
                 if(value) {
                     destroy();
-                    create(mainfr, $$build15);
+                    create(mainfr, $$build8);
                 } else {
                     destroy();
-                    if(elsefr) create(elsefr, $$build17);
+                    if(elsefr) create(elsefr, $$build10);
                 }
             });
         
-    } ifBlock14($cd, el13);}        const rootTemplate = `
+    } ifBlock7($cd, el6);}        const rootTemplate = `
 
 <!-- #if loading -->
 
@@ -4091,11 +4098,11 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build18($cd, $element);
+                $$build11($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build18($cd, $element);
+                $$build11($cd, $element);
             }
         $cd.once(() => {
     $cd.wa(() => [loading,files], ($args) => { (()=>compile()).apply(null, $args); });
@@ -4345,33 +4352,33 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build310($cd, $parentElement) {
-    let el300 = $parentElement[$$childNodes][1];function ifBlock301($cd, $parentElement) {
+                }    function $$build22($cd, $parentElement) {
+    let el12 = $parentElement[$$childNodes][1];function ifBlock13($cd, $parentElement) {
 
                 let elsefr = $$htmlToFragment(`
 <select>
     <!-- #each list as example -->
 </select>
 `);
-                function $$build309($cd, $parentElement) {
-    let el303 = $parentElement[$$childNodes][1];
-    let el304 = $parentElement[$$childNodes][1][$$childNodes][1];{
-                let $element=el303;
+                function $$build21($cd, $parentElement) {
+    let el15 = $parentElement[$$childNodes][1];
+    let el16 = $parentElement[$$childNodes][1][$$childNodes][1];{
+                let $element=el15;
                 $cd.ev($element, "input", ($event) => {  $$apply(); loadExample($event.target.value);});
                 }
 
-            function eachBlock308 ($cd, top) {
+            function eachBlock20 ($cd, top) {
 
                 function bind($ctx, example, $index) {
-                    function $$build307($cd, $parentElement) {
-    let el305 = $parentElement;
-    let el306 = $parentElement[$$childNodes][0];{
-                        let $element=el305;
+                    function $$build19($cd, $parentElement) {
+    let el17 = $parentElement;
+    let el18 = $parentElement[$$childNodes][0];{
+                        let $element=el17;
                         $cd.wf(() => ((example.file)), (value) => {$element.value = value;});
                     }
     {
-                                let $element=el306;
-                                $cd.wf(() => (example.name), (value) => {$element.textContent=value;});}}                $$build307($ctx.cd, $ctx.el);
+                                let $element=el18;
+                                $cd.wf(() => (example.name), (value) => {$element.textContent=value;});}}                $$build19($ctx.cd, $ctx.el);
                     $ctx.reindex = function(i) { };
                 }
                 let parentNode = top.parentNode;
@@ -4442,13 +4449,13 @@
                 });
 
             }
-            eachBlock308($cd, el304);
+            eachBlock20($cd, el16);
         }        
 
             let mainfr = $$htmlToFragment(`
     <p>Loading examples list...</p>
 `);
-            function $$build302($cd, $parentElement) {
+            function $$build14($cd, $parentElement) {
     }    
 
             let childCD;
@@ -4473,25 +4480,25 @@
             $cd.wf(() => !!(loading), (value) => {
                 if(value) {
                     destroy();
-                    create(mainfr, $$build302);
+                    create(mainfr, $$build14);
                 } else {
                     destroy();
-                    if(elsefr) create(elsefr, $$build309);
+                    if(elsefr) create(elsefr, $$build21);
                 }
             });
         
-    } ifBlock301($cd, el300);}        const rootTemplate = `
+    } ifBlock13($cd, el12);}        const rootTemplate = `
 
 
 <!-- #if loading -->`;
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build310($cd, $element);
+                $$build22($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build310($cd, $element);
+                $$build22($cd, $element);
             }
         $cd.once(onMount);
                     $component.setProp_onchange = (value) => {
@@ -4506,6 +4513,7 @@
 
     function App($element, $option) {
       if ($option == null) $option = {};
+      let fix = null;
       let files = {
         './App.html': '<scr' + 'ipt></scr' + 'ipt><h1>HELLO!</h1>'
       };
@@ -4517,6 +4525,7 @@
         $$apply();
         files = example.files;
       }
+      console.log(fix);
       
             function $$apply() {
                 if($$apply._p) return;
@@ -4708,11 +4717,11 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build326($cd, $parentElement) {
-    let el323 = $parentElement[$$childNodes][1][$$childNodes][1][$$childNodes][0];
-    let el324 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][1][$$childNodes][0];
-    let el325 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][3][$$childNodes][0];{
-            let $component = ExamplesList(el323, {afterElement: true});
+                }    function $$build32($cd, $parentElement) {
+    let el29 = $parentElement[$$childNodes][1][$$childNodes][1][$$childNodes][0];
+    let el30 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][1][$$childNodes][0];
+    let el31 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][3][$$childNodes][0];{
+            let $component = ExamplesList(el29, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
@@ -4722,13 +4731,13 @@
             }
         }
     {
-            let $component = Editor(el324, {afterElement: true});
+            let $component = Editor(el30, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
-                    if($component.setProp_source) {
-                        $watch($cd, () => ((files)), $component.setProp_source, {d: true, ro: true});
-                    } else console.error("Component Editor doesn't have prop source");
+                    if($component.setProp_files) {
+                        $watch($cd, () => ((files)), $component.setProp_files, {d: true, ro: true});
+                    } else console.error("Component Editor doesn't have prop files");
                 
 
                     if($component.setProp_oninput) {
@@ -4737,7 +4746,7 @@
             }
         }
     {
-            let $component = Result(el325, {afterElement: true});
+            let $component = Result(el31, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
@@ -4789,11 +4798,11 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build326($cd, $element);
+                $$build32($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build326($cd, $element);
+                $$build32($cd, $element);
             }
         
                 $$apply();
