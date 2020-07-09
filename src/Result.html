@@ -28,7 +28,7 @@
     let cooldown = 0;
     let wasChanged = false;
     async function bundle_with_cooldown(){
-        if(cooldown) return wasChanged = true;
+        if(loading ||  cooldown) return wasChanged = true;
 
         await bundle_files();
         cooldown = setTimeout(async ()=>{
