@@ -18,18 +18,27 @@
     function frameHandler({on,dispatch}) {
         load_code_in_frame = (bundle) => dispatch('bundle',bundle);
     }
+
+    async function bundle_files(){
+        const bundle = await bundler(files);
+        load_code_in_frame(bundle);
+    }
         
     // compile sources with cooldown timeout
-    let cooldown_timer;
-    function compile(){
-        clearTimeout(cooldown_timer);
-        cooldown_timer = setTimeout(async () => {
-            const bundle = await bundler(files);
-            load_code_in_frame(bundle);
-        },750);
+    let cooldown = 0;
+    let wasChanged = false;
+    async function bundle_with_cooldown(){
+        if(cooldown) return wasChanged = true;
+
+        await bundle_files();
+        cooldown = setTimeout(async ()=>{
+            if(wasChanged) await bundle_files();
+            cooldown = 0;
+            wasChanged = false;
+        },500);
     }    
 
-    $: loading,files,()=>compile();
+    $: loading,files,()=>bundle_with_cooldown();
 </script>
 
 {#if loading}
