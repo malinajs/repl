@@ -1,0 +1,23 @@
+<script>
+    import marked from 'marked';
+    
+    let markdown = '';
+    let html = '';
+    
+    $: html = marked(markdown)
+</script>
+
+
+<h3>Markdown text</h3>
+<textarea bind:value={markdown}></textarea>
+
+<h3>Result HTML code</h3>
+<div>{html}</div>
+
+<style>
+    textarea,div{
+    	width: 100%;
+    	height: 200px;
+    	border: 1px solid gray;
+    }
+</style>
