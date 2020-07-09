@@ -1,0 +1,60 @@
+<script>
+    import {CodeJar} from 'codejar';
+    import hljs from 'highlight.js/lib/core.js';
+    import xml from 'highlight.js/lib/languages/xml.js';
+    import js from 'highlight.js/lib/languages/javascript.js';
+    import css from 'highlight.js/lib/languages/css.js';
+    import svelte from 'highlightjs-svelte'; // very similar sintax
+
+    hljs.registerLanguage('xml', xml);
+    hljs.registerLanguage('javascript', js);
+    hljs.registerLanguage('css', css);
+    svelte(hljs);
+
+    export let source = '';
+    export let oninput = _ => console.log('No oninput callback for editor!');
+    
+    //TODO: remove when props will be fixed
+    let fix = false;
+
+    function codeJarAction(node){
+
+        node.textContent = source;
+
+        function inputHandler(){
+            //TODO: remove when props will be fixed
+            if(!fix) fix = node.textContent = source;
+            oninput(node.textContent);
+            
+        }
+
+        const editor = new CodeJar(node,e => {
+           e.innerHTML = hljs.highlight('svelte',e.textContent).value;
+        });
+
+        node.addEventListener('input',inputHandler);
+
+        return{
+            destroy: () => node.removeEventListener('input',inputHandler)
+        }
+    }
+</script>
+
+<div class="editor" use:codeJarAction></div>
+
+<style>
+    .editor{
+        width: 100%;
+        height: 100%;
+        resize: none;
+        border: 0;
+
+        font-family: 'Source Code Pro', monospace;
+        font-size: 16px;
+        font-weight: 400;
+        letter-spacing: normal;
+        line-height: 20px;
+        padding: 10px;
+        tab-size: 4;
+    }
+</style>

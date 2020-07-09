@@ -1,0 +1,53 @@
+<script>
+    import Editor from './Editor/Editor.html';
+    import Result from './Result/Result.html';
+
+    let files = {
+        './App.html':'<scr'+'ipt></scr'+'ipt><h1>HELLO!</h1>'
+    }
+
+    function onEditorInput(code){
+        files['./App.html'] = code;
+    }
+
+</script>
+
+<div class="wrapper">
+    <div class="header">Header!</div>
+    <div class="body">
+        <div class="left"><Editor source={files['./App.html']} oninput={onEditorInput}></Editor></div>
+        <div class="right"><Result files={files}></Result></div>
+    </div>
+    <div class="footer">Footer</div>
+</div>
+
+<style>
+    .wrapper{
+        display: flex;
+        min-height: 100vh;
+        flex-direction: column;
+    }
+
+    .header{
+        height: 50px;
+        border-bottom: 1px solid var(--color-gray);
+    }
+
+    .body{
+        display: flex;
+        flex: 1;
+    }
+    .left{
+        width: 60%;
+        border-right: 1px solid var(--color-gray);
+    }
+
+    .right{
+        width: 40%;
+    }
+
+    .footer{
+        border-top: 1px solid var(--color-gray);
+        height: 40px;
+    }
+</style>

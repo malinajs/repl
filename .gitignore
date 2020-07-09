@@ -1,0 +1,4 @@
+Makefile
+node_modules/
+package-lock.json
+src/public/bundle.js
