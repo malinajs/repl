@@ -4717,11 +4717,11 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build32($cd, $parentElement) {
-    let el29 = $parentElement[$$childNodes][1][$$childNodes][1][$$childNodes][0];
-    let el30 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][1][$$childNodes][0];
-    let el31 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][3][$$childNodes][0];{
-            let $component = ExamplesList(el29, {afterElement: true});
+                }    function $$build86($cd, $parentElement) {
+    let el83 = $parentElement[$$childNodes][1][$$childNodes][1][$$childNodes][3][$$childNodes][1];
+    let el84 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][1][$$childNodes][0];
+    let el85 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][3][$$childNodes][0];{
+            let $component = ExamplesList(el83, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
@@ -4731,7 +4731,7 @@
             }
         }
     {
-            let $component = Editor(el30, {afterElement: true});
+            let $component = Editor(el84, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
@@ -4746,7 +4746,7 @@
             }
         }
     {
-            let $component = Result(el31, {afterElement: true});
+            let $component = Result(el85, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
@@ -4757,7 +4757,11 @@
         }}        const rootTemplate = `
 
 <div class="wrapper">
-    <div class="header"><!-- Examples --></div>
+    <div class="header">
+        <h1 class="logo">Malina.js - REPL</h1>
+        <div class="examples">
+            Select an example: <!-- Examples --></div>
+        </div>
     <div class="body">
         <div class="left"><!-- Editor --></div>
         <div class="right"><!-- Result --></div>
@@ -4773,8 +4777,9 @@
     }
 
     .header{
-        height: 50px;
+        height: 90px;
         border-bottom: 1px solid var(--color-gray);
+        background-color: var(--color-lightest);
     }
 
     .body{
@@ -4794,15 +4799,19 @@
         border-top: 1px solid var(--color-gray);
         height: 40px;
     }
+
+    .logo,.examples{
+        margin-left: 10px;
+    }
 </style>`;
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build32($cd, $element);
+                $$build86($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build32($cd, $element);
+                $$build86($cd, $element);
             }
         
                 $$apply();

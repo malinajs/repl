@@ -22,7 +22,11 @@
 </script>
 
 <div class="wrapper">
-    <div class="header"><Examples onchange={onLoadExample}></Examples></div>
+    <div class="header">
+        <h1 class="logo">Malina.js - REPL</h1>
+        <div class="examples">
+            Select an example: <Examples onchange={onLoadExample}></Examples></div>
+        </div>
     <div class="body">
         <div class="left"><Editor files={files} oninput={onEditorInput}></Editor></div>
         <div class="right"><Result files={files}></Result></div>
@@ -38,8 +42,9 @@
     }
 
     .header{
-        height: 50px;
+        height: 90px;
         border-bottom: 1px solid var(--color-gray);
+        background-color: var(--color-lightest);
     }
 
     .body{
@@ -58,5 +63,9 @@
     .footer{
         border-top: 1px solid var(--color-gray);
         height: 40px;
+    }
+
+    .logo,.examples{
+        margin-left: 10px;
     }
 </style>
