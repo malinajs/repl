@@ -2,9 +2,9 @@
     import marked from 'marked';
     
     let markdown = '';
-    let html = '';
+    let div = '';
     
-    $: html = marked(markdown)
+    $: markdown,()=>{div.innerHTML = marked(markdown)}
 </script>
 
 
@@ -12,7 +12,7 @@
 <textarea bind:value={markdown}></textarea>
 
 <h3>Result HTML code</h3>
-<div>{html}</div>
+<div use={div=$element}></div>
 
 <style>
     textarea,div{
