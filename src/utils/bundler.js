@@ -146,7 +146,7 @@ async function init_malina_compiler(version){
     }*/
 
     try {
-        ( await download_module(`//localhost:7000/bin/malina.js`) )(); 
+        ( await download_module(`/bin/malina.js`) )(); 
         console.log(`MalinaJS v.${malina.version}`);
     } catch (e) {
         if(e.details) console.log(e.details);

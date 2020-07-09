@@ -1,0 +1,33 @@
+<script>
+    import {fetchExample} from './utils/examples.js';
+
+    export let onchange = _ => console.log('No callback for example chooser');
+
+    let loading = true;
+    let list = [];
+
+    function onMount(){
+        fetchExample().then(l=>{
+            list = l;
+            loading = false;
+            loadExample(list[0].file);
+        });
+    };
+
+    function loadExample(file){
+        fetchExample(file).then(files=>{
+            onchange(files);
+        });
+    }
+</script>
+
+
+{#if loading}
+    <p>Loading examples list...</p>
+{:else}
+<select on:input={loadExample($event.target.value)}>
+    {#each list as example}
+    <option value={example.file}>{example.name}</option>
+    {/each}
+</select>
+{/if}

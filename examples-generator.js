@@ -22,6 +22,7 @@ if(mode === 'watch'){
 function generateExamples(){
     if(!fs.existsSync(OUTPUT)) {fs.mkdirSync(OUTPUT)};
     console.log(`Building examples...`);
+    const index = [];
     const list = fs.readdirSync(DIR);
     for(let name of list){
         const exPath = path.join(DIR,name);
@@ -42,7 +43,9 @@ function generateExamples(){
                 result.files[`./${file}`] = fs.readFileSync(path.join(exPath,file),'utf-8');
             }
             fs.writeFileSync(path.join(OUTPUT,`${name}.json`),JSON.stringify(result));
+            index.push({name,file:`${name}.json`})
             console.log(` - ${name}.json`);
         }
     }
+    fs.writeFileSync(path.join(OUTPUT,`index.json`),JSON.stringify(index));
 }

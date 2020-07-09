@@ -1,6 +1,7 @@
 <script>
-    import Editor from './Editor/Editor.html';
-    import Result from './Result/Result.html';
+    import Editor from './Editor.html';
+    import Result from './Result.html';
+    import Examples from './ExamplesList.html';
 
     let files = {
         './App.html':'<scr'+'ipt></scr'+'ipt><h1>HELLO!</h1>'
@@ -10,12 +11,16 @@
         files['./App.html'] = code;
     }
 
+    function onLoadExample(example){
+        files = example.files;
+    }
+
 </script>
 
 <div class="wrapper">
-    <div class="header">Header!</div>
+    <div class="header"><Examples onchange={onLoadExample}></Examples></div>
     <div class="body">
-        <div class="left"><Editor source={files['./App.html']} oninput={onEditorInput}></Editor></div>
+        <div class="left"><Editor source={files} oninput={onEditorInput}></Editor></div>
         <div class="right"><Result files={files}></Result></div>
     </div>
     <div class="footer">Footer</div>

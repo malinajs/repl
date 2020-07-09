@@ -1,6 +1,6 @@
 <script>    
-    import {frameCommunicator,getSrcdoc} from './../utils/frame_communicator.js';
-    import {bundler,init_bundler} from './../utils/bundler.js';
+    import {frameCommunicator,getSrcdoc} from './utils/frame_communicator.js';
+    import {bundler,init_bundler} from './utils/bundler.js';
 
     export let files;
     
@@ -11,7 +11,6 @@
     (async () => {
         await init_bundler();
         loading = false;
-        compile();
     })();
 
     // action for setting up the code dispatcher to the iframe
@@ -29,7 +28,7 @@
         },750);
     }    
 
-    $: files,()=>compile();
+    $: loading,files,()=>compile();
 </script>
 
 {#if loading}

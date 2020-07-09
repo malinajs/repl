@@ -11,7 +11,7 @@
     hljs.registerLanguage('css', css);
     svelte(hljs);
 
-    export let source = '';
+    export let source = {};
     export let oninput = _ => console.log('No oninput callback for editor!');
     
     //TODO: remove when props will be fixed
@@ -19,11 +19,11 @@
 
     function codeJarAction(node){
 
-        node.textContent = source;
+        node.textContent = source['./App.html'];
 
         function inputHandler(){
             //TODO: remove when props will be fixed
-            if(!fix) fix = node.textContent = source;
+            if(!fix) fix = node.textContent = source['./App.html'];
             oninput(node.textContent);
             
         }

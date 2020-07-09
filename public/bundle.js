@@ -3201,7 +3201,7 @@
       core.registerLanguage('javascript', javascript_1);
       core.registerLanguage('css', css_1);
       svelte(core);
-      let source = '';
+      let source = {};
       let oninput = _ => {
         $$apply();
         return console.log('No oninput callback for editor!');
@@ -3209,10 +3209,10 @@
       let fix = false;
       function codeJarAction(node) {
         $$apply();
-        node.textContent = source;
+        node.textContent = source['./App.html'];
         function inputHandler() {
           $$apply();
-          if (!fix) fix = node.textContent = source;
+          if (!fix) fix = node.textContent = source['./App.html'];
           oninput(node.textContent);
         }
         const editor = new CodeJar(node, e => {
@@ -3418,8 +3418,8 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build4($cd, $parentElement) {
-    let el3 = $parentElement[$$childNodes][1];{let useObject = codeJarAction(el3);
+                }    function $$build328($cd, $parentElement) {
+    let el327 = $parentElement[$$childNodes][1];{let useObject = codeJarAction(el327);
      if(useObject) {if(useObject.destroy) $cd.d(useObject.destroy);}}}        const rootTemplate = `
 
 <div class="editor"></div>
@@ -3443,11 +3443,11 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build4($cd, $element);
+                $$build328($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build4($cd, $element);
+                $$build328($cd, $element);
             }
         
                     $component.setProp_source = (value) => {
@@ -3701,7 +3701,7 @@
         }*/
 
         try {
-            ( await download_module(`//localhost:7000/bin/malina.js`) )(); 
+            ( await download_module(`/bin/malina.js`) )(); 
             console.log(`MalinaJS v.${malina.version}`);
         } catch (e) {
             if(e.details) console.log(e.details);
@@ -3807,7 +3807,6 @@
         $$apply();
         await init_bundler();
         loading = false;
-        compile();
       })();
       function frameHandler({on, dispatch}) {
         $$apply();
@@ -4020,23 +4019,23 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build10($cd, $parentElement) {
-    let el5 = $parentElement[$$childNodes][1];function ifBlock6($cd, $parentElement) {
+                }    function $$build18($cd, $parentElement) {
+    let el13 = $parentElement[$$childNodes][1];function ifBlock14($cd, $parentElement) {
 
                 let elsefr = $$htmlToFragment(`
 
 	<iframe title="Result" sandbox="allow-popups-to-escape-sandbox allow-scripts allow-popups 
                             allow-forms allow-pointer-lock allow-top-navigation allow-modals allow-scripts"></iframe>
 `);
-                function $$build9($cd, $parentElement) {
-    let el8 = $parentElement[$$childNodes][1];{let useObject = frameCommunicator(el8, frameHandler);
+                function $$build17($cd, $parentElement) {
+    let el16 = $parentElement[$$childNodes][1];{let useObject = frameCommunicator(el16, frameHandler);
      if(useObject) {
                     if(useObject.update) {
                         let w = $cd.wa(() => [frameHandler], (args) => {useObject.update.apply(useObject, args);});
                         w.value = w.fn();
                     }if(useObject.destroy) $cd.d(useObject.destroy);}}
     {
-                        let $element=el8;
+                        let $element=el16;
                         $cd.wf(() => ((getSrcdoc())), (value) => {
                             if(value) $element.setAttribute('srcdoc', value);
                             else $element.removeAttribute('srcdoc');
@@ -4046,7 +4045,7 @@
             let mainfr = $$htmlToFragment(`
     <p>Loading Bundler and Malina compiler...</p>
 `);
-            function $$build7($cd, $parentElement) {
+            function $$build15($cd, $parentElement) {
     }    
 
             let childCD;
@@ -4071,14 +4070,14 @@
             $cd.wf(() => !!(loading), (value) => {
                 if(value) {
                     destroy();
-                    create(mainfr, $$build7);
+                    create(mainfr, $$build15);
                 } else {
                     destroy();
-                    if(elsefr) create(elsefr, $$build9);
+                    if(elsefr) create(elsefr, $$build17);
                 }
             });
         
-    } ifBlock6($cd, el5);}        const rootTemplate = `
+    } ifBlock14($cd, el13);}        const rootTemplate = `
 
 <!-- #if loading -->
 
@@ -4092,19 +4091,412 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build10($cd, $element);
+                $$build18($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build10($cd, $element);
+                $$build18($cd, $element);
             }
         $cd.once(() => {
-    $watch($cd, () => (files), ()=>compile());
+    $cd.wa(() => [loading,files], ($args) => { (()=>compile()).apply(null, $args); });
     $$apply();
     });
                     $component.setProp_files = (value) => {
                         if(files == value) return;
                         files = value;
+                        $$apply();
+                    };
+                
+                $$apply();
+                return $component;
+            })();}
+
+    async function fetchExample(file){
+        file = file || 'index.json';
+
+        try{
+            const result = await fetch(`examples/${file}`);
+            if(result.ok) {
+                return await result.json();
+            }else {
+                throw new Error(`No example found in ${file}`);
+            }
+        } catch (e) {
+            if(e.details) console.log(e.details);
+            throw e;
+        }
+    }
+
+    function ExamplesList($element, $option) {
+      if ($option == null) $option = {};
+      let onchange = _ => {
+        $$apply();
+        return console.log('No callback for example chooser');
+      };
+      let loading = true;
+      let list = [];
+      function onMount() {
+        $$apply();
+        fetchExample().then(l => {
+          $$apply();
+          list = l;
+          loading = false;
+          loadExample(list[0].file);
+        });
+      }
+      function loadExample(file) {
+        $$apply();
+        fetchExample(file).then(files => {
+          $$apply();
+          onchange(files);
+        });
+      }
+      
+            function $$apply() {
+                if($$apply._p) return;
+                if($$apply.planned) return;
+                $$apply.planned = true;
+                setTimeout(() => {
+                    $$apply.planned = false;
+                    $$apply.go();
+                }, 1);
+            }        return (function() {
+                function $$htmlToFragment(html) {
+                    let t = document.createElement('template');
+                    t.innerHTML = html;
+                    return t.content;
+                }            function $$removeItem(array, item) {
+                    let i = array.indexOf(item);
+                    if(i>=0) array.splice(i, 1);
+                }            const $$childNodes = 'childNodes';
+
+                function $watch(cd, fn, callback, w) {
+                    if(!w) w = {};
+                    w.fn = fn;
+                    w.cb = callback;
+                    w.value = void 0;
+                    cd.watchers.push(w);
+                }
+
+                function $$CD() {
+                    this.children = [];
+                    this.watchers = [];
+                    this.destroyList = [];
+                    this.onceList = [];
+                }            Object.assign($$CD.prototype, {
+                    wf: function(fn, callback) {
+                        $watch(this, fn, callback, {ro: true});
+                    },
+                    wa: function(fn, callback) {
+                        let w = {fn: fn, cb: callback, value: undefined, a: true};
+                        this.watchers.push(w);
+                        return w;
+                    },
+                    ev: function(el, event, callback) {
+                        el.addEventListener(event, callback);
+                        this.d(() => {
+                            el.removeEventListener(event, callback);
+                        });
+                    },
+                    d: function(fn) {
+                        this.destroyList.push(fn);
+                    },
+                    destroy: function() {
+                        this.watchers.length = 0;
+                        this.destroyList.forEach(fn => {
+                            try {
+                                fn();
+                            } catch (e) {
+                                console.error(e);
+                            }
+                        });
+                        this.destroyList.length = 0;
+                        this.children.forEach(cd => {
+                            cd.destroy();
+                        });
+                        this.children.length = 0;
+                    },
+                    once: function(fn) {
+                        this.onceList.push(fn);
+                    }
+                });
+
+                let $cd = new $$CD();
+
+                let $component = {};
+                $component.destroy = () => {
+                    $cd.destroy();
+                };
+
+                const compareArray = (a, b) => {
+                    let a0 = Array.isArray(a);
+                    let a1 = Array.isArray(b);
+                    if(a0 !== a1) return true;
+                    if(!a0) return a !== b;
+                    if(a.length !== b.length) return true;
+                    for(let i=0;i<a.length;i++) {
+                        if(a[i] !== b[i]) return true;
+                    }
+                    return false;
+                };
+
+                const compareDeep = (a, b, lvl) => {
+                    if(lvl < 0) return false;
+                    if(!a || !b) return a !== b;
+                    let o0 = typeof(a) == 'object';
+                    let o1 = typeof(b) == 'object';
+                    if(!(o0 && o1)) return a !== b;
+
+                    let a0 = Array.isArray(a);
+                    let a1 = Array.isArray(b);
+                    if(a0 !== a1) return true;
+
+                    if(a0) {
+                        if(a.length !== b.length) return false;
+                        for(let i=0;i<a.length;i++) {
+                            if(compareDeep(a[i], b[i], lvl-1)) return true;
+                        }
+                    } else {
+                        let set = {};
+                        for(let k in a) {
+                            if(compareDeep(a[k], b[k])) return true;
+                            set[k] = true;
+                        }
+                        for(let k in b) {
+                            if(set[k]) continue;
+                            return true;
+                        }
+                    }
+
+                    return false;
+                };
+
+                function cloneDeep(d, lvl) {
+                    if(lvl < 0) return;
+                    if(!d) return d;
+
+                    if(typeof(d) == 'object') {
+                        if(d instanceof Date) return d;
+                        if(Array.isArray(d)) return d.map(i => cloneDeep(t, lvl-1));
+                        let r = {};
+                        for(let k in d) r[k] = cloneDeep(d[k], lvl-1);
+                        return r;
+                    }
+                    return d;
+                }
+                $$apply.go = () => {
+                    $$apply._p = true;
+                    try {
+                        $digest($cd);
+                    } finally {
+                        $$apply._p = false;
+                    }
+                };
+                
+                function $digest($cd) {
+                    let loop = 10;
+                    let once = [];
+                    let w;
+                    while(loop >= 0) {
+                        let changes = 0;
+                        let index = 0;
+                        let queue = [];
+                        let value, cd = $cd;
+                        while(cd) {
+                            for(let i=0;i<cd.watchers.length;i++) {
+                                w = cd.watchers[i];
+                                value = w.fn();
+                                if(w.value !== value) {
+                                    if(w.a) {
+                                        if(compareArray(w.value, value)) {
+                                            if(Array.isArray(value)) w.value = value.slice();
+                                            else w.value = value;
+                                            if(!w.ro) changes++;
+                                            w.cb(w.value);
+                                        }
+                                    } else if(w.d) {
+                                        if(compareDeep(w.value, value, 10)) {
+                                            w.value = cloneDeep(value, 10);
+                                            if(!w.ro) changes++;
+                                            w.cb(w.value);
+                                        }
+                                    } else {
+                                        w.value = value;
+                                        if(!w.ro) changes++;
+                                        w.cb(w.value);
+                                    }
+                                }
+                            }                        if(cd.children.length) queue.push.apply(queue, cd.children);
+                            if(cd.onceList.length) {
+                                once.push.apply(once, cd.onceList);
+                                cd.onceList.length = 0;
+                            }
+                            cd = queue[index++];
+                        }
+                        loop--;
+                        if(!changes) break;
+                    }
+                    $$apply._p = false;
+                    once.forEach(fn => {
+                        try {
+                            fn();
+                        } catch (e) {
+                            console.error(e);
+                        }
+                    });
+                    if(loop < 0) console.error('Infinity changes: ', w);
+                }    function $$build310($cd, $parentElement) {
+    let el300 = $parentElement[$$childNodes][1];function ifBlock301($cd, $parentElement) {
+
+                let elsefr = $$htmlToFragment(`
+<select>
+    <!-- #each list as example -->
+</select>
+`);
+                function $$build309($cd, $parentElement) {
+    let el303 = $parentElement[$$childNodes][1];
+    let el304 = $parentElement[$$childNodes][1][$$childNodes][1];{
+                let $element=el303;
+                $cd.ev($element, "input", ($event) => {  $$apply(); loadExample($event.target.value);});
+                }
+
+            function eachBlock308 ($cd, top) {
+
+                function bind($ctx, example, $index) {
+                    function $$build307($cd, $parentElement) {
+    let el305 = $parentElement;
+    let el306 = $parentElement[$$childNodes][0];{
+                        let $element=el305;
+                        $cd.wf(() => ((example.file)), (value) => {$element.value = value;});
+                    }
+    {
+                                let $element=el306;
+                                $cd.wf(() => (example.name), (value) => {$element.textContent=value;});}}                $$build307($ctx.cd, $ctx.el);
+                    $ctx.reindex = function(i) { };
+                }
+                let parentNode = top.parentNode;
+                let srcNode = document.createElement("select");
+                srcNode.innerHTML=`<option> </option>`;
+                srcNode=srcNode.firstChild;
+
+                let mapping = new Map();
+                $cd.wa(() => (list), (array) => {
+                    if(!array || !Array.isArray(array)) array = [];
+                    let prevNode = top;
+                    let newMapping = new Map();
+
+                    if(mapping.size) {
+                        let arrayAsSet = new Set();
+                        for(let i=0;i<array.length;i++) {
+                            arrayAsSet.add(array[i]);
+                        }
+                        mapping.forEach((ctx, item) => {
+                            if(arrayAsSet.has(item)) return;
+                            ctx.el.remove();
+                            ctx.cd.destroy();
+                            $$removeItem($cd.children, ctx.cd);
+                        });
+                        arrayAsSet.clear();
+                    }
+
+                    let i, item, next_ctx, el, ctx;
+                    for(i=0;i<array.length;i++) {
+                        item = array[i];
+                        if(next_ctx) {
+                            ctx = next_ctx;
+                            next_ctx = null;
+                        } else ctx = mapping.get(item);
+                        if(ctx) {
+                            el = ctx.el;
+
+                            if(el.previousSibling != prevNode) {
+                                let insert = true;
+
+                                if(i + 1 < array.length && prevNode.nextSibling) {
+                                    next_ctx = mapping.get(array[i + 1]);
+                                    if(prevNode.nextSibling.nextSibling === next_ctx.el) {
+                                        parentNode.replaceChild(el, prevNode.nextSibling);
+                                        insert = false;
+                                    }
+                                }
+
+                                if(insert) {
+                                    parentNode.insertBefore(el, prevNode.nextSibling);
+                                }
+                            }
+        
+                            ctx.reindex(i);
+                        } else {
+                            el = srcNode.cloneNode(true);
+                            let childCD = new $$CD(); $cd.children.push(childCD);
+                            ctx = {el: el, cd: childCD};
+                            bind(ctx, item);
+                            parentNode.insertBefore(el, prevNode.nextSibling);
+                        }
+                        prevNode = el;
+                        newMapping.set(item, ctx);
+
+                    }                mapping.clear();
+                    mapping = newMapping;
+
+                });
+
+            }
+            eachBlock308($cd, el304);
+        }        
+
+            let mainfr = $$htmlToFragment(`
+    <p>Loading examples list...</p>
+`);
+            function $$build302($cd, $parentElement) {
+    }    
+
+            let childCD;
+            let elements = [];
+
+            function create(fr, builder) {
+                childCD = new $$CD();
+                $cd.children.push(childCD);
+                let el = fr.cloneNode(true);
+                for(let i=0;i<el.childNodes.length;i++) elements.push(el.childNodes[i]);
+                builder(childCD, el);
+                $parentElement.parentNode.insertBefore(el, $parentElement.nextSibling);
+            }
+            function destroy() {
+                if(!childCD) return;
+                $$removeItem($cd.children, childCD);
+                childCD.destroy();
+                childCD = null;
+                for(let i=0;i<elements.length;i++) elements[i].remove();
+                elements.length = 0;
+            }
+            $cd.wf(() => !!(loading), (value) => {
+                if(value) {
+                    destroy();
+                    create(mainfr, $$build302);
+                } else {
+                    destroy();
+                    if(elsefr) create(elsefr, $$build309);
+                }
+            });
+        
+    } ifBlock301($cd, el300);}        const rootTemplate = `
+
+
+<!-- #if loading -->`;
+            if($option.afterElement) {
+                let tag = $element;
+                $element = $$htmlToFragment(rootTemplate);
+                $$build310($cd, $element);
+                tag.parentNode.insertBefore($element, tag.nextSibling);
+            } else {
+                $element.innerHTML = rootTemplate;
+                $$build310($cd, $element);
+            }
+        $cd.once(onMount);
+                    $component.setProp_onchange = (value) => {
+                        if(onchange == value) return;
+                        onchange = value;
                         $$apply();
                     };
                 
@@ -4120,6 +4512,10 @@
       function onEditorInput(code) {
         $$apply();
         files['./App.html'] = code;
+      }
+      function onLoadExample(example) {
+        $$apply();
+        files = example.files;
       }
       
             function $$apply() {
@@ -4312,15 +4708,26 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build16($cd, $parentElement) {
-    let el14 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][1][$$childNodes][0];
-    let el15 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][3][$$childNodes][0];{
-            let $component = Editor(el14, {afterElement: true});
+                }    function $$build326($cd, $parentElement) {
+    let el323 = $parentElement[$$childNodes][1][$$childNodes][1][$$childNodes][0];
+    let el324 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][1][$$childNodes][0];
+    let el325 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][3][$$childNodes][0];{
+            let $component = ExamplesList(el323, {afterElement: true});
+            if($component) {
+                if($component.destroy) $cd.d($component.destroy);
+                
+                    if($component.setProp_onchange) {
+                        $watch($cd, () => ((onLoadExample)), $component.setProp_onchange, {d: true, ro: true});
+                    } else console.error("Component Examples doesn't have prop onchange");
+            }
+        }
+    {
+            let $component = Editor(el324, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
                     if($component.setProp_source) {
-                        $watch($cd, () => ((files['./App.html'])), $component.setProp_source, {d: true, ro: true});
+                        $watch($cd, () => ((files)), $component.setProp_source, {d: true, ro: true});
                     } else console.error("Component Editor doesn't have prop source");
                 
 
@@ -4330,7 +4737,7 @@
             }
         }
     {
-            let $component = Result(el15, {afterElement: true});
+            let $component = Result(el325, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
@@ -4341,7 +4748,7 @@
         }}        const rootTemplate = `
 
 <div class="wrapper">
-    <div class="header">Header!</div>
+    <div class="header"><!-- Examples --></div>
     <div class="body">
         <div class="left"><!-- Editor --></div>
         <div class="right"><!-- Result --></div>
@@ -4382,11 +4789,11 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build16($cd, $element);
+                $$build326($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build16($cd, $element);
+                $$build326($cd, $element);
             }
         
                 $$apply();
