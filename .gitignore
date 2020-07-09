@@ -1,4 +1,5 @@
 Makefile
 node_modules/
 package-lock.json
-src/public/bundle.js
+public/bundle.js
+public/examples

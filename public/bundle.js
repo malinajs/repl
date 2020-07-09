@@ -3418,8 +3418,8 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build93($cd, $parentElement) {
-    let el92 = $parentElement[$$childNodes][1];{let useObject = codeJarAction(el92);
+                }    function $$build4($cd, $parentElement) {
+    let el3 = $parentElement[$$childNodes][1];{let useObject = codeJarAction(el3);
      if(useObject) {if(useObject.destroy) $cd.d(useObject.destroy);}}}        const rootTemplate = `
 
 <div class="editor"></div>
@@ -3443,11 +3443,11 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build93($cd, $element);
+                $$build4($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build93($cd, $element);
+                $$build4($cd, $element);
             }
         
                     $component.setProp_source = (value) => {
@@ -4020,23 +4020,23 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build78($cd, $parentElement) {
-    let el73 = $parentElement[$$childNodes][1];function ifBlock74($cd, $parentElement) {
+                }    function $$build10($cd, $parentElement) {
+    let el5 = $parentElement[$$childNodes][1];function ifBlock6($cd, $parentElement) {
 
                 let elsefr = $$htmlToFragment(`
 
 	<iframe title="Result" sandbox="allow-popups-to-escape-sandbox allow-scripts allow-popups 
                             allow-forms allow-pointer-lock allow-top-navigation allow-modals allow-scripts"></iframe>
 `);
-                function $$build77($cd, $parentElement) {
-    let el76 = $parentElement[$$childNodes][1];{let useObject = frameCommunicator(el76, frameHandler);
+                function $$build9($cd, $parentElement) {
+    let el8 = $parentElement[$$childNodes][1];{let useObject = frameCommunicator(el8, frameHandler);
      if(useObject) {
                     if(useObject.update) {
                         let w = $cd.wa(() => [frameHandler], (args) => {useObject.update.apply(useObject, args);});
                         w.value = w.fn();
                     }if(useObject.destroy) $cd.d(useObject.destroy);}}
     {
-                        let $element=el76;
+                        let $element=el8;
                         $cd.wf(() => ((getSrcdoc())), (value) => {
                             if(value) $element.setAttribute('srcdoc', value);
                             else $element.removeAttribute('srcdoc');
@@ -4046,7 +4046,7 @@
             let mainfr = $$htmlToFragment(`
     <p>Loading Bundler and Malina compiler...</p>
 `);
-            function $$build75($cd, $parentElement) {
+            function $$build7($cd, $parentElement) {
     }    
 
             let childCD;
@@ -4071,14 +4071,14 @@
             $cd.wf(() => !!(loading), (value) => {
                 if(value) {
                     destroy();
-                    create(mainfr, $$build75);
+                    create(mainfr, $$build7);
                 } else {
                     destroy();
-                    if(elsefr) create(elsefr, $$build77);
+                    if(elsefr) create(elsefr, $$build9);
                 }
             });
         
-    } ifBlock74($cd, el73);}        const rootTemplate = `
+    } ifBlock6($cd, el5);}        const rootTemplate = `
 
 <!-- #if loading -->
 
@@ -4092,11 +4092,11 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build78($cd, $element);
+                $$build10($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build78($cd, $element);
+                $$build10($cd, $element);
             }
         $cd.once(() => {
     $watch($cd, () => (files), ()=>compile());
@@ -4312,10 +4312,10 @@
                         }
                     });
                     if(loop < 0) console.error('Infinity changes: ', w);
-                }    function $$build91($cd, $parentElement) {
-    let el89 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][1][$$childNodes][0];
-    let el90 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][3][$$childNodes][0];{
-            let $component = Editor(el89, {afterElement: true});
+                }    function $$build16($cd, $parentElement) {
+    let el14 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][1][$$childNodes][0];
+    let el15 = $parentElement[$$childNodes][1][$$childNodes][3][$$childNodes][3][$$childNodes][0];{
+            let $component = Editor(el14, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
@@ -4330,7 +4330,7 @@
             }
         }
     {
-            let $component = Result(el90, {afterElement: true});
+            let $component = Result(el15, {afterElement: true});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 
@@ -4382,11 +4382,11 @@
             if($option.afterElement) {
                 let tag = $element;
                 $element = $$htmlToFragment(rootTemplate);
-                $$build91($cd, $element);
+                $$build16($cd, $element);
                 tag.parentNode.insertBefore($element, tag.nextSibling);
             } else {
                 $element.innerHTML = rootTemplate;
-                $$build91($cd, $element);
+                $$build16($cd, $element);
             }
         
                 $$apply();
