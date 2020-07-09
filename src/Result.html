@@ -11,7 +11,7 @@
     (async () => {
         await init_bundler();
         loading = false;
-        compile();
+        bundle_with_cooldown();
     })();
 
     // action for setting up the code dispatcher to the iframe
