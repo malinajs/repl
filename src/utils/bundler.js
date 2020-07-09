@@ -2,9 +2,30 @@ const repo = 'https://unpkg.com';
 
 // Download and init Rollup, Malina compiler and cjs2es
 export async function init_bundler(){
-    await init_rollup();
-    await init_cjs2es();
-    await init_malina_compiler();
+    console.log('Iititalizing modules...');
+
+    const deps = [
+        ['rollup','rollup/dist/rollup.browser.js'],
+        ['cjs2es','cjs2es'],
+        ['acorn','acorn'],
+        ['astring','astring/dist/astring.min.js'],
+        ['malina','malinajs']
+    ]
+
+    try {
+        for(let dep of deps){
+            console.log(`Requiring ${dep[0]}...`);
+            ( await download_module(`${repo}/${dep[1]}`) )();
+            if(!window[dep[0]]) throw new Error(`Missed dependency: ${dep[0]}`)
+        }
+        console.log(`Rollup v.${rollup.VERSION}`);
+        console.log(`Malina.JS v.${malina.version}`);
+    } catch (e) {
+        if(e.details) console.log(e.details);
+        throw e;
+    }
+
+    
 }
 
 
@@ -131,68 +152,17 @@ function malina_plugin() {
 
 // Helpers
 
-async function init_malina_compiler(version){
-    console.log('Iititalizing MalinaJS...');
-    /* const malina_url = `${repo}/malinajs`;
-   
-    try {
-        if(version === 'latest'){
-            version = JSON.parse((await cash_or_fetch(`${malina_url}/package.json`)).body).version;
-        }
-
-        ( await download_module(`${malina_url}@${version}/compiler.full.js`) )(); 
-    } catch (err) {
-        console.error(err);
-    }*/
-
-    try {
-        ( await download_module(`/bin/malina.js`) )(); 
-        console.log(`MalinaJS v.${malina.version}`);
-    } catch (e) {
-        if(e.details) console.log(e.details);
-        throw e;
-    }
-}
-
-
-async function init_rollup(){
-    console.log('Iititalizing Rollup...');
-    const rollup_url = `${repo}/rollup/dist/rollup.browser.js`;
-
-    try {
-        ( await download_module(rollup_url) )(); 
-    } catch (e) {
-        if(e.details) console.log(e.details);
-        throw e;
-    }
-}
-
-async function init_cjs2es(){
-    console.log('Iititalizing CJS2ES...');
-
-    const cjs2es_url = `${repo}/cjs2es`;
-
-    try {
-        ( await download_module(cjs2es_url) )(); 
-    } catch (e) {
-        if(e.details) console.log(e.details);
-        throw e;
-    }
-}
-
 const MCASH = [];
 async function download_module(url){
     try {
 		if(MCASH.hasOwnProperty(url)) return new Function(MCASH[url]);
 
         const result = await fetch(url);
-        if(result.status !== 200) new Error("Can't download module: "+url)
+        if(!result.ok) throw new Error("Can't download module: "+url)
 
         const code = await result.text();
-
-        if(!/^\(function/.test(code)) new Error("Wrong data for module: ."+url);
             
-        MCASH[url] = code;
+        MCASH[url] = code.replace(/^[\s\S]+sourceMappingURL[\s\S]+$/g,'');
 			
         return new Function(code);
     } catch (err) {
