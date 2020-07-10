@@ -18,7 +18,7 @@ function filesStore(){
         current: {
             subscribe: currentStore.subscribe,
             set(name){
-                if(storage[name] === undefined) throw new Error(`${name} is not exist`);
+                if(storage[name] === undefined) throw new Error(`${name} is not exists`);
                 currentStore.set({name, body:storage[name]});
             },
             save(body){
@@ -33,7 +33,12 @@ function filesStore(){
         list: {
             subscribe: listStore.subscribe
         },
-        add(name,body){},
+        add(name,body){
+            if(storage[name] !== undefined) throw new Error(`${name} already exists`);
+            storage[name] = body ? body : '';
+            storageStore.set(storage);
+            listStore.set(Object.keys(storage));
+        },
         delete(name){},
         rename(name,newname){},
         get(){return storage},
