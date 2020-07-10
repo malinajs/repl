@@ -47,12 +47,17 @@
 {#if loading}
     <p>Loading Bundler and Malina compiler...</p>
 {:else}
-
 	<iframe
         use:frameCommunicator={frameHandler}
         title="Result"
-        sandbox="allow-popups-to-escape-sandbox allow-scripts allow-popups 
-                            allow-forms allow-pointer-lock allow-top-navigation allow-modals allow-scripts"
+        sandbox="allow-popups-to-escape-sandbox 
+                 allow-scripts 
+                 allow-popups 
+                 allow-forms 
+                 allow-pointer-lock 
+                 allow-top-navigation 
+                 allow-modals 
+                 allow-scripts"
         srcdoc={getSrcdoc()}
 	></iframe>
 {/if}

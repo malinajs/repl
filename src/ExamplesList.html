@@ -1,33 +1,19 @@
 <script>
-    import {fetchExample} from './utils/examples.js';
+let list;
 
-    export let onchange = _ => console.log('No callback for example chooser');
+import {examples} from './stores/examples.js';
 
-    let loading = true;
-    let list = [];
+examples.list.subscribe(l => list=l);
 
-    function onMount(){
-        fetchExample().then(l=>{
-            list = l.sort((a,b)=>Number(a.file.split('-')[0])-Number(b.file.split('-')[0]));
-            loading = false;
-            loadExample(list[0].file);
-        });
-    };
-
-    function loadExample(file){
-        fetchExample(file).then(files=>{
-            onchange(files);
-        });
-    }
 </script>
 
 
-{#if loading}
-    <p>Loading examples list...</p>
+{#if !list}
+    Loading examples list...
 {:else}
-<select on:input={loadExample($event.target.value)}>
-    {#each list as example}
+<select on:input={examples.load($event.target.value)}>
+{#each list as example}
     <option value={example.file}>{example.name}</option>
-    {/each}
+{/each}
 </select>
 {/if}

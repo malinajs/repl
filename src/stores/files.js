@@ -38,8 +38,11 @@ function filesStore(){
         rename(name,newname){},
         get(){return storage},
         touch(){storageStore.set(storage);},
-        loadJSON(json){
-            
+        set(files){
+            storage = files;
+            storageStore.set(storage);
+            currentStore.set({name: DEFAULT, body:storage[DEFAULT]});
+            listStore.set(Object.keys(files));
         }
     }
 }
