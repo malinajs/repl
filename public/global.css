@@ -13,6 +13,10 @@
     color: var(--color-gray);
 }
 
+body{
+	font-family: sans-serif;
+}
+
 
 input, button, select, textarea {
 	font-family: inherit;
