@@ -1,7 +1,13 @@
 <script>
-let list;
-
+import {files} from './stores/files.js';
 import {examples} from './stores/examples.js';
+import {getParams} from './utils/browser.js';
+
+let list;
+let current;
+
+const params = getParams();
+if(params.example) current = params.example;
 
 examples.list.subscribe(l => list=l);
 
@@ -13,7 +19,7 @@ examples.list.subscribe(l => list=l);
 {:else}
 <select on:input={examples.load($event.target.value)}>
 {#each list as example}
-    <option value={example.file}>{example.name}</option>
+    <option value={example.file} selected={current === example.file}>{example.name}</option>
 {/each}
 </select>
 {/if}

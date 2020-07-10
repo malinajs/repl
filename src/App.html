@@ -5,9 +5,15 @@
     import Examples from './ExamplesList.html';
 
     import {examples} from './stores/examples.js';
+    import {getParams} from './utils/browser.js';
 
-    examples.load('1-hello-world.json');
-
+    const params = getParams();
+    if(params.example){
+        examples.load(params.example);
+    }else{
+        examples.load('1-hello-world.json'); 
+    }
+    
 </script>
 
 <div class="wrapper">

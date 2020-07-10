@@ -1,12 +1,14 @@
 import storik from 'storik';
 
+import {setParams} from './../utils/browser.js';
+
 import {files} from './files';
 
 export let examples = examplesStore();
 
 function examplesStore(){
 
-    let listStore = storik(null,async set => {
+    const listStore = storik(null,async set => {
         const index = await fetchExample();
         set( index.sort( (a,b)=>Number(a.file.split('-')[0])-Number(b.file.split('-')[0]) ) );
     });
@@ -18,6 +20,7 @@ function examplesStore(){
       async load(example_filename){
         const example = await fetchExample(example_filename);
         files.set(example.files);
+        setParams({example: example_filename});
       }
     }
 }
