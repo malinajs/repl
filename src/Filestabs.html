@@ -1,0 +1,39 @@
+<script>
+    import {files} from './stores/files.js';
+
+    let list = [];
+    let current = 'App.html';
+
+    files.list.subscribe(files => {
+        list = files;
+    });
+
+    files.current.subscribe(file => {
+        current = file.name;
+    });
+</script>
+
+<div class="filestabs">
+    {#each list as tab}
+    <button class:active={current===tab} @click={files.current.set(tab)}>{tab}</button>
+    {/each}
+</div>
+
+<style>
+    .filestabs{
+        height: 30px;
+        background-color: var(--color-gray);
+    }
+    .filestabs button{
+        height: 30px;
+        min-width: 80px;
+        border: none;
+        background-color: var(--color-light);
+        border-radius: 3px 3px 0px 0px;
+        cursor: pointer;
+    }
+
+    .filestabs button.active{
+        background-color: var(--hl-background);
+    }
+</style>

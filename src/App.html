@@ -1,5 +1,6 @@
 <script>
     import Editor from './Editor.html';
+    import Filestabs from './Filestabs.html';
     import Result from './Result.html';
     import Examples from './ExamplesList.html';
 
@@ -15,6 +16,10 @@
         <div class="examples">
             Select an example: <Examples></Examples>
         </div>
+    </div>
+    <div class="tabs">
+        <div class="left"><Filestabs></Filestabs></div>
+        <div class="right"></div>
     </div>
     <div class="body">
         <div class="left"><Editor></Editor></div>
@@ -39,6 +44,10 @@
     .body{
         display: flex;
         flex: 1;
+    }
+    .tabs{
+        display: flex;
+        height: 30px;
     }
     .left{
         width: 60%;
