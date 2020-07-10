@@ -28,7 +28,6 @@ export async function init_bundler(){
     
 }
 
-
 // Bundler
 export async function bundler(files){
     
@@ -87,6 +86,7 @@ function component_plugin(files) {
     return {
         name: 'rollup_plugin_files',
         async load(id) { 
+            id = id.replace(/^\.\//,'');
             if(files[id] === undefined) return null;
             return files[id];
         }

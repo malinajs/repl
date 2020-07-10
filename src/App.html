@@ -3,21 +3,6 @@
     import Result from './Result.html';
     import Examples from './ExamplesList.html';
 
-    let fix = null;
-
-    let files = {
-        './App.html':'<scr'+'ipt></scr'+'ipt><h1>HELLO!</h1>'
-    }
-
-    function onEditorInput(code){
-        files['./App.html'] = code;
-    }
-
-    function onLoadExample(example){
-        files = example.files;
-    }
-
-    console.log(fix)
 
 </script>
 
@@ -25,11 +10,11 @@
     <div class="header">
         <h1 class="logo">Malina.js - REPL</h1>
         <div class="examples">
-            Select an example: <Examples onchange={onLoadExample}></Examples></div>
+            Select an example: <Examples></Examples></div>
         </div>
     <div class="body">
-        <div class="left"><Editor files={files} oninput={onEditorInput}></Editor></div>
-        <div class="right"><Result files={files}></Result></div>
+        <div class="left"><Editor></Editor></div>
+        <div class="right"><Result></Result></div>
     </div>
     <div class="footer">Footer</div>
 </div>

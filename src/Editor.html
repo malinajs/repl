@@ -6,41 +6,36 @@
     import css from 'highlight.js/lib/languages/css.js';
     import svelte from 'highlightjs-svelte'; // very similar sintax
 
+    import {files} from './stores/files.js';
+
     hljs.registerLanguage('xml', xml);
     hljs.registerLanguage('javascript', js);
     hljs.registerLanguage('css', css);
     svelte(hljs);
 
-    export let files = {};
-    export let oninput = _ => console.log('No oninput callback for editor!');
-
-
-    let editor = null;
-
     function codeJarAction(node){
 
         function inputHandler(){
-            oninput(node.textContent);
+            files.current.save(node.textContent);
         }
 
-        editor = new CodeJar(node,e => {
+        const editor = new CodeJar(node,e => {
            e.innerHTML = hljs.highlight('svelte',e.textContent).value;
         });
 
         node.addEventListener('input',inputHandler);
 
+        const unsbcr = files.current.subscribe(file => {
+            if(editor.toString() !== file.body) editor.updateCode(file.body);
+        });
+
         return{
-            destroy: () => node.removeEventListener('input',inputHandler)
+            destroy: () => {
+                node.removeEventListener('input',inputHandler);
+                unsbcr();
+            }
         }
     }
-
-    function loadSource(code){
-        if(editor.updateCode && editor.toString){
-            if(editor.toString() !== code) editor.updateCode(code)
-        }
-    }
-
-    $: files,()=>loadSource(files['./App.html']);
 </script>
 
 <div class="editor" use:codeJarAction></div>

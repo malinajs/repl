@@ -2,16 +2,17 @@
     import {frameCommunicator,getSrcdoc} from './utils/frame_communicator.js';
     import {bundler,init_bundler} from './utils/bundler.js';
 
-    export let files;
-    
+    import {files} from './stores/files.js';
+
     let load_code_in_frame = ()=>{};
     let loading = true;
+    let code = '';
 
     // initialization and first compile
     (async () => {
         await init_bundler();
         loading = false;
-        bundle_with_cooldown();
+        files.touch();
     })();
 
     // action for setting up the code dispatcher to the iframe
@@ -19,26 +20,28 @@
         load_code_in_frame = (bundle) => dispatch('bundle',bundle);
     }
 
-    async function bundle_files(){
-        const bundle = await bundler(files);
-        load_code_in_frame(bundle);
+    async function bundle_sources(sources){
+        const code = await bundler(sources);
+        load_code_in_frame(code);
     }
-        
+
     // compile sources with cooldown timeout
-    let cooldown = 0;
+    let cooldown = false;
     let wasChanged = false;
-    async function bundle_with_cooldown(){
-        if(loading ||  cooldown) return wasChanged = true;
 
-        await bundle_files();
-        cooldown = setTimeout(async ()=>{
-            if(wasChanged) await bundle_files();
-            cooldown = 0;
-            wasChanged = false;
+    files.subscribe(sources => {
+        if(loading) return;
+        
+        if(cooldown) return wasChanged = true;
+
+        bundle_sources(sources);
+        cooldown = setTimeout(()=>{
+            if(wasChanged) bundle_sources(sources);
+            cooldown = false;
         },500);
-    }    
 
-    $: loading,files,()=>bundle_with_cooldown();
+    });
+
 </script>
 
 {#if loading}
