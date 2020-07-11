@@ -43,13 +43,13 @@
     }
     
     function inputWidthAction(node){
-        const handler = ()=>node.style.width = `${newname.length+1}ch`;
+        const handler = ()=>node.style.width = `${node.value.length+1}ch`;
         node.addEventListener('input',handler);
         handler();
         
         setTimeout(()=>{
             node.focus();
-            node.setSelectionRange(0,newname.lastIndexOf('.'));
+            node.setSelectionRange(0,node.value.lastIndexOf('.'));
         },0)
         
         return {destroy(){node.removeEventListener('input',handler)}}
