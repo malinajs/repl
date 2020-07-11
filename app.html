@@ -243,7 +243,7 @@ name: Each/repeat blocks
   let name;
   
   const add = () => {
-    items.push({name: name});
+    items.push({name});
     name = '';
   };
   const remove = i => {
@@ -302,7 +302,7 @@ name: Todo app
   
   function add() {
     if(!name) return;
-    todos.push({name: name});
+    todos.push({name});
     name = '';
   }
   
