@@ -87,8 +87,9 @@ function component_plugin(files) {
         name: 'rollup_plugin_files',
         async load(id) { 
             id = id.replace(/^\.\//,'');
-            if(files[id] === undefined) return null;
-            return files[id];
+            const file = files.find(f=>f.name===id);
+            if(file === undefined) return null;
+            return file.body;
         }
     }
 }

@@ -34,13 +34,13 @@ function generateExamples(){
 
             const result ={
                 name: name,
-                files: {}
+                files: []
             }
             
             const files = fs.readdirSync(exPath);
             for(let file of files){
                 if(!['.html','.js'].includes(path.extname(file))) continue;
-                result.files[file] = fs.readFileSync(path.join(exPath,file),'utf-8');
+                result.files.push({name:file, body: fs.readFileSync(path.join(exPath,file),'utf-8')});
             }
             fs.writeFileSync(path.join(OUTPUT,`${name}.json`),JSON.stringify(result));
             index.push({name,file:`${name}.json`})
