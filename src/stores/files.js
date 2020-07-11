@@ -14,6 +14,7 @@ function filesStore(){
     const listStore = storik([DEFAULT]);
 
     return {
+        default: DEFAULT,
         subscribe: storageStore.subscribe,
         current: {
             subscribe: currentStore.subscribe,
@@ -39,8 +40,29 @@ function filesStore(){
             storageStore.set(storage);
             listStore.set(Object.keys(storage));
         },
-        delete(name){},
-        rename(name,newname){},
+        delete(name){
+            if(storage[name] === undefined) throw new Error(`${name} is not exists`);
+            delete storage[name];
+            storageStore.set(storage);
+            listStore.set(Object.keys(storage));
+            currentStore.update( f => {
+                if(f.name === name) f = {name: DEFAULT, body:storage[DEFAULT]};
+                return f;
+            });
+            
+        },
+        rename(name,newname){
+            Object.defineProperty(storage, newname,
+                Object.getOwnPropertyDescriptor(storage, name));
+            delete storage[name];
+
+            storageStore.set(storage);
+            listStore.set(Object.keys(storage));
+            currentStore.update( f => {
+                if(f.name === name) f.name = newname;
+                return f;
+            });
+        },
         get(){return storage},
         touch(){storageStore.set(storage);},
         set(files){
@@ -48,6 +70,9 @@ function filesStore(){
             storageStore.set(storage);
             currentStore.set({name: DEFAULT, body:storage[DEFAULT]});
             listStore.set(Object.keys(files));
+        },
+        exists(name){
+            return storage[name] !== undefined
         }
     }
 }

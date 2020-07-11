@@ -10,11 +10,11 @@
     margin: 0px;
     padding: 0px;
     box-sizing: border-box;
-    color: var(--color-gray);
 }
 
 body{
 	font-family: sans-serif;
+	color: var(--color-gray);
 }
 
 
