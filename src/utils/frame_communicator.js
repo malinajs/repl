@@ -25,6 +25,7 @@ export function frameCommunicator(iframe,callback){
 
     window.addEventListener('message', message_handler);
     iframe.addEventListener('load',()=> dispatch('init'));
+    
     callback({on,off,dispatch});
     
 
@@ -70,12 +71,20 @@ function frame_inner(){
         listeners.push({event,callback});
     }
 
+    const dispatch = (event,data) => {
+        source.postMessage({event,data,frame_id}, "*");
+    }
+
     window.addEventListener('message', (e) => {
         if(e.data.frame_id && e.data.event){
             if(!frame_id) frame_id = e.data.frame_id;
             if(!source) source = e.source;
             listeners.filter(lnr => lnr.event===e.data.event).forEach(lnr => lnr.callback(e.data.data));
         }
+    });
+
+    window.addEventListener('error', (e) => {
+        dispatch('error',`[Application] ${e.message.replace(/^[a-z0-9 ]+?: /i,'')}`);
     });
 
     on('bundle',bundle => {

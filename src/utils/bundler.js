@@ -2,7 +2,6 @@ const repo = 'https://unpkg.com';
 
 // Download and init Rollup, Malina compiler and cjs2es
 export async function init_bundler(){
-    console.log('Iititalizing modules...');
 
     const deps = [
         ['rollup','rollup/dist/rollup.browser.js'],
@@ -12,27 +11,30 @@ export async function init_bundler(){
         ['malina','malinajs']
     ]
 
-    try {
-        for(let dep of deps){
-            console.log(`Requiring ${dep[0]}...`);
-            ( await download_module(`${repo}/${dep[1]}`) )();
-            if(!window[dep[0]]) throw new Error(`Missed dependency: ${dep[0]}`)
+    console.log('Initializing REPL...');
+    
+    for(let dep of deps){
+        try {
+            const module = await download_module(`${repo}/${dep[1]}`);
+            module();
+        } catch (e) {
+            throw new Error(`[REPL]: Can't load dependency: ${dep[0]}`);
         }
-        console.log(`Rollup v.${rollup.VERSION}`);
-        console.log(`Malina.JS v.${malina.version}`);
-    } catch (e) {
-        if(e.details) console.log(e.details);
-        throw e;
+
+        if(!window[dep[0]]) throw new Error(`[REPL]: Dependency not initialized: ${dep[0]}`)
     }
 
-    
+    console.log(`Rollup v.${rollup.VERSION}`);
+    console.log(`Malina.JS v.${malina.version}`);
+    console.log('------ REPL READY -------');
+     
 }
 
 // Bundler
 export async function bundler(files){
     
     try {
-        if(!rollup) new Error("Rollup didn't initialized yet");
+        if(!rollup) throw new Error("[REPL]: Rollup didn't initialized yet");
 
         let bundle = await rollup.rollup({
             input: "./App.html",
@@ -54,8 +56,7 @@ export async function bundler(files){
         })).output[0].code;
 
     } catch (err) {
-        console.error(err);
-        return null;
+        throw err;
     }
 
 }
@@ -86,9 +87,10 @@ function component_plugin(files) {
     return {
         name: 'rollup_plugin_files',
         async load(id) { 
+            if(!id.startsWith('./')) return null;
             id = id.replace(/^\.\//,'');
             const file = files.find(f=>f.name===id);
-            if(file === undefined) return null;
+            if(file === undefined) throw new Error(`[Bundler]: File ./${id} does not exist.`);
             return file.body;
         }
     }
@@ -102,14 +104,12 @@ function download_plugin() {
 
         async load(id) { 
             if(!/^https?:\/\//.test(id)) return null;
-            console.log("Download:",id);
 
             try {
                 const result = await cash_or_fetch(id);
-							
                 return cjs2es.cjs2es(result.body);
             } catch (err) {
-                console.error(err);
+                throw new Error(`[Bundler]: Unable download file ${id}.`);
             }
         }
     }
@@ -130,8 +130,6 @@ function malina_plugin() {
         async transform(code, id) {
             if(!options.extensions.find(ext => id.endsWith(ext))) return null;
 
-            console.log("Malina:",id);
-
             let result;
 
             let opts = {
@@ -142,8 +140,7 @@ function malina_plugin() {
             try {
                 result = malina.compile(code, opts);
             } catch (e) {
-                if(e.details) console.log(e.details);
-                throw e;
+                throw new Error(`[MalinaJS] Compile error: ${e.details}`);
             }
             return {code: result};
         }
@@ -153,42 +150,27 @@ function malina_plugin() {
 
 // Helpers
 
-const MCASH = [];
+
 async function download_module(url){
-    try {
-		if(MCASH.hasOwnProperty(url)) return new Function(MCASH[url]);
+    const resp = await cash_or_fetch(url);
 
-        const result = await fetch(url);
-        if(!result.ok) throw new Error("Can't download module: "+url)
+    if(!resp.ok) throw new Error(resp.status);
 
-        const code = await result.text();
-            
-        MCASH[url] = code.replace(/^[\s\S]+sourceMappingURL[\s\S]+$/g,'');
-			
-        return new Function(code);
-    } catch (err) {
-        console.error(err);
-        return null;
-    }
+    return new Function(resp.body.replace(/sourceMappingURL=$/gm,''));
 }
 
 const FCASH = [];
 async function cash_or_fetch(url){
-    try {
-		if(FCASH.hasOwnProperty(url)) return FCASH[url];
+    if(FCASH.hasOwnProperty(url)) return FCASH[url];
 
-        const result = await fetch(url);
-        const data = {url:result.url, status:result.status, body:await result.text()};
-				
-		FCASH[url] = data;
-			
-        return data;
-    } catch (err) {
-        console.error(err);
-        return null;
-    }
+    const resp = await fetch(url);
+    
+    const data = {url: resp.url, ok: resp.ok, status:resp.status, body: resp.ok ? await resp.text() : ''};
+            
+    FCASH[url] = data;
+        
+    return data;
 }
-
 
 function addSlash(url){
     if(url.slice(-1) === '/') return url;
@@ -197,19 +179,13 @@ function addSlash(url){
 }
 
 async function getModuleURL(url){
-    let result;
-  
-    // try to find package real URL
-    result = await cash_or_fetch(url);
-    if(result.status !== 200) return null;
-    url = result.url;
-  
-    // try to find es module
-    const regex = /\.js$/
-    if(regex.test(url)){
-      result = await cash_or_fetch(url.replace(regex,'.mjs'));
-      if(result.status === 200) url = result.url;
+    try{
+        // try to find package real URL
+        let result = await cash_or_fetch(url);
+        if(!result.ok)  throw new Error(`Can't find module ${url}`);
+        url = result.url;
+        return url;
+    }catch(err){
+        throw new Error(`[Bundler] ${err.message}`);
     }
-  
-    return url;
   }

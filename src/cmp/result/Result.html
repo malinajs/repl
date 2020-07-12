@@ -3,6 +3,7 @@
     import {bundler,init_bundler} from './../../utils/bundler.js';
 
     import {files} from './../../stores/files.js';
+    import {errors} from './../../stores/errors.js';
 
     let load_code_in_frame = ()=>{};
     let loading = true;
@@ -18,11 +19,19 @@
     // action for setting up the code dispatcher to the iframe
     function frameHandler({on,dispatch}) {
         load_code_in_frame = (bundle) => dispatch('bundle',bundle);
+        on('error',e => errors.set(e));
     }
 
     async function bundle_sources(sources){
-        const code = await bundler(sources);
-        load_code_in_frame(code);
+        errors.set(null);
+        try{
+           const code = await bundler(sources);
+            load_code_in_frame(code); 
+        }catch(e){
+            errors.set(e.message);
+            console.error(e);
+        }
+        
     }
 
     // compile sources with cooldown timeout
