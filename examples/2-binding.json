@@ -1,0 +1,1 @@
+{"name":"2-binding","files":[{"name":"App.html","body":"<script>\n    let name = 'world';\n    let active = false;\n</script>\n\nEnter name: <input type=\"text\" bind:value={name} />\nHello {name}!\n<br/>\n<input type=\"checkbox\" bind:checked={active} /> {active}"}]}

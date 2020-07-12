@@ -1,0 +1,1 @@
+{"name":"5-if-else-block","files":[{"name":"App.html","body":"<script>\n    let value;\n</script>\n  \n<input type=\"checkbox\" bind:checked={value} /> switch\n<br/>\n  \n{#if value}\n    checkbox is on\n{:else}\n    [else] block, switch checkbox\n{/if}"}]}
