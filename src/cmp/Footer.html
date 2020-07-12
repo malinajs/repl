@@ -1,0 +1,35 @@
+<script>
+    import {errors} from './../stores/errors.js';
+
+    let err = null;
+    let from = null;
+    errors.subscribe(msg => {
+        from = null;
+        if(msg){
+            msg = msg.replace(/^\[(.+?)\] /,(_,f)=>{
+                from = f;
+                return '';
+            });
+        }
+        err=msg;
+    });
+</script>
+
+{#if err}
+    <p class="error-message">{#if from}<span>{from}:</span>{/if}{err}</p>
+{/if}
+
+<style>
+    .error-message{
+        line-height: 40px;
+        color:orange;
+        margin-left: 5px;
+    }
+
+    .error-message span{
+        line-height: 40px;
+        color:var(--color-gray);
+        margin-right: 5px;
+    }
+
+</style>
