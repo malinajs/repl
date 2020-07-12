@@ -1,0 +1,12 @@
+<script>
+    let value;
+</script>
+  
+<input type="checkbox" bind:checked={value} /> switch
+<br/>
+  
+{#if value}
+    checkbox is on
+{:else}
+    [else] block, switch checkbox
+{/if}
