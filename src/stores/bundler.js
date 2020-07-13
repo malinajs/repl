@@ -13,21 +13,20 @@ const DEPS = [
     ['rollup','rollup/dist/rollup.browser.js'],
     ['cjs2es','cjs2es'],
     ['acorn','acorn'],
-    ['astring','astring/dist/astring.min.js']
+    ['astring','astring/dist/astring.min.js'],
+    ['indent','indent.js']
 ]
 
 
-
 function bundleStore(){
-    let cooldownPeriod = 500;
+    const initialized = storik(false,init);
+    const buzy = storik(false);
+    const mode = storik('application');
 
-    const initialized = storik(false);
-    const bundling = storik(false);
+    const output = storik('', init);
 
-    const appStore = storik('', bundler_init);
-    const compStore = storik('');
-
-    async function bundler_init(){
+    // Load rollup and malinajs with dependencies
+    async function init(){
         if(initialized.get()) return;
             
         console.log('Initializing REPL...');
@@ -41,10 +40,11 @@ function bundleStore(){
             }
         }
 
-        await bundler_load_malina();
+        await load_malina();
     }
 
-    async function bundler_load_malina(ver){
+    // Load specified MalinaJS version
+    async function load_malina(ver){
         ver = ver || 'latest';
         delete window['malina'];
         try {
@@ -55,10 +55,11 @@ function bundleStore(){
             throw new Error(`[REPL]: Can't load MalinaJS v.${ver}`);
         }
 
-        if(bundler_check_dependencies()) files.touch();
+        if(check_dependencies()) files.touch();
     }
 
-    async function bundler_check_dependencies(){
+    // Check that all dependencies are loaded
+    async function check_dependencies(){
         for(let dep of DEPS.concat([['malina','malinajs']])){
             if(!window[dep[0]]){
                 initialized.set(false);
@@ -73,40 +74,82 @@ function bundleStore(){
         return true;
     }
 
-    async function bundle_sources(sources){
+    //bundle application from sources with cooldown timeout between rapidly calls
+    const bundle_sources = cooldown(async sources => {
         if(!initialized.get()) return;
-        bundling.set(true);
+        buzy.set(true);
         errors.set(null);
         clear();
         try {
             const code = await bundle(sources);
-            appStore.set(code);
+            output.set(code);
         }catch(e){
             errors.set(e.message);
             console.error(e);
         }
-        bundling.set(false);
-    }
+        buzy.set(false);
+    });
 
-    let cooldown = false;
-    let wasChanged = false;
-    files.subscribe(async sources => {
-        if(cooldown) return wasChanged = true;
-        bundle_sources(sources);
-        cooldown = setTimeout(()=>{
-            if(wasChanged) bundle_sources(sources);
-            cooldown = wasChanged = false;
-        },cooldownPeriod);
+    //compile current component from file source with cooldown timeout between rapidly calls
+    const compile_file = cooldown(async file => {
+        if(!initialized.get()) return;
+        buzy.set(true);
+        errors.set(null);
+        clear();
+        try {
+            const code = compile(file.body,file.name);
+            output.set(indent.js(code, {tabString: '    '}));
+        }catch(e){
+            errors.set(e.message);
+        }
+        buzy.set(false);
+    });
+
+    let unApp = ()=>{};
+    let unComp = ()=>{};
+    mode.subscribe(m => {
+        if(m === 'application'){
+            unComp();
+            unApp = files.subscribe(async sources => {
+                bundle_sources(sources);
+            });
+        }else{
+            unApp();
+            unComp = files.current.subscribe(async file => {
+                if(file.name.endsWith('.html'))
+                    compile_file(file);
+                else
+                    output.set('/* Choose component to see its compiled version */');
+            });
+        }
     });
 
     return {
+        subscribe: output.subscribe,
         initialized:{subscribe:initialized.subscribe},
-        bundling:{subscribe:bundling.subscribe},
+        buzy:{subscribe:buzy.subscribe},
 
-        app:{subscribe: appStore.subscribe},
-        comp:{},
+        mode: mode,
+        loadMalina: load_malina,
+    }
+}
 
-        loadMalina(ver){return bundler_load_malina(ver)},
+
+
+
+// MalinaJS Compiler
+function compile(code,filename){
+
+    let opts = {
+        exportDefault: true,
+        name: filename.match(/([^/]+).html$/)[1]
+    }
+
+    try {
+        return malina.compile(code, opts);
+    } catch (e) {
+        console.error(e);
+        throw new Error(`[MalinaJS] Compile error: ${e.message}: ${e.details}`);
     }
 }
 
@@ -210,21 +253,7 @@ function malina_plugin() {
 
         async transform(code, id) {
             if(!options.extensions.find(ext => id.endsWith(ext))) return null;
-
-            let result;
-
-            let opts = {
-                exportDefault: true,
-                name: id.match(/([^/]+).html$/)[1]
-            }
-            
-            try {
-                result = malina.compile(code, opts);
-            } catch (e) {
-                console.error(e);
-                throw new Error(`[MalinaJS] Compile error: ${e.message}: ${e.details}`);
-            }
-            return {code: result};
+            return {code: compile(code,id)};
         }
     }
 }
@@ -277,4 +306,21 @@ function clear(){
     console.log(`Rollup v.${rollup.VERSION}`);
     console.log(`MalinaJS v.${malina.version}`);
     console.log('------ REPL READY -------');
+}
+
+
+function cooldown(callback,timeout){
+    let inCooldown = false;
+    let wasRequested = false;
+
+    timeout = timeout || 500;
+
+    return function(){
+        if(inCooldown) return wasRequested = true;
+        callback.apply(null,arguments);
+        inCooldown = setTimeout(()=>{
+            if(wasRequested) callback.apply(null,arguments);
+            inCooldown = wasRequested = false;
+        }, timeout);
+    }
 }

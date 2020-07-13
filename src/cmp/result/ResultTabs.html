@@ -1,6 +1,26 @@
+<script>
+    import {bundler} from './../../stores/bundler.js';
+
+    const modes = {
+        application: 'Result',
+        component: 'Component source'
+    }
+
+    let mode = 'application';
+
+    let un;
+    function onMount(){
+        un = bundler.mode.subscribe( m => {
+            mode = m;
+        });
+    }
+    function onDestroy(){un()}
+</script>
+
 <div class="resulttabs">
-    <div class:active={true}>Result</div>
-    <div>Component Code</div>
+    {#each Object.keys(modes) as m}
+    <div class:active={mode === m} @click={bundler.mode.set(m)}>{modes[m]}</div>
+    {/each}
 </div>
 
 <style>

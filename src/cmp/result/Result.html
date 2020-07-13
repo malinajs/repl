@@ -1,12 +1,27 @@
 <script>
     import ResultTabs from './ResultTabs.html';
-    import View from './View.html';
+    import Application from './Application.html';
+    import Component from './Component.html';
+    import {bundler} from './../../stores/bundler.js';
+
+    let mode = 'application';
+
+    let un;
+    function onMount(){
+        un = bundler.mode.subscribe( m => {
+            mode = m;
+        });
+    }
+    function onDestroy(){un()}
 </script>
 
 <div class="result-wrapper">
     <div class="result">
         <div class="result-tabs"><ResultTabs></ResultTabs></div>
-        <div class="result-code"><View></View></div>
+        <div class="result-code">
+        {#if mode === 'application'}<Application></Application>{/if}
+        {#if mode === 'component'  }<Component></Component>{/if}
+        </div>
     </div>
 </div>
 <style>

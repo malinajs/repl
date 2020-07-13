@@ -1,0 +1,38 @@
+<script>    
+    import hljs from 'highlight.js/lib/core.js';
+    import js from 'highlight.js/lib/languages/javascript.js';
+
+    import {files} from './../../stores/files.js';
+    import {bundler} from './../../stores/bundler.js';
+    import {errors} from './../../stores/errors.js';
+
+    let code = '';
+
+    let un = bundler.subscribe(source => {
+        code = source;
+    });
+  
+    function onDestroy(){
+        un();
+    };
+</script>
+
+
+<div class="component-wrapper">
+    <div class="component-code">
+        <pre>{@html hljs.highlight('js',code).value }</pre>
+    </div>
+</div>
+
+
+<style>
+    .component-wrapper{
+        height:100%
+    }
+
+	.component-code{
+		width: 100%;
+        min-height: 100%;
+        padding: 10px;
+	}
+</style>

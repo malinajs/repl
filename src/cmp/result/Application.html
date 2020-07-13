@@ -5,23 +5,27 @@
     import {bundler} from './../../stores/bundler.js';
     import {errors} from './../../stores/errors.js';
 
-    let load_code_in_frame = ()=>{};
     let initialized = false;
 
-    bundler.initialized.subscribe( state => {
-        initialized = state;
-    });
-
-    bundler.app.subscribe(code => {
-        load_code_in_frame(code);
-    });
+    let unsubs = [];
 
     // action for setting up the code dispatcher to the iframe
-    function frameHandler({on,dispatch}) {
-        load_code_in_frame = (bundle) => dispatch('bundle',bundle);
+    function init_iframe({on,dispatch,frame_id}) {
         on('error',e => errors.set(e));
+        
+        unsubs.push(bundler.subscribe(code => {
+            if(bundler.mode.get() === 'application') dispatch('bundle',code);
+        }));
     }
 
+    unsubs.push(bundler.initialized.subscribe( state => {
+        initialized = state;
+    }));       
+        
+    
+    function onDestroy(){
+        unsubs.forEach(un => un());
+    };
 </script>
 
 {#if !initialized}
@@ -29,7 +33,7 @@
 {:else}
     <div class="iframe-wrapper">
         <iframe class="iframe"
-            use:frameCommunicator={frameHandler}
+            use:frameCommunicator={init_iframe}
             title="Result"
             sandbox="allow-popups-to-escape-sandbox 
                     allow-scripts 

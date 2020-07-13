@@ -24,10 +24,10 @@ export function frameCommunicator(iframe,callback){
     }
 
     window.addEventListener('message', message_handler);
-    iframe.addEventListener('load',()=> dispatch('init'));
-    
-    callback({on,off,dispatch});
-    
+    iframe.addEventListener('load',()=> {
+        dispatch('init');
+        callback({on,off,dispatch});
+    }); 
 
     return {
         destroy(){
@@ -88,6 +88,7 @@ function frame_inner(){
     });
 
     on('bundle',bundle => {
+        if(!bundle) return;
         document.body.innerText = '';
         const App = new Function(bundle+'; return Component.default;')();
         new App(document.body);
