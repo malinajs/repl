@@ -1,0 +1,87 @@
+<script>    
+    import {frameCommunicator,getSrcdoc} from './../../utils/frame_communicator.js';
+    import {bundler,init_bundler} from './../../utils/bundler.js';
+
+    import {files} from './../../stores/files.js';
+    import {errors} from './../../stores/errors.js';
+
+    let load_code_in_frame = ()=>{};
+    let loading = true;
+    let code = '';
+
+    // initialization and first compile
+    (async () => {
+        await init_bundler();
+        loading = false;
+        files.touch();
+    })();
+
+    // action for setting up the code dispatcher to the iframe
+    function frameHandler({on,dispatch}) {
+        load_code_in_frame = (bundle) => dispatch('bundle',bundle);
+        on('error',e => errors.set(e));
+    }
+
+    async function bundle_sources(sources){
+        errors.set(null);
+        try{
+           const code = await bundler(sources);
+            load_code_in_frame(code); 
+        }catch(e){
+            errors.set(e.message);
+            console.error(e);
+        }
+        
+    }
+
+    // compile sources with cooldown timeout
+    let cooldown = false;
+    let wasChanged = false;
+
+    files.subscribe(sources => {
+        if(loading) return;
+        
+        if(cooldown) return wasChanged = true;
+
+        bundle_sources(sources);
+        cooldown = setTimeout(()=>{
+            if(wasChanged) bundle_sources(sources);
+            cooldown = wasChanged = false;
+        },500);
+
+    });
+
+</script>
+
+{#if loading}
+    <p>Loading Bundler and Malina compiler...</p>
+{:else}
+    <div class="iframe-wrapper">
+        <iframe class="iframe"
+            use:frameCommunicator={frameHandler}
+            title="Result"
+            sandbox="allow-popups-to-escape-sandbox 
+                    allow-scripts 
+                    allow-popups 
+                    allow-forms 
+                    allow-pointer-lock 
+                    allow-top-navigation 
+                    allow-modals 
+                    allow-scripts"
+            srcdoc={getSrcdoc()}
+        ></iframe>
+    </div>
+{/if}
+
+<style>
+    .iframe-wrapper{
+        height:100%
+    }
+
+	.iframe{
+		width: 100%;
+        min-height: 100%;
+        border: 0;
+        margin: 0;
+	}
+</style>
