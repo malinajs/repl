@@ -13,8 +13,7 @@ const DEPS = [
     ['rollup','rollup/dist/rollup.browser.js'],
     ['cjs2es','cjs2es'],
     ['acorn','acorn'],
-    ['astring','astring/dist/astring.min.js'],
-    ['indent','indent.js']
+    ['astring','astring/dist/astring.min.js']
 ]
 
 
@@ -97,8 +96,8 @@ function bundleStore(){
         errors.set(null);
         clear();
         try {
-            const code = compile(file.body,file.name);
-            output.set(indent.js(code, {tabString: '    '}));
+            let code = compile(file.body,file.name);
+            output.set( astring.generate( acorn.parse(code, {sourceType: 'module'}) ) );
         }catch(e){
             errors.set(e.message);
         }
