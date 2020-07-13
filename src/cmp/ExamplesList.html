@@ -1,15 +1,16 @@
 <script>
 import {files} from './../stores/files.js';
 import {examples} from './../stores/examples.js';
-import {getParams} from './../utils/browser.js';
+import {router} from './../stores/router.js';
 
 let list;
-let current;
-
-const params = getParams();
-if(params.example) current = params.example;
+let current = '';
 
 examples.list.subscribe(l => list=l);
+
+router.subscribe( slugs => {
+    current = (slugs[0]==='example' && slugs[1]) ? slugs[1] : '';
+});
 
 </script>
 
@@ -17,7 +18,7 @@ examples.list.subscribe(l => list=l);
 {#if !list}
     Loading examples list...
 {:else}
-<select on:input={examples.load($event.target.value)}>
+<select on:input={router.go('/example/'+$event.target.value)}>
 {#each list as example}
     <option value={example.file} selected={current === example.file}>{example.name}</option>
 {/each}

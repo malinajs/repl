@@ -8,14 +8,15 @@
     import Footer from './cmp/Footer.html';
 
     import {examples} from './stores/examples.js';
-    import {getParams} from './utils/browser.js';
+    import {router} from './stores/router.js';
 
-    const params = getParams();
-    if(params.example){
-        examples.load(params.example);
-    }else{
-        examples.load('1-hello-world.json'); 
-    }
+    router.subscribe( slugs => {
+        if(slugs[0]==='example' && slugs[1]){
+            examples.load(slugs[1]);
+        }else{
+            router.go('/example/1-hello-world'); 
+        }
+    });
     
 </script>
 

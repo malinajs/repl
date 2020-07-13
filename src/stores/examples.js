@@ -1,8 +1,7 @@
 import storik from 'storik';
 
-import {setParams} from './../utils/browser.js';
-
 import {files} from './files';
+import {errors} from './errors';
 
 export let examples = examplesStore();
 
@@ -18,9 +17,9 @@ function examplesStore(){
           subscribe: listStore.subscribe
       },
       async load(example_filename){
+        if(!example_filename.endsWith('.json')) example_filename = example_filename+'.json';
         const example = await fetchExample(example_filename);
         files.set(example.files);
-        setParams({example: example_filename});
       }
     }
 }
@@ -40,7 +39,6 @@ async function fetchExample(file){
             throw new Error(`No example found in ${file}`);
         }
     } catch (e) {
-        if(e.details) console.log(e.details);
-        throw e;
+        errors.set(e.message);
     }
 }

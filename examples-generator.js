@@ -43,7 +43,7 @@ function generateExamples(){
                 result.files.push({name:file, body: fs.readFileSync(path.join(exPath,file),'utf-8')});
             }
             fs.writeFileSync(path.join(OUTPUT,`${name}.json`),JSON.stringify(result));
-            index.push({name,file:`${name}.json`})
+            index.push({name,file:name})
             console.log(` - ${name}.json`);
         }
     }
