@@ -2,6 +2,7 @@
     import Editor from './cmp/editor/Editor.html';
     import Filestabs from './cmp/editor/Filestabs.html';
     import Result from './cmp/result/Result.html';
+    import ResultTabs from './cmp/result/ResultTabs.html';
     import Examples from './cmp/ExamplesList.html';
     import Github from './cmp/Github.html';
     import Footer from './cmp/Footer.html';
@@ -21,7 +22,7 @@
 <div class="wrapper">
     <div class="header">
         <div style="float: left">
-            <h1 class="logo">Malina.js - REPL</h1>
+            <h1 class="logo">MalinaJS</h1>
             <div class="examples">
                 Select an example: <Examples></Examples>
             </div>
@@ -29,10 +30,6 @@
         <div style="float: right">
             <Github></Github>
         </div>
-    </div>
-    <div class="tabs">
-        <div class="left"><Filestabs></Filestabs></div>
-        <div class="right"></div>
     </div>
     <div class="body">
         <div class="left"><Editor></Editor></div>
@@ -56,11 +53,7 @@
 
     .body{
         display: flex;
-        flex: 1;
-    }
-    .tabs{
-        display: flex;
-        height: 30px;
+        flex-grow: 1;
     }
     .left{
         width: 60%;
@@ -68,7 +61,8 @@
     }
 
     .right{
-        width: 40%;
+        flex-grow: 1;
+        flex-basis: 0;
     }
 
     .footer{

@@ -1,58 +1,36 @@
 <script>
-    import {CodeJar} from 'codejar';
-    import hljs from 'highlight.js/lib/core.js';
-    import xml from 'highlight.js/lib/languages/xml.js';
-    import js from 'highlight.js/lib/languages/javascript.js';
-    import css from 'highlight.js/lib/languages/css.js';
-    import svelte from 'highlightjs-svelte'; // very similar sintax
-
-    import {files} from './../../stores/files.js';
-
-    hljs.registerLanguage('xml', xml);
-    hljs.registerLanguage('javascript', js);
-    hljs.registerLanguage('css', css);
-    svelte(hljs);
-
-    function codeJarAction(node){
-
-        function inputHandler(){
-            files.current.save(node.textContent);
-        }
-
-        const editor = new CodeJar(node,e => {
-           e.innerHTML = hljs.highlight('svelte',e.textContent).value;
-        });
-
-        node.addEventListener('input',inputHandler);
-
-        const unsbcr = files.current.subscribe(file => {
-            if(editor.toString() !== file.body) editor.updateCode(file.body);
-        });
-
-        return{
-            destroy: () => {
-                node.removeEventListener('input',inputHandler);
-                unsbcr();
-            }
-        }
-    }
+    import Filestabs from './Filestabs.html';
+    import Code from './Code.html';
 </script>
 
-<div class="editor" use:codeJarAction></div>
-
+<div class="editor-wrapper">
+    <div class="editor">
+        <div class="editor-tabs"><Filestabs></Filestabs></div>
+        <div class="editor-code"><Code></Code></div>
+    </div>
+</div>
 <style>
-    .editor{
-        width: 100%;
+    .editor-wrapper{
+        position: relative;
+        width: 100%; 
         height: 100%;
-        resize: none;
-        border: 0;
+    }
 
-        font-family: 'Source Code Pro', monospace;
-        font-size: 16px;
-        font-weight: 400;
-        letter-spacing: normal;
-        line-height: 20px;
-        padding: 10px;
-        tab-size: 4;
+    .editor{
+        position: absolute;
+        top:0px;
+        left:0px;
+        right: 0px;
+        bottom: 0px;
+        display: flex;
+        flex-direction: column;
+    }
+    .editor-tabs{
+        height: 30px;
+    }
+    .editor-code{
+        flex-grow: 1;
+        overflow-y: auto;
+        min-height: 0;
     }
 </style>
