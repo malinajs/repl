@@ -21,7 +21,7 @@
 
         const editor = new CodeJar(node,e => {
            e.innerHTML = hljs.highlight('svelte',e.textContent).value;
-        });
+        },{tab: ' '.repeat(4)});
 
         node.addEventListener('input',inputHandler);
         node.style.resize = 'none';
