@@ -1,37 +1,118 @@
-const repo = 'https://unpkg.com';
+import storik from 'storik';
 
-// Download and init Rollup, Malina compiler and cjs2es
-export async function init_bundler(){
+import {files} from './files';
+import {errors} from './errors.js';
 
-    const deps = [
-        ['rollup','rollup/dist/rollup.browser.js'],
-        ['cjs2es','cjs2es'],
-        ['acorn','acorn'],
-        ['astring','astring/dist/astring.min.js'],
-        ['malina','malinajs']
-    ]
+export let bundler = bundleStore();
 
-    console.log('Initializing REPL...');
-    
-    for(let dep of deps){
-        try {
-            const module = await download_module(`${repo}/${dep[1]}`);
-            module();
-        } catch (e) {
-            throw new Error(`[REPL]: Can't load dependency: ${dep[0]}`);
+
+
+const REPO = 'https://unpkg.com';
+
+const DEPS = [
+    ['rollup','rollup/dist/rollup.browser.js'],
+    ['cjs2es','cjs2es'],
+    ['acorn','acorn'],
+    ['astring','astring/dist/astring.min.js']
+]
+
+
+
+function bundleStore(){
+    let cooldownPeriod = 500;
+
+    const initialized = storik(false);
+    const bundling = storik(false);
+
+    const appStore = storik('', bundler_init);
+    const compStore = storik('');
+
+    async function bundler_init(){
+        if(initialized.get()) return;
+            
+        console.log('Initializing REPL...');
+
+        for(let dep of DEPS){
+            try {
+                ( await download_module(`${REPO}/${dep[1]}`) )();
+            } catch (e) {
+                console.error(e);
+                throw new Error(`[REPL]: Can't load dependency: ${dep[0]}`);
+            }
         }
 
-        if(!window[dep[0]]) throw new Error(`[REPL]: Dependency not initialized: ${dep[0]}`)
+        await bundler_load_malina();
     }
 
-    console.log(`Rollup v.${rollup.VERSION}`);
-    console.log(`Malina.JS v.${malina.version}`);
-    console.log('------ REPL READY -------');
-     
+    async function bundler_load_malina(ver){
+        ver = ver || 'latest';
+        delete window['malina'];
+        try {
+            ( await download_module(`${REPO}/malinajs@${ver}`) )();
+        } catch (e) {
+            initialized.set(false);
+            console.error(e);
+            throw new Error(`[REPL]: Can't load MalinaJS v.${ver}`);
+        }
+
+        if(bundler_check_dependencies()) files.touch();
+    }
+
+    async function bundler_check_dependencies(){
+        for(let dep of DEPS.concat([['malina','malinajs']])){
+            if(!window[dep[0]]){
+                initialized.set(false);
+                console.error(e);
+                throw new Error(`[REPL]: Dependency not initialized: ${dep[0]}`);
+            }
+        }
+        initialized.set(true);
+    
+        clear();
+    
+        return true;
+    }
+
+    async function bundle_sources(sources){
+        if(!initialized.get()) return;
+        bundling.set(true);
+        errors.set(null);
+        clear();
+        try {
+            const code = await bundle(sources);
+            appStore.set(code);
+        }catch(e){
+            errors.set(e.message);
+            console.error(e);
+        }
+        bundling.set(false);
+    }
+
+    let cooldown = false;
+    let wasChanged = false;
+    files.subscribe(async sources => {
+        if(cooldown) return wasChanged = true;
+        bundle_sources(sources);
+        cooldown = setTimeout(()=>{
+            if(wasChanged) bundle_sources(sources);
+            cooldown = wasChanged = false;
+        },cooldownPeriod);
+    });
+
+    return {
+        initialized:{subscribe:initialized.subscribe},
+        bundling:{subscribe:bundling.subscribe},
+
+        app:{subscribe: appStore.subscribe},
+        comp:{},
+
+        loadMalina(ver){return bundler_load_malina(ver)},
+    }
 }
 
+
 // Bundler
-export async function bundler(files){
+async function bundle(files){
     
     try {
         if(!rollup) throw new Error("[REPL]: Rollup didn't initialized yet");
@@ -76,7 +157,7 @@ function module_resolver_plugin(){
             if(id.startsWith('./') && /^https?:\/\//.test(importer)) return new URL(id,addSlash(importer)).href;
 
             // From UNPKG
-            return await getModuleURL(`${repo}/${id}`);
+            return await getModuleURL(`${REPO}/${id}`);
         }
     }
 }
@@ -140,7 +221,8 @@ function malina_plugin() {
             try {
                 result = malina.compile(code, opts);
             } catch (e) {
-                throw new Error(`[MalinaJS] Compile error: ${e.details}`);
+                console.error(e);
+                throw new Error(`[MalinaJS] Compile error: ${e.message}: ${e.details}`);
             }
             return {code: result};
         }
@@ -188,4 +270,11 @@ async function getModuleURL(url){
     }catch(err){
         throw new Error(`[Bundler] ${err.message}`);
     }
-  }
+}
+
+function clear(){
+    console.clear();
+    console.log(`Rollup v.${rollup.VERSION}`);
+    console.log(`MalinaJS v.${malina.version}`);
+    console.log('------ REPL READY -------');
+}
