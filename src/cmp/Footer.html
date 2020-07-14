@@ -1,5 +1,6 @@
 <script>
     import {errors} from './../stores/errors.js';
+    import {bundler} from './../stores/bundler.js';
 
     let err = null;
     let from = null;
@@ -13,22 +14,53 @@
         }
         err=msg;
     });
+
+    let ver = null;
+    bundler.malina.version.subscribe( v => {
+        ver = v;
+    });
 </script>
 
-{#if err}
-    <p class="error-message">{#if from}<span>{from}:</span>{/if}{err}</p>
-{/if}
+<div class="footer-wrap">
+    <div class="error-message">
+        {#if err}
+            <p>{#if from}<span>{from}:</span>{/if}{err}</p>
+        {/if}
+    </div>
+    <div class="malina-version">
+        {#if ver}MalinaJS v.{ver}{:else}Load compiler...{/if}
+    </div>
+</div>
 
 <style>
+    .footer-wrap{
+        display: flex;
+        height: 39px;
+        flex-wrap: nowrap;
+        width: 100%;
+    }
+
     .error-message{
-        line-height: 39px;
+        flex-grow: 1;
+        flex-basis: 0;
+    }
+
+    .error-message p{
+        line-height: 38px;
         color:orange;
         margin: 0 5px;
     }
 
-    .error-message span{
+    .error-message p span{
         color:var(--color-gray);
         margin-right: 5px;
     }
-
+    
+    .malina-version{
+        width: 200px;
+        line-height: 38px;
+        color:var(--color-gray);
+        margin: 0 5px;
+        text-align:right;
+    }
 </style>

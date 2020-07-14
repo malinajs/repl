@@ -21,6 +21,7 @@ function bundleStore(){
     const initialized = storik(false,init);
     const buzy = storik(false);
     const mode = storik('application');
+    const malinaVer = storik(null);
 
     const output = storik('', init);
 
@@ -46,6 +47,7 @@ function bundleStore(){
     async function load_malina(ver){
         ver = ver || 'latest';
         delete window['malina'];
+        malinaVer.set(null);
         try {
             ( await download_module(`${REPO}/malinajs@${ver}`) )();
         } catch (e) {
@@ -67,7 +69,9 @@ function bundleStore(){
             }
         }
         initialized.set(true);
-    
+        
+        malinaVer.set(malina.version);
+
         clear();
     
         return true;
@@ -129,7 +133,10 @@ function bundleStore(){
         buzy:{subscribe:buzy.subscribe},
 
         mode: mode,
-        loadMalina: load_malina,
+        malina: {
+            load: load_malina,
+            version: malinaVer
+        }
     }
 }
 
