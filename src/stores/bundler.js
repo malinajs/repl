@@ -14,7 +14,7 @@ const DEPS = [
     ['cjs2es','cjs2es'],
     ['acorn','acorn'],
     ['astring','astring/dist/astring.min.js'],
-    ['csstree','css-tree/dist/csstree.min.js']
+    ['csstree','css-tree/dist/csstree.min.js','css-tree']
 ]
 
 
@@ -35,6 +35,7 @@ function bundleStore(){
         for(let dep of DEPS){
             try {
                 ( await download_module(`${REPO}/${dep[1]}`) )();
+                if(dep[2]) window[dep[2]] = window[dep[0]];
             } catch (e) {
                 console.error(e);
                 throw new Error(`[REPL]: Can't load dependency: ${dep[0]}`);
@@ -157,6 +158,7 @@ function compile(code,filename){
     }
 
     try {
+        console.log(csstree);
         return malina.compile(code, opts);
     } catch (e) {
         console.error(e);
