@@ -87,6 +87,10 @@ function frame_inner(){
         dispatch('error',`[Application] ${e.message.replace(/^[a-z0-9 ]+?: /i,'')}`);
     });
 
+    window.addEventListener('click', (e) => {
+        dispatch('click');
+    });
+
     on('bundle',bundle => {
         if(!bundle) return;
         document.body.innerText = '';
