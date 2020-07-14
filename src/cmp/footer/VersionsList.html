@@ -27,8 +27,10 @@
     async function showList(){
         if(showDropdown) return showDropdown=false;
         list = null;
-        bundler.malina.version.list().then(l => list = l.sort( (a,b) => b.replace(/\d+/g, n => +n+100000 )
-                     .localeCompare(a.replace(/\d+/g, n => +n+100000 )) ) );
+        list = (await bundler.malina.version.list()).sort( (v1,v2) => {
+            const [a,b] = [v1,v2].map( v => v.replace(/\d+/g, i => +i+100000 ));
+            return b.localeCompare(a);
+        });
         showDropdown = true;
     }
 
@@ -37,6 +39,7 @@
         bundler.malina.load(v);
     }
 
+    
 </script>
 
 <div class="chooser">
