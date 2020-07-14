@@ -1,6 +1,7 @@
 <script>
-    import {errors} from './../stores/errors.js';
-    import {bundler} from './../stores/bundler.js';
+    import VersionsList from './VersionsList.html';
+
+    import {errors} from './../../stores/errors.js';
 
     let err = null;
     let from = null;
@@ -14,11 +15,6 @@
         }
         err=msg;
     });
-
-    let ver = null;
-    bundler.malina.version.subscribe( v => {
-        ver = v;
-    });
 </script>
 
 <div class="footer-wrap">
@@ -28,7 +24,7 @@
         {/if}
     </div>
     <div class="malina-version">
-        {#if ver}MalinaJS v.{ver}{:else}Load compiler...{/if}
+        <VersionsList></VersionsList>
     </div>
 </div>
 
@@ -59,7 +55,6 @@
     .malina-version{
         width: 200px;
         line-height: 38px;
-        color:var(--color-gray);
         margin: 0 5px;
         text-align:right;
     }

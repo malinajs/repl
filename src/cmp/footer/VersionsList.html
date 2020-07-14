@@ -1,0 +1,117 @@
+<script>
+    import {bundler} from './../../stores/bundler.js';
+
+    let ver = null;
+    let list = false;
+    let showDropdown = false;
+    
+    
+    bundler.malina.version.subscribe( v => {
+        ver = v;
+    });
+
+    function dropdownAction(node){
+        const inHandler = e => e.stopPropagation();
+        const outHandler = e => showDropdown = false;
+
+        node.addEventListener('click',inHandler);
+        addEventListener('click',outHandler);
+        return {
+            destroy(){
+                node.removeEventListener('click',inHandler);
+                window.removeEventListener('click',outHandler);
+            }
+        }
+    }
+
+    async function showList(){
+        if(showDropdown) return showDropdown=false;
+        list = null;
+        bundler.malina.version.list().then(l => list = l.sort( (a,b) => b.replace(/\d+/g, n => +n+100000 )
+                     .localeCompare(a.replace(/\d+/g, n => +n+100000 )) ) );
+        showDropdown = true;
+    }
+
+    function loadVersion(v){
+        showDropdown = false;
+        bundler.malina.load(v);
+    }
+
+</script>
+
+<div class="malina-version-wrapper">
+    {#if ver}
+        <span @click={showList()} class:active={showDropdown}>
+            MalinaJS v.{ver}
+            <svg style="width:24px;height:24px;" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"></path>
+            </svg>
+        </span>
+    {:else}
+        Loading compiler...
+    {/if}
+</div>
+
+{#if showDropdown}
+<div class="malina-versions-dropdown" use:dropdownAction>
+    
+    {#if list}
+    <ul>
+        {#each list as version}
+            <li @click={loadVersion(version)} class:active={version === ver}>v.{version}</li>
+        {/each}
+    </ul>
+    {:else}
+        Loading...
+    {/if}
+        
+</div>
+{/if}
+
+<style>   
+    .malina-version-wrapper{
+        color:var(--color-gray);
+    }
+
+    .malina-version-wrapper span{
+        cursor: pointer;
+    }
+
+    .malina-version-wrapper span svg{
+        vertical-align: middle;
+        transition: .2s;
+    }
+
+    .malina-version-wrapper span.active svg{
+        transform: rotate(-180deg);
+    }
+
+    .malina-versions-dropdown{
+        position: absolute;
+        bottom: 39px;
+        right: 0px;
+        width: 100px;
+        max-height: 150px;
+        overflow-y: auto;
+
+        background-color: white;
+        border: 1px solid var(--color-gray);
+        border-top-left-radius: 3px;
+        border-right: none;
+    }
+
+    .malina-versions-dropdown ul li{
+        line-height: 30px;
+        text-align: left;
+        list-style: none;
+        padding-left: 15px;
+    }
+    .malina-versions-dropdown ul li:hover{
+        background-color: var(--color-lightest);
+        cursor: pointer;
+    }
+
+    .malina-versions-dropdown ul li.active{
+        background-color: var(--color-light);
+    }
+</style>

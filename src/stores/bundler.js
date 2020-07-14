@@ -13,7 +13,8 @@ const DEPS = [
     ['rollup','rollup/dist/rollup.browser.js'],
     ['cjs2es','cjs2es'],
     ['acorn','acorn'],
-    ['astring','astring/dist/astring.min.js']
+    ['astring','astring/dist/astring.min.js'],
+    ['csstree','css-tree/dist/csstree.min.js']
 ]
 
 
@@ -135,7 +136,11 @@ function bundleStore(){
         mode: mode,
         malina: {
             load: load_malina,
-            version: malinaVer
+            version:{
+                subscribe:malinaVer.subscribe,
+                get:malinaVer.get,
+                list: getMalinaVersions
+            } 
         }
     }
 }
@@ -307,11 +312,26 @@ async function getModuleURL(url){
     }
 }
 
+let verCash;
+async function getMalinaVersions(){
+    if(!verCash){
+        try{
+            const html = await cash_or_fetch(`${REPO}/browse/malinajs/`);
+            const json = html.body.match(/"availableVersions":(\[[^\]]+\])/);
+            verCash = json ? JSON.parse(json[1]) : [];
+        }catch(e){
+            console.error(e);
+            return [];
+        }
+    }
+    return verCash;
+}
+
 function clear(){
     console.clear();
     console.log(`Rollup v.${rollup.VERSION}`);
     console.log(`MalinaJS v.${malina.version}`);
-    console.log('------ REPL READY -------');
+    console.log('------ REPL READY -------');    
 }
 
 
