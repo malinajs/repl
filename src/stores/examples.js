@@ -18,10 +18,11 @@ function examplesStore(){
           subscribe: listStore.subscribe
       },
       async load(example_filename){
+        router.title('Example - Loading...');
         if(!example_filename.endsWith('.json')) example_filename = example_filename+'.json';
         const example = await fetchExample(example_filename);
         files.set(example.files);
-        router.title(example.name);
+        router.title('Example - '+example.name);
       }
     }
 }
