@@ -158,7 +158,6 @@ function compile(code,filename){
     }
 
     try {
-        console.log(csstree);
         return malina.compile(code, opts);
     } catch (e) {
         console.error(e);
