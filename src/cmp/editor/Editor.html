@@ -3,14 +3,14 @@
     import Code from './Code.html';
 </script>
 
-<div class="editor-wrapper">
+<div class="wrapper">
     <div class="editor">
-        <div class="editor-tabs"><Filestabs></Filestabs></div>
-        <div class="editor-code"><Code></Code></div>
+        <div class="tabs"><Filestabs></Filestabs></div>
+        <div class="code"><Code></Code></div>
     </div>
 </div>
 <style>
-    .editor-wrapper{
+    .wrapper{
         position: relative;
         width: 100%; 
         height: 100%;
@@ -25,10 +25,10 @@
         display: flex;
         flex-direction: column;
     }
-    .editor-tabs{
+    .tabs{
         height: 30px;
     }
-    .editor-code{
+    .code{
         flex-grow: 1;
         overflow-y: auto;
         min-height: 0;

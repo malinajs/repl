@@ -18,24 +18,20 @@
 </script>
 
 
-<div class="component-wrapper">
-    <div class="component-code">
+<div>
         <pre>{@html hljs.highlight('js',code).value }</pre>
-    </div>
 </div>
 
 
 <style>
-    .component-wrapper{
+    div{
         height:100%
     }
 
-	.component-code{
-		width: 100%;
+    pre{
+        width: 100%;
         min-height: 100%;
         padding: 10px;
-	}
-    .component-code pre{
         font-family: 'Source Code Pro', monospace;
     }
 </style>

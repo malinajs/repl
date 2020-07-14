@@ -20,20 +20,21 @@
     }
 </script>
 
-<div class="filestabs">
+<div>
     {#each list as tab}
     <Filetab file={tab}></Filetab>
     {/each}
-    <button class="add-file" title="Add component" @click={addFile()}>+</button>
+    <button class="add" title="Add component" @click={addFile()}>+</button>
 </div>
 
 <style>
-    .filestabs{
+    div{
         height: 30px;
         background-color: var(--color-gray);
         padding: 0;
     }
-    .add-file{
+
+    .add{
         background-color: var(--color-gray);
         color: var(--color-lightest);
         border: none;

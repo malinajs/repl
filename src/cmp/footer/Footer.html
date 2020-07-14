@@ -17,45 +17,47 @@
     });
 </script>
 
-<div class="footer-wrap">
-    <div class="error-message">
+<div class="wrapper">
+    <div class="left">
         {#if err}
             <p>{#if from}<span>{from}:</span>{/if}{err}</p>
         {/if}
     </div>
-    <div class="malina-version">
+    <div class="right">
         <VersionsList></VersionsList>
     </div>
 </div>
 
 <style>
-    .footer-wrap{
+    .wrapper{
         display: flex;
         height: 39px;
         flex-wrap: nowrap;
         width: 100%;
     }
 
-    .error-message{
+    .left{
         flex-grow: 1;
         flex-basis: 0;
     }
 
-    .error-message p{
-        line-height: 38px;
-        color:orange;
-        margin: 0 5px;
-    }
-
-    .error-message p span{
-        color:var(--color-gray);
-        margin-right: 5px;
-    }
-    
-    .malina-version{
+    .right{
         width: 200px;
         line-height: 38px;
         margin: 0 5px;
         text-align:right;
     }
+
+    p{
+        line-height: 38px;
+        color:orange;
+        margin: 0 5px;
+    }
+
+    span{
+        color:var(--color-gray);
+        margin-right: 5px;
+    }
+    
+    
 </style>

@@ -39,7 +39,7 @@
 
 </script>
 
-<div class="malina-version-wrapper">
+<div class="chooser">
     {#if ver}
         <span @click={showList()} class:active={showDropdown}>
             MalinaJS v.{ver}
@@ -53,7 +53,7 @@
 </div>
 
 {#if showDropdown}
-<div class="malina-versions-dropdown" use:dropdownAction>
+<div class="dropdown" use:dropdownAction>
     
     {#if list}
     <ul>
@@ -69,24 +69,24 @@
 {/if}
 
 <style>   
-    .malina-version-wrapper{
+    .chooser{
         color:var(--color-gray);
     }
 
-    .malina-version-wrapper span{
+    span{
         cursor: pointer;
     }
 
-    .malina-version-wrapper span svg{
+    svg{
         vertical-align: middle;
         transition: .2s;
     }
 
-    .malina-version-wrapper span.active svg{
+    span.active svg{
         transform: rotate(-180deg);
     }
 
-    .malina-versions-dropdown{
+    .dropdown{
         position: absolute;
         bottom: 39px;
         right: 0px;
@@ -100,18 +100,18 @@
         border-right: none;
     }
 
-    .malina-versions-dropdown ul li{
+    ul li{
         line-height: 30px;
         text-align: left;
         list-style: none;
         padding-left: 15px;
     }
-    .malina-versions-dropdown ul li:hover{
+    ul li:hover{
         background-color: var(--color-lightest);
         cursor: pointer;
     }
 
-    .malina-versions-dropdown ul li.active{
+    ul li.active{
         background-color: var(--color-light);
     }
 </style>

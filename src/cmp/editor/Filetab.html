@@ -62,17 +62,10 @@
     }
 </script>
 
-<div 
-    class="filetab"
-    class:active={active}
-    @click={setCurrentFile()} 
-    title="./{file}"
->
-
+<div class:active={active} @click={setCurrentFile()} title="./{file}">
 {#if active}
     {#if editing}
         <input 
-            class="filedit" 
             class:invalid={!isValid(newname)} 
             bind:value={newname} 
             @blur={saveFilename()}
@@ -80,11 +73,11 @@
             use:inputWidthAction
         />
     {:else}
-        <span @click={setEditing()} >{file}</span>
+        <span @click={setEditing()}>{file}</span>
     {/if}
 
     {#if file !== files.default}
-        <span class="delete-file" @click={deleteFile(file)}><Closeicon></Closeicon></span>
+        <span class="delete" @click={deleteFile(file)}><Closeicon></Closeicon></span>
     {/if}
 {:else}
     {file}
@@ -92,7 +85,7 @@
 </div>
 
 <style>
-    .filetab{
+    div{
         display: inline-block;
         height: 27px;
         line-height: 27px;
@@ -104,25 +97,26 @@
         padding: 0px 5px;
     }
 
-    .filetab.active{
-        background-color: var(--hl-background);
-    }
-
-    .delete-file{
-        color: var(--color-light);
-    }
-
-    .delete-file:hover{
-        color:var(--color-dark);
-    }
-
-    .filedit{
+    input{
        padding:1px 3px;
        font-family: 'Courier New', Courier, monospace;
        border: 1px solid var(--color-dark);
+       height: 24px;
     }
 
-    .filedit.invalid{
+    .invalid{
         color:red;
+    }
+
+    .active{
+        background-color: var(--hl-background);
+    }
+
+    .delete{
+        color: var(--color-light);
+    }
+
+    .delete:hover{
+        color:var(--color-dark);
     }
 </style>
