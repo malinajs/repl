@@ -1,8 +1,5 @@
 <script>
-    import Editor from './cmp/editor/Editor.html';
-    import Filestabs from './cmp/editor/Filestabs.html';
-    import Result from './cmp/result/Result.html';
-    import ResultTabs from './cmp/result/ResultTabs.html';
+    import Panels from './cmp/Panels.html';
     import Examples from './cmp/ExamplesList.html';
     import Github from './cmp/Github.html';
     import Footer from './cmp/footer/Footer.html';
@@ -32,10 +29,7 @@
             <Github></Github>
         </div>
     </div>
-    <div class="body">
-        <div class="left"><Editor></Editor></div>
-        <div class="right"><Result></Result></div>
-    </div>
+    <div class="body"><Panels></Panels></div>
     <div class="footer"><Footer></Footer></div>
 </div>
 
@@ -53,17 +47,9 @@
     }
 
     .body{
-        display: flex;
-        flex-grow: 1;
-    }
-    .left{
-        width: 60%;
-        border-right: 1px solid var(--color-gray);
-    }
-
-    .right{
         flex-grow: 1;
         flex-basis: 0;
+        position: relative;
     }
 
     .footer{

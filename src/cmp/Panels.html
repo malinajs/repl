@@ -1,0 +1,74 @@
+<script>
+    import Editor from './editor/Editor.html';
+    import Result from './result/Result.html';
+
+    let percent = 60;
+    let dragging = false;
+
+    function drag(node){
+        function start(e){
+            e.preventDefault();
+            node.addEventListener('mousemove',move);
+            dragging = true;
+        }
+        function stop(e){
+            e.preventDefault();    
+            node.removeEventListener('mousemove',move); 
+            dragging = false;
+        }
+        function move(e){
+            e.preventDefault();
+            percent = (e.clientX)/window.innerWidth*100;
+            if(percent < 20) percent = 20;
+            if(percent > 80) percent = 80;
+        }
+        node.addEventListener('mousedown',start);
+        node.addEventListener('mouseup',stop);
+        node.addEventListener('mouseout',stop);
+        window.addEventListener('mouseup',stop);
+
+        return {
+            destroy(){
+                node.removeEventListener('mousedown',start);
+                node.removeEventListener('mouseup',stop);
+                node.removeEventListener('mouseout',stop);
+                window.removeEventListener('mouseup',stop);
+                node.removeEventListener('mousemove',move);
+            }
+        }
+    }
+</script>
+
+<div class="panels">
+    <div class="left" style="width: {percent}%"><Editor></Editor></div>
+    <div class="devider" use:drag class:dragging={dragging}></div>
+    <div class="right" style="width: {100-percent}%"><Result></Result></div>
+</div>
+
+
+<style>
+    .panels{
+        display: flex;
+        position: absolute;
+        top:0;
+        left:0;
+        right: 0;
+        bottom: 0;
+    }
+
+    .left{
+        border-right: 1px solid var(--color-gray);
+    }
+
+    .devider{
+        width:10px;
+        margin: 0 -5px;
+        z-index: 100000;
+        cursor: ew-resize
+    }
+
+    .dragging{
+        width: 100px;
+        margin: 0 -50px;
+    }
+</style>
