@@ -2,6 +2,7 @@ import storik from 'storik';
 
 import {files} from './files';
 import {errors} from './errors';
+import {router} from './router';
 
 export let examples = examplesStore();
 
@@ -20,6 +21,7 @@ function examplesStore(){
         if(!example_filename.endsWith('.json')) example_filename = example_filename+'.json';
         const example = await fetchExample(example_filename);
         files.set(example.files);
+        router.title(example.name);
       }
     }
 }

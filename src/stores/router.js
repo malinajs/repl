@@ -27,6 +27,9 @@ function routerStore(){
         path:'/'+slugs.get().join('/'),
         slugs(num){
             num === undefined ? slugs.get() : slugs.get()[num];
+        },
+        title(text){
+            window.document.title = text ? 'MalinaJS: '+text : 'MalinaJS';
         }
     }
 }
