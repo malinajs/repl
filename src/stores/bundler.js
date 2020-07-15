@@ -154,6 +154,7 @@ function compile(code,filename){
 
     let opts = {
         exportDefault: true,
+        inlineTemplate: true,
         name: filename.match(/([^/]+).html$/)[1]
     }
 
