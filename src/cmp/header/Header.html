@@ -11,7 +11,12 @@
     files.modified.subscribe( s => modified=s );
 
     let title;
-    files.meta.subscribe( meta => title = meta.title || 'MalinaJS Application' );
+    let ver;
+    files.meta.subscribe( meta => {
+        title = meta.title || 'MalinaJS Application'
+    });
+
+  
 
     let slug;
     let param;
@@ -43,7 +48,7 @@
 
 
 <div style="float: left">
-    <h1 class="logo">MalinaJS</h1>
+    <h1 @click={router.go('')}>MalinaJS</h1>
     <div class="header">
         {#if slug === 'example' && !modified}
             Select an example: <Examples></Examples>
@@ -62,9 +67,14 @@
 
 
 <style>
-    .logo,.header{
+    h1{
+        cursor: pointer;
+    }
+
+    .header,h1{
         margin-left: 10px;
     }
+
     .title{
         border: 1px solid rgb(0,0,0,0);
         padding: 5px;

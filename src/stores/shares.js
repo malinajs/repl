@@ -1,4 +1,5 @@
 import {files} from './files';
+import {bundler} from './bundler';
 import {errors} from './errors';
 import {router} from './router';
 
@@ -16,6 +17,13 @@ function sharesStore(){
             router.title('Loading shared code...');
             const share = await fetchShare(id);
             if(share){
+                if(
+                    bundler.initialized.get() && 
+                    share.meta.version && 
+                    share.meta.version !== bundler.malina.version.get()
+                ) {
+                    bundler.malina.load(share.meta.version);
+                }
                 files.set(share.files,share.meta);
                 router.title(share.meta.title);
             }else{

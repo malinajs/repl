@@ -1,10 +1,10 @@
 <script>
+    import {files} from './../../stores/files.js';
     import {bundler} from './../../stores/bundler.js';
 
     let ver = null;
     let list = false;
     let showDropdown = false;
-    
     
     bundler.malina.version.subscribe( v => {
         ver = v;
@@ -36,6 +36,7 @@
 
     function loadVersion(v){
         showDropdown = false;
+        files.meta.update({version:v});
         bundler.malina.load(v);
     }
 

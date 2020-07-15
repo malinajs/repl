@@ -41,13 +41,13 @@ function bundleStore(){
                 throw new Error(`[REPL]: Can't load dependency: ${dep[0]}`);
             }
         }
-
-        await load_malina();
+        await load_malina(files.meta.get('version'));
     }
 
     // Load specified MalinaJS version
     async function load_malina(ver){
         ver = ver || 'latest';
+        if(malinaVer.get() === ver) return;
         delete window['malina'];
         malinaVer.set(null);
         try {
@@ -66,7 +66,6 @@ function bundleStore(){
         for(let dep of DEPS.concat([['malina','malinajs']])){
             if(!window[dep[0]]){
                 initialized.set(false);
-                console.error(e);
                 throw new Error(`[REPL]: Dependency not initialized: ${dep[0]}`);
             }
         }
@@ -109,6 +108,7 @@ function bundleStore(){
         }
         buzy.set(false);
     });
+    
 
     let unApp = ()=>{};
     let unComp = ()=>{};
@@ -131,7 +131,7 @@ function bundleStore(){
 
     return {
         subscribe: output.subscribe,
-        initialized:{subscribe:initialized.subscribe},
+        initialized,
         buzy:{subscribe:buzy.subscribe},
 
         mode: mode,

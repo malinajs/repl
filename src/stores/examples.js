@@ -3,6 +3,7 @@ import storik from 'storik';
 import {files} from './files';
 import {errors} from './errors';
 import {router} from './router';
+import {bundler} from './bundler';
 
 export let examples = examplesStore();
 
@@ -19,6 +20,7 @@ function examplesStore(){
       },
       async load(example_filename){
         router.title('Example - Loading...');
+        if(bundler.initialized.get()) bundler.malina.load();
         if(!example_filename.endsWith('.json')) example_filename = example_filename+'.json';
         const example = await fetchExample(example_filename);
         files.set(example.files,{title:example.name});
