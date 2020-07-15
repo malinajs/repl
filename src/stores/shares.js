@@ -18,8 +18,12 @@ function sharesStore(){
             if(share){
                 files.set(share.files,share.meta);
                 router.title(share.meta.title);
+            }else{
+                const title = 'Oops! Shared code not found!';
+                files.set([{name:"App.html",body:"<!-- Write something cool! -->"}],{title});
+                router.title(title);
             }
-            router.title('Shared code not found');
+            
         }
     }
 }

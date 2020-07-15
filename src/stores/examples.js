@@ -38,7 +38,7 @@ async function fetchExample(file){
             if(result.ok) {
                 cash[file] = await result.text();
             }else{
-                throw new Error(`No example found in ${file}`);
+                throw new Error(`Example not found in ${file}`);
             }
         } catch (e) {
             errors.set(e.message);
