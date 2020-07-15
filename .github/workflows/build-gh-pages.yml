@@ -3,7 +3,7 @@ name: Build REPL site
 on: push
 
 jobs:
-  docs-build-deploy:
+  build-and-deploy:
     runs-on: ubuntu-18.04
     steps:
     - uses: actions/checkout@master
@@ -14,10 +14,12 @@ jobs:
         node-version: 12.x
 
     - name: Build
-      run: npm i && npm run build
+      run: |
+        npm install
+        npm run build
 
     - name: Deploy
       uses: peaceiris/actions-gh-pages@v3
-      uses:
+      with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./public
