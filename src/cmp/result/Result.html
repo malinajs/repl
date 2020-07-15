@@ -5,22 +5,32 @@
     import {bundler} from './../../stores/bundler.js';
 
     let mode = 'application';
+    let initialized = false;
 
-    let un;
+    let uns = [];
+
+    uns.push(bundler.initialized.subscribe( state => {
+        initialized = state;
+    }));  
+
     function onMount(){
-        un = bundler.mode.subscribe( m => {
+        uns.push(bundler.mode.subscribe( m => {
             mode = m;
-        });
+        }));
     }
-    function onDestroy(){un()}
+    function onDestroy(){uns.forEach(un => un())}
 </script>
 
 <div class="wrapper">
     <div class="result">
         <div class="tabs"><ResultTabs></ResultTabs></div>
         <div class="code">
-        {#if mode === 'application'}<Application></Application>{/if}
-        {#if mode === 'component'  }<Component></Component>{/if}
+            {#if !initialized}
+                <p>Loading Bundler and Malina compiler...</p>
+            {:else}
+                {#if mode === 'application'}<Application></Application>{/if}
+                {#if mode === 'component'  }<Component></Component>{/if}
+            {/if}
         </div>
     </div>
 </div>
@@ -48,5 +58,11 @@
     .code{
         flex-grow: 1;
         overflow-y: auto;
+    }
+
+    p{
+        text-align: center;
+        padding: 30px;
+        color:var(--color-light);
     }
 </style>

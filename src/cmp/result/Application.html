@@ -7,7 +7,7 @@
 
     let initialized = false;
 
-    let unsubs = [];
+    let un = ()=>{};
     let div;
 
     // action for setting up the code dispatcher to the iframe
@@ -15,40 +15,30 @@
         on('error',e => errors.set(e));
         on('click',e => div.click());
         
-        unsubs.push(bundler.subscribe(code => {
+        un = bundler.subscribe(code => {
             if(bundler.mode.get() === 'application') dispatch('bundle',code);
-        }));
-    }
-
-    unsubs.push(bundler.initialized.subscribe( state => {
-        initialized = state;
-    }));       
+        });
+    }   
         
-    
-    function onDestroy(){
-        unsubs.forEach(un => un());
-    };
+    function onDestroy(){un()};
 </script>
 
-{#if !initialized}
-    <p>Loading Bundler and Malina compiler...</p>
-{:else}
-    <div use={div=$element}>
-        <iframe
-            use:frameCommunicator={init_iframe}
-            title="Result"
-            sandbox="allow-popups-to-escape-sandbox 
-                    allow-scripts 
-                    allow-popups 
-                    allow-forms 
-                    allow-pointer-lock 
-                    allow-top-navigation 
-                    allow-modals 
-                    allow-scripts"
-            srcdoc={getSrcdoc()}
-        ></iframe>
-    </div>
-{/if}
+<div use={div=$element}>
+    <iframe
+        use:frameCommunicator={init_iframe}
+        title="Result"
+        sandbox="allow-popups-to-escape-sandbox 
+                allow-scripts 
+                allow-popups 
+                allow-forms 
+                allow-pointer-lock 
+                allow-top-navigation 
+                allow-modals 
+                allow-scripts"
+        srcdoc={getSrcdoc()}
+    ></iframe>
+</div>
+
 
 <style>
     div{

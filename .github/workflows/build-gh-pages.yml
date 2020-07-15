@@ -3,7 +3,7 @@ name: Build REPL site
 on: push
 
 jobs:
-  docs-build-deploy:
+  build-and-deploy:
     runs-on: ubuntu-18.04
     steps:
     - uses: actions/checkout@master
