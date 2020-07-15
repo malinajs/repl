@@ -2,13 +2,13 @@ import child_process  from 'child_process';
 
 let started = false;
 
-export default function examplesRollup(watch) {
+export default function examplesRollup(production) {
     
     return {
         name: 'examples',
         async writeBundle() {
             if(!started){
-                generateExamples(watch);
+                generateExamples(production);
                 started = true;
             }            
         }
@@ -16,8 +16,8 @@ export default function examplesRollup(watch) {
 
 }
 
-function generateExamples(watch){
-    child_process.spawn('node examples-generator.js', [watch ? 'watch':'build'],{
+function generateExamples(production){
+    child_process.spawn('node examples-generator.js', [production ? 'build':'watch'],{
         stdio: ['ignore', 'inherit', 'inherit'],
         shell: true
     });

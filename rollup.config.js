@@ -9,7 +9,7 @@ import examplesRollup from './examples-rollup';
 
 const host = process.env.HOST || 'localhost';
 const port = process.env.PORT || 7000;
-const watch = !!process.env.ROLLUP_WATCH;
+const production = !process.env.ROLLUP_WATCH;
 
 export default {
     input: 'src/main.js',
@@ -20,12 +20,14 @@ export default {
     plugins: [
         resolve(),
         commonjs(),
-        malinaRollup(),
-        watch && serve({contentBase: 'public', port, host}),
-        watch && livereload({watch: 'public'}),
-        examplesRollup(watch),
-        !watch && terser(),
-        !watch && analyze()
+        malinaRollup({
+            hideLabel: production,
+        }),
+        !production && serve({contentBase: 'public', port, host}),
+        !production && livereload({watch: 'public'}),
+        examplesRollup(production),
+        production && terser(),
+        production && analyze()
     ],
     watch: {
         clearScreen: false
