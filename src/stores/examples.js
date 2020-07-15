@@ -21,7 +21,7 @@ function examplesStore(){
         router.title('Example - Loading...');
         if(!example_filename.endsWith('.json')) example_filename = example_filename+'.json';
         const example = await fetchExample(example_filename);
-        files.set(example.files);
+        files.set(example.files,{title:example.name});
         router.title('Example - '+example.name);
       }
     }
@@ -32,16 +32,18 @@ let cash = {};
 async function fetchExample(file){
     file = file || 'index.json';
 
-    if(cash[file]) return cash[file];
-
-    try{
-        const result = await fetch(`examples/${file}`);
-        if(result.ok) {
-            return cash[file] = await result.json();
-        }else{
-            throw new Error(`No example found in ${file}`);
+    if(!cash[file]) {
+        try{
+            const result = await fetch(`examples/${file}`);
+            if(result.ok) {
+                cash[file] = await result.text();
+            }else{
+                throw new Error(`No example found in ${file}`);
+            }
+        } catch (e) {
+            errors.set(e.message);
         }
-    } catch (e) {
-        errors.set(e.message);
     }
+
+    return JSON.parse(cash[file]);
 }

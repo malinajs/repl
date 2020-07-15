@@ -1,0 +1,85 @@
+<script>
+    import Examples from './ExamplesList.html';
+    import Github from './Github.html';
+
+    import {files} from './../../stores/files.js';
+    import {router} from './../../stores/router.js';
+    import {examples} from './../../stores/examples.js';
+    import {shares} from './../../stores/shares.js';
+
+    let modified;
+    files.modified.subscribe( s => modified=s );
+
+    let title;
+    files.meta.subscribe( meta => title = meta.title || 'MalinaJS Application' );
+
+    let slug;
+    let param;
+    router.subscribe( slugs => {
+        slug = slugs[0];
+        param = slugs[1];
+    });
+
+    function saveTitle(newtitle){
+        if(newtitle !== title) {
+            modified = true;
+            files.meta.update({title:newtitle});
+        }
+    }
+
+    function reset(){
+        if(slug === 'example') examples.load(param);
+        if(slug === 'share') shares.load(param);
+    }
+
+    let saving = false;
+    async function saveShare(){
+        saving = true;
+        const id = await shares.save();
+        router.go(`/share/${id}`);
+        saving = false;
+    }
+</script>
+
+
+<div style="float: left">
+    <h1 class="logo">MalinaJS</h1>
+    <div class="header">
+        {#if slug === 'example' && !modified}
+            Select an example: <Examples></Examples>
+        {:else}
+            <span class="title" contenteditable="true" @blur={saveTitle($element.innerText)}>{title}</span>
+            {#if modified}
+                <button @click={saveShare()}>{saving ? 'Saving...' : 'Share'}</button>
+                <button @click={reset()}>Reset</button>
+            {/if}
+        {/if}
+    </div>
+</div>
+<div style="float: right">
+    <Github></Github>
+</div>
+
+
+<style>
+    .logo,.header{
+        margin-left: 10px;
+    }
+    .title{
+        border: 1px solid rgb(0,0,0,0);
+        padding: 5px;
+        font-size: 24px;
+        color: var(--color-light);
+        margin-left: -5px;
+    }
+
+    .title:hover,.title:focus{
+        border-color: var(--color-gray);
+    }
+
+    button{
+        height: 24px;
+        line-height: 24px;
+        padding: 0 5px;
+    }
+</style>

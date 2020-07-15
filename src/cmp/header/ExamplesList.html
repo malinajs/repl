@@ -1,7 +1,6 @@
 <script>
-import {files} from './../stores/files.js';
-import {examples} from './../stores/examples.js';
-import {router} from './../stores/router.js';
+import {examples} from './../../stores/examples.js';
+import {router} from './../../stores/router.js';
 
 let list;
 let current = '';
@@ -11,7 +10,6 @@ examples.list.subscribe(l => list=l);
 router.subscribe( slugs => {
     current = (slugs[0]==='example' && slugs[1]) ? slugs[1] : '';
 });
-
 </script>
 
 

@@ -9,8 +9,10 @@ function filesStore(){
     let storage = [{name:DEFAULT,body:''}];
 
     const storageStore = storik(storage);
+    const metaStore = storik({});
     const currentStore = storik(storage[0]);
     const listStore = storik([DEFAULT]);
+    const modifiedStore = storik(false);
 
     function indexOfFile(name){
         return storage.findIndex(f => f.name===name);
@@ -55,6 +57,7 @@ function filesStore(){
     return {
         default: DEFAULT,
         subscribe: storageStore.subscribe,
+        modified:modifiedStore,
         current: {
             subscribe: currentStore.subscribe,
             set(name){
@@ -65,9 +68,20 @@ function filesStore(){
                 currentStore.update(file => {
                     saveFile(file.name,body);
                     storageStore.set(storage);
+                    modifiedStore.set(true);
                     file.body=body;
                     return file;
                 });
+            }
+        },
+        meta:{
+            subscribe: metaStore.subscribe,
+            get(param){
+                return !param ? metaStore.get() : metaStore.get()[param];
+            },
+            set: metaStore.set,
+            update(meta){
+                metaStore.update( m => Object.assign(m,meta));
             }
         },
         list: {
@@ -77,12 +91,14 @@ function filesStore(){
             if(fileExists(name)) throw new Error(`${name} already exists`);
             addFile(name,body);
             storageStore.set(storage);
+            modifiedStore.set(true);
             listStore.set(listFiles());
         },
         delete(name){
             if(!fileExists(name)) throw new Error(`${name} is not exists`);
             deleteFile(name);
             storageStore.set(storage);
+            modifiedStore.set(true);
             listStore.set(listFiles());
             currentStore.update( f => {
                 if(f.name === name) f = getFile(DEFAULT);
@@ -93,8 +109,8 @@ function filesStore(){
         rename(name,newname){
             if(!fileExists(name)) throw new Error(`${name} is not exists`);
             renameFile(name,newname);
-
             storageStore.set(storage);
+            modifiedStore.set(true);
             listStore.set(listFiles());
             currentStore.update( f => {
                 if(f.name === name) f.name = newname;
@@ -103,9 +119,11 @@ function filesStore(){
         },
         get(){return storage},
         touch(){storageStore.set(storage)},
-        set(files){
+        set(files,meta){
             storage = files;
             storageStore.set(storage);
+            metaStore.set(meta || {});
+            modifiedStore.set(false);
             currentStore.set(getFile(DEFAULT));
             listStore.set(listFiles());
         },

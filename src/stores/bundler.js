@@ -329,7 +329,7 @@ async function getMalinaVersions(){
 }
 
 function clear(){
-    console.clear();
+   // console.clear();
     console.log(`Rollup v.${rollup.VERSION}`);
     console.log(`MalinaJS v.${malina.version}`);
     console.log('------ REPL READY -------');    
