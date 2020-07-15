@@ -17,6 +17,7 @@ function sharesStore(){
             router.title('Loading shared code...');
             const share = await fetchShare(id);
             if(share){
+                files.set(share.files,share.meta);
                 if(
                     bundler.initialized.get() && 
                     share.meta.version && 
@@ -24,7 +25,6 @@ function sharesStore(){
                 ) {
                     bundler.malina.load(share.meta.version);
                 }
-                files.set(share.files,share.meta);
                 router.title(share.meta.title);
             }else{
                 const title = 'Oops! Shared code not found!';
