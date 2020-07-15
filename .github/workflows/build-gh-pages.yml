@@ -9,7 +9,7 @@ jobs:
     - uses: actions/checkout@master
 
     - name: Setup Node
-      uses: actions/setup-node
+      uses: actions/setup-node@v1
       with:
         node-version: 12.x
 
@@ -17,7 +17,7 @@ jobs:
       run: npm i && npm run build
 
     - name: Deploy
-      uses: peaceiris/actions-gh-pages
+      uses: peaceiris/actions-gh-pages@v3
       env:
         ACTIONS_DEPLOY_KEY: ${{ secrets.GITHUB_TOKEN }}
         PUBLISH_BRANCH: gh-pages
