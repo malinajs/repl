@@ -27,11 +27,11 @@
     async function showList(){
         if(showDropdown) return showDropdown=false;
         list = null;
+        showDropdown = true;
         list = (await bundler.malina.version.list()).sort( (v1,v2) => {
             const [a,b] = [v1,v2].map( v => v.replace(/\d+/g, i => +i+100000 ));
             return b.localeCompare(a);
         });
-        showDropdown = true;
     }
 
     function loadVersion(v){
