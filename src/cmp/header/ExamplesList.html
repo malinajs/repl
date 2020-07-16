@@ -16,7 +16,7 @@ router.subscribe( slugs => {
 {#if !list}
     Loading examples list...
 {:else}
-<select on:input={router.go('/example/'+$event.target.value)}>
+<select @input={router.go('/example/'+$event.target.value)}>
 {#each list as example}
     <option value={example.file} selected={current === example.file}>{example.name}</option>
 {/each}

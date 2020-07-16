@@ -17,7 +17,6 @@
     });
 
   
-
     let slug;
     let param;
     router.subscribe( slugs => {
@@ -48,10 +47,10 @@
 
 
 <div style="float: left">
-    <h1 @click={router.go('')}>MalinaJS</h1>
+    <h1 @click={router.go()}>Malina.js</h1>
     <div class="header">
         {#if slug === 'example' && !modified}
-            Select an example: <Examples></Examples>
+            Select an example: <Examples/>
         {:else}
             <span class="title" contenteditable="true" @blur={saveTitle($element.innerText)}>{title}</span>
             {#if modified}
@@ -62,7 +61,7 @@
     </div>
 </div>
 <div style="float: right">
-    <Github></Github>
+    <Github/>
 </div>
 
 
