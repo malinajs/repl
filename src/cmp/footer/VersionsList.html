@@ -1,4 +1,6 @@
 <script>
+    import Icon from './../icons/Icon.html';
+
     import {files} from './../../stores/files.js';
     import {bundler} from './../../stores/bundler.js';
 
@@ -45,11 +47,9 @@
 
 <div class="chooser">
     {#if ver}
-        <span @click:showList class:active={showDropdown}>
+        <span @click:showList >
             MalinaJS v.{ver}
-            <svg style="width:24px;height:24px;" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"></path>
-            </svg>
+            <Icon name="chevronDown" rotate={showDropdown ? -180 : 0} />
         </span>
     {:else}
         Loading compiler...
@@ -79,15 +79,6 @@
 
     span{
         cursor: pointer;
-    }
-
-    svg{
-        vertical-align: middle;
-        transition: .2s;
-    }
-
-    span.active svg{
-        transform: rotate(-180deg);
     }
 
     .dropdown{

@@ -1,5 +1,5 @@
 <script>
-    import Closeicon from './Closeicon.html';
+    import Icon from './../icons/Icon.html';
     import {files} from './../../stores/files.js';
 
     export let file;
@@ -69,7 +69,7 @@
             class:invalid={!isValid(newname)} 
             bind:value={newname} 
             @blur:saveFilename
-            @keydown:saveFilename|enter
+            @keydown|enter:saveFilename
             :inputWidthAction
         />
     {:else}
@@ -77,7 +77,7 @@
     {/if}
 
     {#if file !== files.default}
-        <span class="delete" @click={deleteFile(file)}><Closeicon></Closeicon></span>
+        <span class="delete" @click={deleteFile(file)}><Icon name="close" size="18"/></span>
     {/if}
 {:else}
     {file}
