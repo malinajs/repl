@@ -26,7 +26,7 @@
         <div class="tabs"><ResultTabs/></div>
         <div class="code">
             {#if !initialized}
-                <p>Loading Bundler and Malina compiler...</p>
+                <p>Loading Malina.js compiler...</p>
             {:else}
                 {#if mode === 'application'}<Application/>{/if}
                 {#if mode === 'component'  }<Component/>{/if}

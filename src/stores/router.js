@@ -29,7 +29,7 @@ function routerStore(){
             num === undefined ? slugs.get() : slugs.get()[num];
         },
         title(text){
-            window.document.title = text ? 'MalinaJS: '+text : 'MalinaJS';
+            window.document.title = text ? 'Malina.js: '+text : 'Malina.js';
             document
                 .querySelectorAll("meta[property='og:title'],meta[name='twitter:title']")
                 .forEach( el => el.setAttribute('content',window.document.title));
