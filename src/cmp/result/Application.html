@@ -8,6 +8,7 @@
     let initialized = false;
 
     let un = ()=>{};
+    let div;
 
     // action for setting up the code dispatcher to the iframe
     function init_iframe({on,dispatch,frame_id}) {
@@ -22,7 +23,7 @@
     function onDestroy(){un()};
 </script>
 
-<div>
+<div #div>
     <iframe
         :frameCommunicator={init_iframe}
         title="Result"
