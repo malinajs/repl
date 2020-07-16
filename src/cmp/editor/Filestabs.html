@@ -1,4 +1,5 @@
 <script>
+    import Icon from './../icons/Icon.html';
     import Filetab from './Filetab.html';
     import {files} from './../../stores/files.js';
 
@@ -24,7 +25,7 @@
     {#each list as tab}
     <Filetab file={tab}/>
     {/each}
-    <button class="add" title="Add component" @click:addFile>+</button>
+    <button class="add" title="Add component" @click:addFile><Icon name="plus" size="20"/></button>
 </div>
 
 <style>
