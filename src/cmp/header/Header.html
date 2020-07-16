@@ -47,7 +47,10 @@
 
 
 <div style="float: left">
-    <h1 @click={router.go()}>Malina.js</h1>
+    <h1 @click={router.go()}>
+        <img src="branding/malinajs_logo_notext.svg"/>
+        malina.js
+    </h1>
     <div class="header">
         {#if slug === 'example' && !modified}
             Select an example: <Examples/>
@@ -68,10 +71,20 @@
 <style>
     h1{
         cursor: pointer;
+        line-height: 35px;
+        font-weight: 300;
     }
 
-    .header,h1{
+    img{
+        height: 30px;
+        margin: 0 5px 5px 10px;
+        vertical-align: middle;
+    }
+
+    .header{
         margin-left: 10px;
+        height: 55px;
+        line-height: 55px;
     }
 
     .title{
