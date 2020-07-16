@@ -24,7 +24,8 @@
         param = slugs[1];
     });
 
-    function saveTitle(newtitle){
+    function saveTitle(e){
+        const newtitle = e.target.innerText;
         if(newtitle !== title) {
             modified = true;
             files.meta.update({title:newtitle});
@@ -55,10 +56,10 @@
         {#if slug === 'example' && !modified}
             Select an example: <Examples/>
         {:else}
-            <span class="title" contenteditable="true" @blur={saveTitle($element.innerText)}>{title}</span>
+            <span class="title" contenteditable="true" @blur:saveTitle>{title}</span>
             {#if modified}
-                <button @click={saveShare()}>{saving ? 'Saving...' : 'Share'}</button>
-                <button @click={reset()}>Reset</button>
+                <button @click:saveShare>{saving ? 'Saving...' : 'Share'}</button>
+                <button @click:reset>Reset</button>
             {/if}
         {/if}
     </div>

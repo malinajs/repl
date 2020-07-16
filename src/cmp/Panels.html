@@ -40,9 +40,9 @@
 </script>
 
 <div class="panels">
-    <div class="left" #dede style="width: {percent}%"><Editor/></div>
-    <div class="devider" use:drag class:dragging={dragging}></div>
-    <div class="right" style="width: {100-percent}%"><Result/></div>
+    <div class="left" style:width={percent + '%'}><Editor/></div>
+    <div class="devider" :drag class:dragging></div>
+    <div class="right" style:width={(100-percent) + '%'}><Result/></div>
 </div>
 
 <style>

@@ -56,24 +56,24 @@
     }
 
     function isValid(name){
-        if(name === file) return true;
+        if(newname === file) return true;
         if(!/\.(html|js|json)$/.test(name)) return false;
         return !files.exists(name);
     }
 </script>
 
-<div class:active={active} @click={setCurrentFile()} title="./{file}">
+<div class:active @click:setCurrentFile title="./{file}">
 {#if active}
     {#if editing}
         <input 
             class:invalid={!isValid(newname)} 
             bind:value={newname} 
-            @blur={saveFilename()}
-            @keydown|enter={saveFilename()}
-            use:inputWidthAction
+            @blur:saveFilename
+            @keydown:saveFilename|enter
+            :inputWidthAction
         />
     {:else}
-        <span @click={setEditing()}>{file}</span>
+        <span @click:setEditing>{file}</span>
     {/if}
 
     {#if file !== files.default}
