@@ -30,6 +30,9 @@ function routerStore(){
         },
         title(text){
             window.document.title = text ? 'MalinaJS: '+text : 'MalinaJS';
+            document
+                .querySelectorAll("meta[property='og:title'],meta[name='twitter:title']")
+                .forEach( el => el.setAttribute('content',window.document.title));
         }
     }
 }
