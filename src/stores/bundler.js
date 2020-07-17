@@ -8,15 +8,8 @@ export let bundler = bundleStore();
 
 
 const REPO = 'https://unpkg.com';
-
-const DEPS = [
-    ['rollup','rollup/dist/rollup.browser.js'],
-    ['cjs2es','cjs2es'],
-    ['acorn','acorn'],
-    ['astring','astring/dist/astring.min.js'],
-    ['csstree','css-tree/dist/csstree.min.js','css-tree']
-]
-
+const DEPS_REPO = 'modules';
+const DEPS = ['rollup','acorn','astring','csstree','cjs2es'];
 
 function bundleStore(){
     const initialized = storik(false,init);
@@ -34,13 +27,13 @@ function bundleStore(){
 
         for(let dep of DEPS){
             try {
-                ( await download_module(`${REPO}/${dep[1]}`) )();
-                if(dep[2]) window[dep[2]] = window[dep[0]];
+                ( await download_module(`${DEPS_REPO}/${dep}.js`) )(); 
             } catch (e) {
                 console.error(e);
-                throw new Error(`[REPL]: Can't load dependency: ${dep[0]}`);
+                throw new Error(`[REPL]: Can't load dependency: ${dep}`);
             }
         }
+        window['css-tree'] = window['csstree'];
         await load_malina(files.meta.get('version'));
     }
 
@@ -51,7 +44,7 @@ function bundleStore(){
         delete window['malina'];
         malinaVer.set(null);
         try {
-            ( await download_module(`${REPO}/malinajs@${ver}`) )();
+            ( await download_module(`${DEPS_REPO}/malinajs/${ver}/malina.js`) )();
         } catch (e) {
             initialized.set(false);
             console.error(e);
@@ -63,10 +56,10 @@ function bundleStore(){
 
     // Check that all dependencies are loaded
     async function check_dependencies(){
-        for(let dep of DEPS.concat([['malina','malinajs']])){
-            if(!window[dep[0]]){
+        for(let dep of DEPS.concat(['malina'])){
+            if(!window[dep]){
                 initialized.set(false);
-                throw new Error(`[REPL]: Dependency not initialized: ${dep[0]}`);
+                throw new Error(`[REPL]: Dependency not initialized: ${dep}`);
             }
         }
         initialized.set(true);
@@ -212,6 +205,9 @@ function module_resolver_plugin(){
 
             if(id.startsWith('./') && /^https?:\/\//.test(importer)) return new URL(id,addSlash(importer)).href;
 
+            // MalinaJS Libs
+            if(id.startsWith('malinajs/')) return `${DEPS_REPO}/malinajs/${malina ? malina.version : 'latest'}/${id.slice(9)}`;
+            
             // From UNPKG
             return await getModuleURL(`${REPO}/${id}`);
         }
@@ -240,7 +236,7 @@ function download_plugin() {
         name: 'rollup_plugin_download',
 
         async load(id) { 
-            if(!/^https?:\/\//.test(id)) return null;
+            if(!/^https?:\/\//.test(id) && !id.startsWith(`${DEPS_REPO}/malinajs`)) return null;
 
             try {
                 const result = await cash_or_fetch(id);
@@ -318,9 +314,8 @@ let verCash;
 async function getMalinaVersions(){
     if(!verCash){
         try{
-            const html = await cash_or_fetch(`${REPO}/browse/malinajs/`);
-            const json = html.body.match(/"availableVersions":(\[[^\]]+\])/);
-            verCash = json ? JSON.parse(json[1]) : [];
+            const resp = await cash_or_fetch(`${DEPS_REPO}/malinajs/versions.json`);
+            verCash = resp.ok ? JSON.parse(resp.body) : [];
         }catch(e){
             console.error(e);
             return [];

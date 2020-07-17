@@ -53,7 +53,7 @@ async function fetchMalina(){
     
     
     console.log(`[${NAME}] Copy MalinaJS latest version`);
-    copyMalina(LATEST_SRC_DIR,path.join(MDIR));
+    copyMalina(LATEST_SRC_DIR,path.join(MDIR,'latest'));
 
     console.log(`[${NAME}] Fetch MalinaJS versions list...`);
     let versions = JSON.parse( await exec('npm view malinajs versions --json') );

@@ -10,6 +10,7 @@
         "@rollup/plugin-node-resolve": "^8.1.0",
         "acorn": "^7.3.1",
         "astring": "^1.4.3",
+        "cjs2es": "^1.1.0",
         "codejar": "^3.1.0",
         "fs-extra": "^9.0.1",
         "highlight.js": "^10.1.1",
