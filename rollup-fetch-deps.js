@@ -11,7 +11,8 @@ const DEPS = [
     ['rollup/dist/rollup.browser.js','rollup.js',false],
     ['acorn/dist/acorn.js','acorn.js',true],
     ['astring/dist/astring.min.js','astring.js',false],
-    ['css-tree/dist/csstree.min.js','css-tree.js',false],
+    ['css-tree/dist/csstree.min.js','csstree.js',false],
+    ['cjs2es/dist/cjs2es.mjs','cjs2es.js',false]
 ]
 
 let once = false;
