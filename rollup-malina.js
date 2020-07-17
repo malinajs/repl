@@ -1,7 +1,7 @@
 
-const malina = require('malinajs/malina.js')
+const malinajs = require('malinajs/malina.js')
 
-export default function malinaRollup(option = {}) {
+export default function malina(option = {}) {
     return {
         name: 'malina',
         transform(code, id) {
@@ -13,7 +13,7 @@ export default function malinaRollup(option = {}) {
                 name: id.match(/([^/]+).html$/)[1]
             }, option);
             try {
-                result = malina.compile(code, opts);
+                result = malinajs.compile(code, opts);
             } catch (e) {
                 if(e.details) console.log(e.details);
                 throw e;

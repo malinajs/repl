@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const watch = require('node-watch');
 
+const NAME = 'examples-generator';
+
 const DIR = path.join('src','examples');
 const OUTPUT = path.join('public','examples');
 
@@ -23,7 +25,7 @@ function generateExamples(){
 
     if(!fs.existsSync(OUTPUT)) {fs.mkdirSync(OUTPUT)};
 
-    console.log(`Building examples...`);
+    console.log(`[${NAME}] Building examples...`);
 
     const index = [];
     const list = fs.readdirSync(DIR);
@@ -31,7 +33,7 @@ function generateExamples(){
         const exPath = path.join(DIR,filename);
         if(fs.lstatSync(exPath).isDirectory()){
             if(!fs.existsSync(path.join(exPath,'App.html'))) {
-                console.log(`Skipping example ${filename}: No App.html file`);
+                console.log(`[${NAME}] Skipping example ${filename}: No App.html file`);
                 continue;
             }
 
@@ -52,7 +54,7 @@ function generateExamples(){
 
             fs.writeFileSync(path.join(OUTPUT,`${filename}.json`),JSON.stringify(result));
             index.push({name,file:filename})
-            console.log(` - ${name} -> ${filename}.json`);
+            console.log(`[${NAME}]  - ${name} -> ${filename}.json`);
         }
     }
     fs.writeFileSync(path.join(OUTPUT,`index.json`),JSON.stringify(index));

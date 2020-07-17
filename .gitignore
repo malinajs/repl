@@ -1,4 +1,5 @@
 Makefile
 node_modules/
+public/modules
 public/examples
 public/bundle.js

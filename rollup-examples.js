@@ -2,7 +2,7 @@ import child_process  from 'child_process';
 
 let started = false;
 
-export default function examplesRollup(production) {
+export default function examples(production) {
     
     return {
         name: 'examples',

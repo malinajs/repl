@@ -4,8 +4,9 @@ import serve from 'rollup-plugin-serve';
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import analyze from 'rollup-plugin-analyzer';
-import malinaRollup from './malina-rollup';
-import examplesRollup from './examples-rollup';
+import malina from './rollup-malina';
+import fetchDeps from './rollup-fetch-deps';
+import examples from './rollup-examples';
 
 const host = process.env.HOST || 'localhost';
 const port = process.env.PORT || 7000;
@@ -20,12 +21,13 @@ export default {
     plugins: [
         resolve(),
         commonjs(),
-        malinaRollup({
+        malina({
             hideLabel: production,
         }),
         !production && serve({contentBase: 'public', port, host}),
         !production && livereload({watch: 'public'}),
-        examplesRollup(production),
+        examples(production),
+        fetchDeps(),
         production && terser(),
         production && analyze()
     ],
