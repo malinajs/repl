@@ -70,7 +70,7 @@
             bind:value={newname} 
             @blur:saveFilename
             @keydown|enter:saveFilename
-            :inputWidthAction
+            *inputWidthAction
         />
     {:else}
         <span @click:setEditing>{file}</span>
