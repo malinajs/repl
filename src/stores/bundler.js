@@ -333,17 +333,18 @@ function clear(){
 
 
 function cooldown(callback,timeout){
+    let context;
+
     let inCooldown = false;
     let wasRequested = false;
-
-    timeout = timeout || 500;
-
+        
     return function(){
+        context = arguments;
         if(inCooldown) return wasRequested = true;
-        callback.apply(null,arguments);
+        callback.apply(null,context);
         inCooldown = setTimeout(()=>{
-            if(wasRequested) callback.apply(null,arguments);
+            if(wasRequested) callback.apply(null,context);
             inCooldown = wasRequested = false;
-        }, timeout);
+        }, timeout || 500);
     }
 }
