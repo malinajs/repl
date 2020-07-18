@@ -1,5 +1,6 @@
 const child_process = require('child_process');
 const fs = require('fs-extra');
+const https = require('https');
 const path = require('path');
 
 const NAME = 'rollup-fetch-deps';
@@ -62,6 +63,10 @@ async function fetchMalina(){
 
     console.log(`[${NAME}] Downloading all MalinaJS versions...`);
 
+    console.log(`[${NAME}] Downloading archive from REPL repository...`);
+    await downloadMalinaFromRepo();
+
+    console.log(`[${NAME}] Downloading missing versions from NPM...`);
     
     for(let ver of versions){
         const dest_dir = path.join(MDIR,ver)
@@ -93,6 +98,30 @@ async function copyMalina(src_dir,dest_dir){
     }
 }
 
+async function downloadMalinaFromRepo(){
+    const url = 'https://github.com/malinajs/repl/archive/gh-pages.tar.gz';
+    const tarball = `malinajs-archive.tar.tgz`;
+    const tarball_path = path.join(DIR,tarball);
+    const tarball_dir = path.join(DIR,'repl-gh-pages');
+    const archive_dir = path.join(tarball_dir,'modules','malinajs');
+    const MDIR = path.join(DIR,'malinajs');
+
+    await downloadFile(url,tarball_path);
+    if(!fs.existsSync(tarball_path))  throw new Error(`[${NAME}] Error downloading malinajs archive from repo!`);
+    await exec(`tar -xzf ${tarball}`,DIR);
+    fs.unlinkSync(tarball_path);
+    if(fs.existsSync(archive_dir)) {
+       const files = fs.readdirSync(archive_dir);
+       for(let file of files){
+            if(!file.match(/^\d+\.\d+\.\d+$/)) continue;
+            if(!fs.existsSync(path.join(MDIR,file))){
+                fs.copySync(path.join(archive_dir,file),path.join(MDIR,file));
+            }
+       }
+    }
+    fs.removeSync(tarball_dir);
+}
+
 async function downloadMalina(ver,dest_dir){
     const tarball = `malinajs-${ver}.tgz`;
     const tarball_path = path.join(DIR,tarball);
@@ -113,4 +142,24 @@ function exec(command,cwd){
             return resolve(stdout);
         })
     });
+}
+
+function downloadFile(url, dest) {
+	return new Promise((fulfil, reject) => {
+		https
+			.get(url, response => {
+				const code = response.statusCode;
+				if (code >= 400) {
+					reject({ code, message: response.statusMessage });
+				} else if (code >= 300) {
+					downloadFile(response.headers.location, dest).then(fulfil, reject);
+				} else {
+					response
+                        .pipe(fs.createWriteStream(dest))
+						.on('finish', () => fulfil())
+						.on('error', reject);
+				}
+			})
+			.on('error', reject);
+	});
 }
