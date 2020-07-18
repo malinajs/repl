@@ -170,6 +170,7 @@ async function bundle(files){
             input: "./App.html",
             external: false,
             inlineDynamicImports: true,
+            treeshake: false,
             plugins: [
                 module_resolver_plugin(),
                 component_plugin(files),
