@@ -817,7 +817,7 @@
             let rx = e.match(/^\{(.*)\}$/);
             assert(rx, 'Wrong expression: ' + e);
             return rx[1];
-        }    
+        }
         propList.forEach(prop => {
             let name = prop.name;
             let value = prop.value;
@@ -866,12 +866,12 @@
                 }
                 return;
             }
-            assert(value, 'Empty property');
-            if(name.startsWith('bind:')) {
-                let inner = name.substring(5);
-                let rx = value.match(/^\{(.*)\}$/);
-                assert(rx, 'Wrong property: ' + prop.content);
-                let outer = rx[1];
+            if(name[0] == ':' || name.startsWith('bind:')) {
+                let inner, outer;
+                if(name[0] == ':') inner = name.substring(1);
+                else inner = name.substring(5);
+                if(value) outer = unwrapExp(value);
+                else outer = inner;
                 head.push(`props.${inner} = ${outer};`);
                 binds.push(`
                 if('${inner}' in $component) {
@@ -884,8 +884,11 @@
                         ${outer} = value; $$apply();
                     }, {ro: true, cmp: $$compareDeep});
                 } else console.error("Component ${node.name} doesn't have prop ${inner}");
-        `);
-            } else if(value.indexOf('{') >= 0) {
+            `);
+                return;
+            }
+            assert(value, 'Empty property');
+            if(value.indexOf('{') >= 0) {
                 let exp = this.parseText(value);
                 let fname = 'pf' + (this.uniqIndex++);
                 let valueName = 'v' + (this.uniqIndex++);
@@ -1212,8 +1215,7 @@
                 $ctx.reindex = function(i) { $index = i; };
             };
 
-            let parentNode = top.parentNode;
-            let itemTemplate = $$htmlToFragment(\`${this.Q(itemData.tpl)}\`);
+            let itemTemplate = $$htmlToFragment(\`${this.Q(itemData.tpl)}\`, true);
 
             let mapping = new Map();
             $watch($cd, () => (${arrayName}), (array) => {
@@ -1235,6 +1237,7 @@
                     arrayAsSet.clear();
                 }
 
+                let parentNode = top.parentNode;
                 let i, item, next_ctx, el, ctx;
                 for(i=0;i<array.length;i++) {
                     item = array[i];
