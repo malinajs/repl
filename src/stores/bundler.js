@@ -95,7 +95,7 @@ function bundleStore(){
         clear();
         try {
             let code = await compile(file.body,file.name);
-            output.set( astring.generate( acorn.parse(code, {sourceType: 'module'}) ) );
+            output.set( astring.generate( acorn.parse(( await treeshake(code) ), {sourceType: 'module'}) ) );
         }catch(e){
             errors.set(e.message);
         }
@@ -189,6 +189,25 @@ async function bundle(files){
         throw err;
     }
 
+}
+
+// ES code treeshaking
+async function treeshake(code){
+    if(!rollup) throw new Error("[REPL]: Rollup didn't initialized yet");
+    let bundle = await rollup.rollup({
+        input: "./main.js",
+        external: [
+        'malinajs/runtime.js'
+        ],
+        plugins: [{
+            name: 'plugin',
+            async resolveId(id) {return id},
+            async load(id) {return id === './main.js' ? code : null}
+        }],
+        onwarn: ()=>{}
+    });
+
+    return (await bundle.generate({format: "es"})).output[0].code;
 }
 
 // Bundler's plugins
