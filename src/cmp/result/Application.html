@@ -11,12 +11,12 @@
     let div;
 
     // action for setting up the code dispatcher to the iframe
-    function init_iframe({on,dispatch,frame_id}) {
+    function init_iframe({on,emit,frame_id}) {
         on('error',e => errors.set(e));
         on('click',e => div.click());
         
         un = bundler.subscribe(code => {
-            if(bundler.mode.get() === 'application') dispatch('bundle',code);
+            if(bundler.mode.get() === 'application') emit('bundle',code);
         });
     }   
         

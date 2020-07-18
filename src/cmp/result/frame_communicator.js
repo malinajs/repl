@@ -19,14 +19,14 @@ export function frameCommunicator(iframe,callback){
         listeners = listeners.filter(lnr => (lnr.event !== event || lnr.callback !== callback));
     }
 
-    const dispatch = (event,data) => {
+    const emit = (event,data) => {
         iframe.contentWindow.postMessage({event,data,frame_id}, "*");
     }
 
     window.addEventListener('message', message_handler);
     iframe.addEventListener('load',()=> {
-        dispatch('init');
-        callback({on,off,dispatch});
+        emit('init');
+        callback({on,off,emit});
     }); 
 
     return {
@@ -36,7 +36,7 @@ export function frameCommunicator(iframe,callback){
         },
         update(new_callback){
             listeners = [];
-            new_callback({on,off,dispatch});
+            new_callback({on,off,emit});
         }
     }
 }
@@ -71,7 +71,7 @@ function frame_inner(){
         listeners.push({event,callback});
     }
 
-    const dispatch = (event,data) => {
+    const emit = (event,data) => {
         source.postMessage({event,data,frame_id}, "*");
     }
 
@@ -84,11 +84,11 @@ function frame_inner(){
     });
 
     window.addEventListener('error', (e) => {
-        dispatch('error',`[Application] ${e.message.replace(/^[a-z0-9 ]+?: /i,'')}`);
+        emit('error',`[Application] ${e.message.replace(/^[a-z0-9 ]+?: /i,'')}`);
     });
 
     window.addEventListener('click', (e) => {
-        dispatch('click');
+        emit('click');
     });
 
     on('bundle',bundle => {
