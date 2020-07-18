@@ -197,9 +197,7 @@ async function treeshake(code){
     if(!rollup) throw new Error("[REPL]: Rollup didn't initialized yet");
     let bundle = await rollup.rollup({
         input: "./main.js",
-        external: [
-        'malinajs/runtime.js'
-        ],
+        external: ()=>true,
         plugins: [{
             name: 'plugin',
             async resolveId(id) {return id},
