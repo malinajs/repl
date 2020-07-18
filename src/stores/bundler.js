@@ -94,7 +94,7 @@ function bundleStore(){
         errors.set(null);
         clear();
         try {
-            let code = compile(file.body,file.name);
+            let code = await compile(file.body,file.name);
             output.set( astring.generate( acorn.parse(code, {sourceType: 'module'}) ) );
         }catch(e){
             errors.set(e.message);
@@ -143,7 +143,7 @@ function bundleStore(){
 
 
 // MalinaJS Compiler
-function compile(code,filename){
+async function compile(code,filename){
 
     let opts = {
         exportDefault: true,
@@ -152,7 +152,7 @@ function compile(code,filename){
     }
 
     try {
-        return malina.compile(code, opts);
+        return await malina.compile(code, opts);
     } catch (e) {
         console.error(e);
         throw new Error(`[MalinaJS] Compile error: ${e.message}: ${e.details}`);
@@ -262,7 +262,7 @@ function malina_plugin() {
 
         async transform(code, id) {
             if(!options.extensions.find(ext => id.endsWith(ext))) return null;
-            return {code: compile(code,id)};
+            return {code: await compile(code,id)};
         }
     }
 }
