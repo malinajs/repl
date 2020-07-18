@@ -575,9 +575,13 @@
         let imports = [];
         let resultBody = [];
         let rootVariables = {};
+        let rootFunctions = {};
         ast.body.forEach(n => {
-            if(n.type !== 'VariableDeclaration') return;
-            n.declarations.forEach(i => rootVariables[i.id.name] = true);
+            if(n.type == 'FunctionDeclaration') {
+                rootFunctions[n.id.name] = true;
+            } else if(n.type == 'VariableDeclaration') {
+                n.declarations.forEach(i => rootVariables[i.id.name] = true);
+            }
         });
 
         ast.body.forEach(n => {
@@ -628,48 +632,8 @@
             }
         });
 
-        resultBody.unshift({
-            type: 'IfStatement',
-            test: {
-                type: 'UnaryExpression',
-                operator: '!',
-                prefix: true,
-                argument: {
-                    type: 'MemberExpression',
-                    object: {
-                        type: 'Identifier',
-                        name: '$option'
-                    },
-                    property: {
-                        type: 'Identifier',
-                        name: 'props'
-                    }
-                }
-            },
-            consequent: {
-                type: 'ExpressionStatement',
-                expression: {
-                    type: 'AssignmentExpression',
-                    operator: '=',
-                    left: {
-                        type: 'MemberExpression',
-                        object: {
-                            type: 'Identifier',
-                            name: '$option'
-                        },
-                        property: {
-                            type: 'Identifier',
-                            name: 'props'
-                        }
-                    },
-                    right: {
-                        type: 'ObjectExpression',
-                        properties: []
-                    }
-                }
-            }
-        });
-        resultBody.unshift({
+        let header = [];
+        header.push({
             type: 'IfStatement',
             test: {
                 type: 'BinaryExpression',
@@ -687,6 +651,12 @@
                 }
             }
         });
+        if(!rootFunctions.$emit) header.push(makeEmitter());
+        if(result.props.length) header.push(ensureOptionProps());
+        while(header.length) {
+            resultBody.unshift(header.pop());
+        }
+
         let widgetFunc = {
             body: {
                 type: 'BlockStatement',
@@ -778,10 +748,76 @@
         };
     }
 
+    function ensureOptionProps() {
+        return {
+            type: 'IfStatement',
+            test: {
+                type: 'UnaryExpression',
+                operator: '!',
+                prefix: true,
+                argument: {
+                    type: 'MemberExpression',
+                    object: {
+                        type: 'Identifier',
+                        name: '$option'
+                    },
+                    property: {
+                        type: 'Identifier',
+                        name: 'props'
+                    }
+                }
+            },
+            consequent: {
+                type: 'ExpressionStatement',
+                expression: {
+                    type: 'AssignmentExpression',
+                    operator: '=',
+                    left: {
+                        type: 'MemberExpression',
+                        object: {
+                            type: 'Identifier',
+                            name: '$option'
+                        },
+                        property: {
+                            type: 'Identifier',
+                            name: 'props'
+                        }
+                    },
+                    right: {
+                        type: 'ObjectExpression',
+                        properties: []
+                    }
+                }
+            }
+        };
+    }
+    function makeEmitter() {
+        return {
+            type: 'VariableDeclaration',
+            declarations: [{
+                type: 'VariableDeclarator',
+                id: {type: 'Identifier', name: '$emit'},
+                init: {
+                    type: 'CallExpression',
+                    callee: {type: 'Identifier', name: '$makeEmitter'},
+                    arguments: [{type: 'Identifier', name: '$option'}]
+                }
+            }],
+            kind: 'const'
+        };
+    }
+
     function makeComponent(node, makeEl) {
         let propList = parseElement(node.openTag);
         let binds = [];
-        let props = [];
+        let head = [];
+        
+        function unwrapExp(e) {
+            assert(e, 'Empty expression');
+            let rx = e.match(/^\{(.*)\}$/);
+            assert(rx, 'Wrong expression: ' + e);
+            return rx[1];
+        }    
         propList.forEach(prop => {
             let name = prop.name;
             let value = prop.value;
@@ -790,14 +826,45 @@
                 let name = name.substring(1);
                 binds.push(`${name} = $component;`);
                 return;
-            }
-            if(name[0] == '{') {
-                assert(!value, 'Wrong prop');
-                let rx = name.match(/^\{(.*)\}$/);
-                assert(rx, 'Wrong prop');
+            } else if(name[0] == '{') {
                 value = name;
-                name = rx[1];
+                name = unwrapExp(name);
                 assert(detectExpressionType(name) == 'identifier', 'Wrong prop');
+            } else if(name[0] == '@' || name.startsWith('on:')) {
+                if(name[0] == '@') name = name.substring(1);
+                else name = name.substring(3);
+                let arg = name.split(/[\|:]/);
+                let exp, handler, isFunc, event = arg.shift();
+                assert(event);
+
+                if(value) exp = unwrapExp(value);
+                else {
+                    if(!arg.length) {
+                        // forwarding
+                        head.push(`events.${event} = $option.events && $option.events.${event};`);
+                        return;
+                    }
+                    handler = arg.pop();
+                }
+                assert(arg.length == 0);
+                assert(!handler ^ !exp);
+
+                if(exp) {
+                    let type = detectExpressionType(exp);
+                    if(type == 'identifier') {
+                        handler = exp;
+                        exp = null;
+                    } else isFunc = type == 'function';
+                }
+
+                if(isFunc) {
+                    head.push(`events.${event} = ${exp};`);
+                } else if(handler) {
+                    head.push(`events.${event} = ${handler};`);
+                } else {
+                    head.push(`events.${event} = ($event) => {${this.Q(exp)}};`);
+                }
+                return;
             }
             assert(value, 'Empty property');
             if(name.startsWith('bind:')) {
@@ -805,7 +872,7 @@
                 let rx = value.match(/^\{(.*)\}$/);
                 assert(rx, 'Wrong property: ' + prop.content);
                 let outer = rx[1];
-                props.push(`props.${inner} = ${outer};`);
+                head.push(`props.${inner} = ${outer};`);
                 binds.push(`
                 if('${inner}' in $component) {
                     let $$_w0 = $watch($cd, () => (${outer}), (value) => {
@@ -822,7 +889,7 @@
                 let exp = this.parseText(value);
                 let fname = 'pf' + (this.uniqIndex++);
                 let valueName = 'v' + (this.uniqIndex++);
-                props.push(`
+                head.push(`
                 let ${fname} = () => (${exp});
                 let ${valueName} = ${fname}()
                 props.${name} = ${valueName};
@@ -833,7 +900,7 @@
                 } else console.error("Component ${node.name} doesn't have prop ${name}");
             `);
             } else {
-                props.push(`props.${name} = \`${this.Q(value)}\``);
+                head.push(`props.${name} = \`${this.Q(value)}\``);
             }
         });
 
@@ -841,8 +908,9 @@
             bind:`
         {
             let props = {};
-            ${props.join('\n')};
-            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props});
+            let events = {};
+            ${head.join('\n')};
+            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, events});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 ${binds.join('\n')};
@@ -1271,13 +1339,12 @@
         runtime.push(bb.source);
         runtime.push(`
         const rootTemplate = $$htmlToFragment(\`${Q$1(rootTemplate)}\`);
+        ${bb.name}($cd, rootTemplate);
         if($option.afterElement) {
-            ${bb.name}($cd, rootTemplate);
             $element.parentNode.insertBefore(rootTemplate, $element.nextSibling);
         } else {
             $element.innerHTML = '';
             $element.appendChild(rootTemplate);
-            ${bb.name}($cd, $element);
         }
     `);
         if(script.onMount) runtime.push(`
@@ -1323,27 +1390,20 @@
         let tpl = [];
         let lvl = [];
         let binds = [];
-        let targets = [];
-        let targetMap = {};
+        let DN = {};
 
         const go = (level, data) => {
             let index = 0;
             const setLvl = () => {lvl[level] = index++;};
 
             const getElementName = () => {
-                let l = lvl;
-                let name = '$parentElement';
-                l.forEach(n => {
-                    name += `[$$childNodes][${n}]`;
+                let d = DN;
+                lvl.forEach(n => {
+                    if(d[n] == null) d[n] = {};
+                    d = d[n];
                 });
-
-                let tname = targetMap[name];
-                if(!tname) {
-                    tname = `el${this.uniqIndex++}`;
-                    targets.push(`let ${tname} = ${name};`);
-                    targetMap[name] = tname;
-                }
-                return tname;
+                if(!d.name) d.name = `el${this.uniqIndex++}`;
+                return d.name;
             };
 
             let n, body = data.body.filter(n => n.type != 'script' && n.type != 'style');
@@ -1461,11 +1521,26 @@
         go(0, data);
 
         let source = [];
-
         let buildName = '$$build' + (this.uniqIndex++);
         tpl = this.Q(tpl.join(''));
         source.push(`function ${buildName}($cd, $parentElement) {\n`);
-        source.push(targets.join('\n'));
+
+        const buildNodes = (d, lvl) => {
+            let keys = Object.keys(d).filter(k => k != 'name');
+            if(keys.length > 1 && !d.name) d.name = 'el' + (this.uniqIndex++);
+
+            if(d.name) {
+                let line = lvl.join('');
+                source.push(`const ${d.name} = ${line};\n`);
+                lvl = [d.name];
+            }
+
+            keys.forEach(k => {
+                buildNodes(d[k], lvl.concat([`[$$childNodes][${k}]`]));
+            });
+        };
+        buildNodes(DN, ['$parentElement']);
+
         source.push(binds.join('\n'));
         source.push(`};`);
 
@@ -3475,7 +3550,7 @@
         return result;
     };
 
-    const version = '0.5.8';
+    const version = 'unstable';
 
     function compile(src, config = {}) {
         if(!config.name) config.name = 'widget';
@@ -3494,11 +3569,11 @@
 
         const runtime = buildRuntime(data, script, css, config);
 
-        let htmlFragment = config.hideLabel? '$$htmlToFragmentClean as $$htmlToFragment':'$$htmlToFragment';
+        let htmlFragment = config.hideLabel ? '$$htmlToFragmentClean as $$htmlToFragment' : '$$htmlToFragment';
         let code = `
         import {
             ${htmlFragment}, $$removeItem, $$childNodes, $watch, $ChangeDetector, $$removeElements,
-            $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock
+            $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter
         } from 'malinajs/runtime.js';
     `;
         code += script.code.split('$$runtime()').join(runtime);
