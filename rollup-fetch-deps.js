@@ -50,11 +50,18 @@ function fetchDependencies(){
 
 async function fetchMalina(){
     const MDIR = path.join(DIR,'malinajs');
-    const LATEST_SRC_DIR = path.join('node_modules','malinajs');
+    const UNSTABLE_SRC_DIR = path.join('node_modules','malinajs');
+    const LATEST_DIR = path.join(MDIR,'latest');
+    const UNSTABLE_DIR = path.join(MDIR,'unstable');
+    const UNSTABLE_MALINA = path.join(UNSTABLE_DIR,'malina.js');
     
     
-    console.log(`[${NAME}] Copy MalinaJS latest version`);
-    copyMalina(LATEST_SRC_DIR,path.join(MDIR,'latest'));
+    console.log(`[${NAME}] Copy MalinaJS unstable version`);
+    copyMalina(UNSTABLE_SRC_DIR,UNSTABLE_DIR);
+    fs.writeFileSync(UNSTABLE_MALINA,fs.readFileSync(UNSTABLE_MALINA,'utf-8').replace(
+        /const version \= \'\d+\.\d+\.\d+\'\;/g,
+        "const version = 'unstable';"
+    ));
 
     console.log(`[${NAME}] Fetch MalinaJS versions list...`);
     let versions = JSON.parse( await exec('npm view malinajs versions --json') );
@@ -63,10 +70,14 @@ async function fetchMalina(){
 
     console.log(`[${NAME}] Downloading all MalinaJS versions...`);
 
-    console.log(`[${NAME}] Downloading archive from REPL repository...`);
-    await downloadMalinaFromRepo();
+    if( versions.filter(v => !fs.existsSync(path.join(MDIR,v))).length > 3){
+        console.log(`[${NAME}] Downloading archive from REPL repository...`);
+        await downloadMalinaFromRepo();
+    }
+    
 
     console.log(`[${NAME}] Downloading missing versions from NPM...`);
+    
     
     for(let ver of versions){
         const dest_dir = path.join(MDIR,ver)
@@ -78,6 +89,9 @@ async function fetchMalina(){
             console.log(`[${NAME}] - Skipped v.${ver}`);
         }
     }
+
+    fs.removeSync(LATEST_DIR);
+    fs.copySync(path.join(MDIR,versions.pop()),LATEST_DIR);
 }
 
 async function copyMalina(src_dir,dest_dir){

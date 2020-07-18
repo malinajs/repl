@@ -256,7 +256,6 @@ function malina_plugin() {
         extensions: ['.html']
     }
 
-
     return {
         name: 'rollup_plugin_malina',
 
