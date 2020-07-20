@@ -102,9 +102,10 @@ function frame_inner(){
 
     on('bundle',bundle => {
         if(!bundle) return;
+        if(window.app) window.app.destroy();
         document.head.innerText = '';
         document.body.innerText = '';
         const App = new Function(bundle+'; return Component.default;')();
-        new App(document.body);
+        window.app = new App(document.body);
     });
 }
