@@ -60,6 +60,7 @@ function filesStore(){
         modified:modifiedStore,
         current: {
             subscribe: currentStore.subscribe,
+            get: currentStore.get,
             set(name){
                 if(!fileExists(name)) throw new Error(`${name} is not exists`);
                 currentStore.set(getFile(name));

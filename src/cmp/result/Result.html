@@ -5,12 +5,12 @@
     import {bundler} from './../../stores/bundler.js';
 
     let mode = 'application';
-    let initialized = false;
+    let ready = false;
 
     let uns = [];
 
-    uns.push(bundler.initialized.subscribe( state => {
-        initialized = state;
+    uns.push(bundler.subscribe( b => {
+        ready = b.ready;
     }));  
 
     function onMount(){
@@ -25,7 +25,7 @@
     <div class="result">
         <div class="tabs"><ResultTabs/></div>
         <div class="code">
-            {#if !initialized}
+            {#if !ready}
                 <p>Loading Malina.js compiler...</p>
             {:else}
                 {#if mode === 'application'}<Application/>{/if}

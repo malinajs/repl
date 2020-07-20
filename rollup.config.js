@@ -12,7 +12,7 @@ const host = process.env.HOST || 'localhost';
 const port = process.env.PORT || 7000;
 const production = !process.env.ROLLUP_WATCH;
 
-export default {
+export default [{
     input: 'src/main.js',
     output: {
         file: 'public/bundle.js',
@@ -34,4 +34,16 @@ export default {
     watch: {
         clearScreen: false
     }
-}
+},
+{
+    input: 'src/bundler/worker.js',
+    output: {
+        file: 'public/bundler_worker.js',
+        format: 'iife'
+    },
+    plugins: [
+        resolve(),
+        commonjs(),
+        production && terser()
+    ]
+}]

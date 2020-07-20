@@ -8,8 +8,8 @@
 
     let code = '';
 
-    let un = bundler.subscribe(source => {
-        code = source;
+    let un = bundler.subscribe(result => {
+        code = result.component;
     });
   
     function onDestroy(){

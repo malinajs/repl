@@ -23,7 +23,7 @@ function examplesStore(){
         if(!example_filename.endsWith('.json')) example_filename = example_filename+'.json';
         const example = await fetchExample(example_filename);
         files.set(example.files,{title:example.name});
-        if(bundler.initialized.get()) bundler.malina.load();
+        if(bundler.ready()) bundler.malina.load();
         router.title('Example - '+example.name);
       }
     }

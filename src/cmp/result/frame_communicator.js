@@ -91,6 +91,15 @@ function frame_inner(){
         emit('click');
     });
 
+    for(let type of ['log','warn','error','debug']){
+        const def = `default_${type}`;
+        console[def] = console[type].bind(console);
+        console[type] = function(){
+            console[def].apply(console, arguments);
+            emit('console','' /*TODO: object serialization*/);
+        }
+    }
+
     on('bundle',bundle => {
         if(!bundle) return;
         document.head.innerText = '';

@@ -8,8 +8,8 @@
     let list = false;
     let showDropdown = false;
     
-    bundler.malina.version.subscribe( v => {
-        ver = v;
+    bundler.versions.subscribe( v => {
+        ver = v.malina;
     });
 
     function dropdownAction(node){
@@ -30,7 +30,7 @@
         if(showDropdown) return showDropdown=false;
         list = null;
         showDropdown = true;
-        list = ['unstable'].concat((await bundler.malina.version.list()).sort( (v1,v2) => {
+        list = ['unstable'].concat((await bundler.malina.list()).sort( (v1,v2) => {
             const [a,b] = [v1,v2].map( v => v.replace(/\d+/g, i => +i+100000 ));
             return b.localeCompare(a);
         }));

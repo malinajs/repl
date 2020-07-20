@@ -19,7 +19,7 @@ function sharesStore(){
             if(share){
                 files.set(share.files,share.meta);
                 if(
-                    bundler.initialized.get() && 
+                    bundler.ready() && 
                     share.meta.version && 
                     share.meta.version !== bundler.malina.version.get()
                 ) {
