@@ -28,6 +28,9 @@ function bundleStore(){
     function startWorker(){
         return initBundlerWorker( async ({on,emit}) =>{
 
+            let bundleCallback = ()=>{};
+            let compileCallback = ()=>{};
+
             const clear = function(){
                 console.clear();
                 console.log(`Rollup v.${versions.get().rollup}`);
@@ -36,40 +39,29 @@ function bundleStore(){
             }
             
             const thBundle = asyncThrottle(sources => new Promise((resolve)=>{
+                bundleCallback = ()=>resolve(true);
                 errors.set(null);
                 clear();
                 emit('bundle',sources);
-                on('bundle', code => {
-                    setOutput({application: code});
-                    resolve(true);
-                });
             }));
 
 
             const thCompile = asyncThrottle(file => new Promise((resolve)=>{
+                compileCallback = ()=>resolve(true);
+
                 errors.set(null);
                 clear();
-
-
+            
                 let filenameParts = file.name.split('.');
                 if(filenameParts.pop() !== 'html'){
                     setOutput('component','/* Choose component to see its compiled version */');
-                    resolve(true);
                 }else{
                     emit('compile',{
                         code: file.body, 
                         name: filenameParts.join('.')
                     }); 
                 }
-                
-                on('compile', code => {
-                    setOutput({component: code});
-                    resolve(true);
-                });
             }));
-
-            
-
 
             on('error',e => errors.set(e));
             on('init',()=>setOutput({ready: false}));
@@ -80,6 +72,16 @@ function bundleStore(){
                 versions.set({ malina:data.malinaVersion, rollup:data.rollupVersion });
                 malinaVerChanger = ver => emit('malinaVersion', ver || 'latest');
                 files.touch();
+            });
+
+            on('bundle', code => {
+                setOutput({application: code});
+                bundleCallback();
+            });
+
+            on('compile', code => {
+                setOutput({component: code});
+                compileCallback();
             });
     
             mode.subscribe(files.touch);
@@ -92,9 +94,7 @@ function bundleStore(){
                 if( currentMode === 'application' ) 
                     thBundle(sources);
                 else
-                    thCompile(files.current.get())
-                
-                    
+                    thCompile(files.current.get())  
             });
             
             setOutput({ready: false});
