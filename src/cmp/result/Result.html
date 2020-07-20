@@ -7,18 +7,15 @@
     let mode = 'application';
     let ready = false;
 
-    let uns = [];
-
-    uns.push(bundler.subscribe( b => {
+    $onDestroy(bundler.subscribe( b => {
         ready = b.ready;
     }));  
 
     function onMount(){
-        uns.push(bundler.mode.subscribe( m => {
+        $onDestroy(bundler.mode.subscribe( m => {
             mode = m;
         }));
     }
-    function onDestroy(){uns.forEach(un => un())}
 </script>
 
 <div class="wrapper">

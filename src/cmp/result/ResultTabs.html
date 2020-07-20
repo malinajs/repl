@@ -8,13 +8,11 @@
 
     let mode = 'application';
 
-    let un;
     function onMount(){
-        un = bundler.mode.subscribe( m => {
+        $onDestroy(bundler.mode.subscribe( m => {
             mode = m;
-        });
+        }));
     }
-    function onDestroy(){un()}
 </script>
 
 <div>

@@ -8,13 +8,9 @@
 
     let code = '';
 
-    let un = bundler.subscribe(result => {
+    $onDestroy(bundler.subscribe(result => {
         code = result.component;
-    });
-  
-    function onDestroy(){
-        un();
-    };
+    }));
 </script>
 
 

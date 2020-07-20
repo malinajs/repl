@@ -5,9 +5,9 @@
 
     let list = [];
 
-    files.list.subscribe(files => {
+    $onDestroy(files.list.subscribe(files => {
         list = files;
-    });
+    }));
 
     function addFile(){
         let name = 'Comp';

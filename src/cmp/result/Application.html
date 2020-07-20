@@ -15,12 +15,10 @@
         on('error',e => errors.set(e));
         on('click',e => div.click());
         
-        un = bundler.subscribe(result => {
+        $onDestroy(bundler.subscribe(result => {
             if(bundler.mode.get() === 'application') emit('bundle',result.application);
-        });
+        }));
     }   
-        
-    function onDestroy(){un()};
 </script>
 
 <div #div>
