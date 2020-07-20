@@ -44,7 +44,7 @@ export function frameCommunicator(iframe,callback){
 
 export function getSrcdoc(){
     return `<!doctype html>
-<html style="height: auto !important">
+<html style="position: relative; width: 100%; height: 100%;">
 
     <head>
         <meta charset='utf-8'>
@@ -55,7 +55,7 @@ export function getSrcdoc(){
         (${frame_inner.toString()})();
     </scr`+`ipt>
 
-    <body></body>
+    <body style="position: relative; width: 100%; height: 100%;"></body>
 </html>    
 `;
 }
@@ -103,9 +103,8 @@ function frame_inner(){
     on('bundle',bundle => {
         if(!bundle) return;
         const App = new Function(bundle+'; return Component.default;')();
-        document.head.innerHTML = '';
+        for(let style of document.querySelectorAll('style[id]')) style.parentNode.removeChild(style);
         if(window.app) window.app.destroy();
-        document.body.innerText = '';
         window.app = new App(document.body);
     });
 }
