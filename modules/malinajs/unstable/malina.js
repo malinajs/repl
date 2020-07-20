@@ -9,7 +9,7 @@
     csstree = csstree && Object.prototype.hasOwnProperty.call(csstree, 'default') ? csstree['default'] : csstree;
 
     function assert(x, info) {
-        if(!x) throw info;
+        if(!x) throw info || 'AssertError';
     }
 
     function Q(s) {
@@ -18,7 +18,13 @@
     function Q2(s) {
         return s.replace(/`/g, '\\`').replace(/\n/g, '\\n');
     }
+    function isSimpleName(name) {
+        return !!name.match(/^([\w\$_][\w\d\$_]*)$/);
+    }
+
     function detectExpressionType(name) {
+        if(isSimpleName(name)) return 'identifier';
+
         let ast = acorn.parse(name);
 
         function checkIdentificator(body) {
@@ -50,6 +56,15 @@
         if(checkFunction(ast.body)) return 'function';
 
         return;
+    }
+
+    function checkRootName(name) {
+        let rx = name.match(/^([\w\$_][\w\d\$_]*)/);
+        if(!rx) return this.config.warning({message: 'Error name: ' + name});
+        let root = rx[1];
+
+        if(this.script.rootVariables[root] || this.script.rootFunctions[root]) return true;
+        this.config.warning({message:'No name: ' + name});
     }
 
     function parse(source) {
@@ -427,7 +442,9 @@
         let result = {
             watchers: [],
             imports: [],
-            props: []
+            props: [],
+            rootVariables: {},
+            rootFunctions: {}
         };
         var ast;
         if(code) {
@@ -439,6 +456,20 @@
                 type: "Program"
             };
         }
+
+        let rootVariables = result.rootVariables;
+        let rootFunctions = result.rootFunctions;
+        ast.body.forEach(n => {
+            if(n.type == 'FunctionDeclaration') {
+                rootFunctions[n.id.name] = true;
+            } else if(n.type == 'VariableDeclaration') {
+                n.declarations.forEach(i => rootVariables[i.id.name] = true);
+            }
+        });
+
+        result.onMount = rootFunctions.onMount;
+        result.onDestroy = rootFunctions.onDestroy;
+        let insertOnDestroy = !(rootFunctions.$onDestroy || rootVariables.$onDestroy);
 
         const funcTypes = {
             FunctionDeclaration: 1,
@@ -468,10 +499,12 @@
 
         function transformNode(node) {
             if(funcTypes[node.type] && node.body.body && node.body.body.length) {
+                if(insertOnDestroy && node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
                 if(!isInLoop(node)) {
                     node.body.body.unshift(applyBlock());
                 }
             } else if(node.type == 'ArrowFunctionExpression') {
+                if(insertOnDestroy && node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
                 if(node.body.type != 'BlockStatement' && !isInLoop(node)) {
                     node.body = {
                         type: 'BlockStatement',
@@ -502,7 +535,7 @@
             node._parent = parent;
             let forParent = parent;
             if(node.type) {
-                transformNode(node);
+                if(transformNode(node) == 'stop') return;
                 forParent = node;
             }
             for(let key in node) {
@@ -574,15 +607,6 @@
 
         let imports = [];
         let resultBody = [];
-        let rootVariables = {};
-        let rootFunctions = {};
-        ast.body.forEach(n => {
-            if(n.type == 'FunctionDeclaration') {
-                rootFunctions[n.id.name] = true;
-            } else if(n.type == 'VariableDeclaration') {
-                n.declarations.forEach(i => rootVariables[i.id.name] = true);
-            }
-        });
 
         ast.body.forEach(n => {
             if(n.type == 'ImportDeclaration') {
@@ -608,8 +632,6 @@
                 return;
             }
 
-            if(n.type == 'FunctionDeclaration' && n.id.name == 'onMount') result.onMount = true;
-            if(n.type == 'FunctionDeclaration' && n.id.name == 'onDestroy') result.onDestroy = true;
             if(n.type == 'LabeledStatement' && n.label.name == '$') {
                 try {
                     makeWatch(n);
@@ -652,6 +674,8 @@
             }
         });
         if(!rootFunctions.$emit) header.push(makeEmitter());
+        header.push(parseExp('let $component = { $cd: new $ChangeDetector() }'));
+        if(insertOnDestroy) header.push(parseExp('function $onDestroy(fn) {$component.$cd.d(fn);}'));
         if(result.props.length) header.push(ensureOptionProps());
         while(header.length) {
             resultBody.unshift(header.pop());
@@ -807,6 +831,12 @@
         };
     }
 
+    function parseExp(exp) {
+        let ast = acorn.parse(exp);
+        assert(ast.body.length == 1);
+        return ast.body[0];
+    }
+
     function makeComponent(node, makeEl) {
         let propList = parseElement(node.openTag);
         let binds = [];
@@ -824,6 +854,8 @@
             if(name[0] == '#') {
                 assert(!value, 'Wrong ref');
                 let name = name.substring(1);
+                assert(isSimpleName(name), name);
+                this.checkRootName(name);
                 binds.push(`${name} = $component;`);
                 return;
             } else if(name[0] == '{') {
@@ -860,6 +892,7 @@
                 if(isFunc) {
                     head.push(`events.${event} = ${exp};`);
                 } else if(handler) {
+                    this.checkRootName(handler);
                     head.push(`events.${event} = ${handler};`);
                 } else {
                     head.push(`events.${event} = ($event) => {${this.Q(exp)}};`);
@@ -872,6 +905,8 @@
                 else inner = name.substring(5);
                 if(value) outer = unwrapExp(value);
                 else outer = inner;
+                assert(isSimpleName(inner), `Wrong property: '${inner}'`);
+                assert(detectExpressionType(outer) == 'identifier', 'Wrong bind name: ' + outer);
                 head.push(`props.${inner} = ${outer};`);
                 binds.push(`
                 if('${inner}' in $component) {
@@ -888,6 +923,7 @@
                 return;
             }
             assert(value, 'Empty property');
+            assert(isSimpleName(name), `Wrong property: '${name}'`);
             if(value.indexOf('{') >= 0) {
                 let exp = this.parseText(value);
                 let fname = 'pf' + (this.uniqIndex++);
@@ -966,6 +1002,8 @@
 
         if(name[0] == '#') {
             let target = name.substring(1);
+            assert(isSimpleName(target), target);
+            this.checkRootName(target);
             return {bind: `${target}=${makeEl()};`};
         } else if(name == 'on') {
             let mod = '', opts = arg.split(/[\|:]/);
@@ -1021,6 +1059,7 @@
                 }`
                 };
             } else if(handler) {
+                this.checkRootName(handler);
                 return {bind: `
                 {
                     let $element=${makeEl()};
@@ -1046,20 +1085,16 @@
                 if(arg.length) exp = arg.pop();
                 else exp = attr;
             }
+            assert(['value', 'checked', 'valueAsNumber', 'valueAsDate', 'selectedIndex'].includes(attr), 'Not supported: ' + prop.content);
             assert(arg.length == 0);
-            if(attr === 'value') {
-                return {bind: `{
-                    let $element=${makeEl()};
-                    $cd.ev($element, 'input', () => { ${exp}=$element.value; $$apply(); });
-                    $watchReadOnly($cd, () => (${exp}), (value) => { if(value != $element.value) $element.value = value; });
-                }`};
-            } else if(attr == 'checked') {
-                return {bind: `{
-                    let $element=${makeEl()};
-                    $cd.ev($element, 'input', () => { ${exp}=$element.checked; $$apply(); });
-                    $watchReadOnly($cd, () => !!(${exp}), (value) => { if(value != $element.checked) $element.checked = value; });
-                }`};
-            } else throw 'Not supported: ' + prop.content;
+            assert(detectExpressionType(exp) == 'identifier', 'Wrong bind name: ' + prop.content);
+            let watchExp = attr == 'checked' ? '!!' + exp : exp;
+
+            return {bind: `{
+            let $element=${makeEl()};
+            $cd.ev($element, 'input', () => { ${exp}=$element.${attr}; $$apply(); });
+            $watchReadOnly($cd, () => (${watchExp}), (value) => { if(value != $element.${attr}) $element.${attr} = value; });
+        }`};
         } else if(name == 'class' && arg) {
             let className = arg;
             let exp = prop.value ? getExpression() : className;
@@ -1076,9 +1111,11 @@
             }`};
         } else if(name == 'use') {
             if(arg) {
-                let args = prop.value?getExpression():'';
+                assert(isSimpleName(arg), 'Wrong name: ' + arg);
+                this.checkRootName(arg);
+                let args = prop.value ? getExpression() : '';
                 let code = `$cd.once(() => {
-                let useObject = ${arg}(${makeEl()}${args?', '+args:''});\n if(useObject) {`;
+                let useObject = ${arg}(${makeEl()}${args ? ', ' + args : ''});\n if(useObject) {`;
                 if(args) code += `
                 if(useObject.update) {
                     let w = $watch($cd, () => [${args}], (args) => {useObject.update.apply(useObject, args);}, {cmp: $$compareArray});
@@ -1200,36 +1237,71 @@
 
         let itemData = this.buildBlock({body: nodeItems});
 
-        let rx = data.value.match(/^#each\s+(\S+)\s+as\s+(\w+)\s*$/);
-        assert(rx, 'Wrong #each expression');
+        // #each items as item, index (key)
+        let rx = data.value.match(/^#each\s+(\S+)\s+as\s+(.+)$/);
+        assert(rx, `Wrong #each expression '${data.value}'`);
         let arrayName = rx[1];
-        let itemName = rx[2];
+        let right = rx[2];
+        let keyName;
+        let keyFunction;
+
+        rx = right.match(/^(.*)\s+\(\s*([^\(\)]+)\s*\)\s*$/);
+        if(rx) {
+            right = rx[1];
+            keyName = rx[2];
+        }
+        rx = right.trim().split(/\s*\,\s*/);
+        assert(rx.length <= 2, `Wrong #each expression '${data.value}'`);
+        let itemName = rx[0];
+        let indexName = rx[1] || '$index';
+        assert(isSimpleName(itemName), `Wrong name '${itemName}'`);
+        assert(isSimpleName(indexName), `Wrong name '${indexName}'`);
+
+        if(keyName == itemName) keyName = null;
+        if(keyName) assert(detectExpressionType(keyName) == 'identifier', `Wrong key '${keyName}'`);
+
+        if(!keyName) keyFunction = 'function getKey(item) {return item;}';
+        else if(keyName == indexName) keyFunction = 'function getKey(_, i) {return i;}';
+        else keyFunction = `function getKey(${itemName}) {return ${keyName};}`;
 
         let eachBlockName = 'eachBlock' + (this.uniqIndex++);
         source.push(`
         function ${eachBlockName} ($cd, top) {
 
-            function bind($ctx, $template, ${itemName}, $index) {
+            function bind($ctx, $template, ${itemName}, ${indexName}) {
                 ${itemData.source};
                 ${itemData.name}($ctx.cd, $template);
-                $ctx.reindex = function(i) { $index = i; };
+                $ctx.rebind = function(_${indexName}, _${itemName}) {
+                    ${indexName} = _${indexName};
+                    ${itemName} = _${itemName};
+                };
             };
+
+            ${keyFunction};
 
             let itemTemplate = $$htmlToFragment(\`${this.Q(itemData.tpl)}\`, true);
 
             let mapping = new Map();
+            let lineArray = [];
             $watch($cd, () => (${arrayName}), (array) => {
-                if(!array || !Array.isArray(array)) array = [];
+                if(!array) array = [];
+                if(typeof(array) == 'number') {
+                    lineArray.length = array;
+                    array--;
+                    while(array >= 0 && !lineArray[array]) lineArray[array] = array-- + 1;
+                    array = lineArray;
+                } else if(!Array.isArray(array)) array = [];
+
                 let prevNode = top;
                 let newMapping = new Map();
 
                 if(mapping.size) {
                     let arrayAsSet = new Set();
                     for(let i=0;i<array.length;i++) {
-                        arrayAsSet.add(array[i]);
+                        arrayAsSet.add(getKey(array[i], i));
                     }
-                    mapping.forEach((ctx, item) => {
-                        if(arrayAsSet.has(item)) return;
+                    mapping.forEach((ctx, key) => {
+                        if(arrayAsSet.has(key)) return;
                         $$removeElements(ctx.first, ctx.last);
                         ctx.cd.destroy();
                         $$removeItem($cd.children, ctx.cd);
@@ -1244,14 +1316,14 @@
                     if(next_ctx) {
                         ctx = next_ctx;
                         next_ctx = null;
-                    } else ctx = mapping.get(item);
+                    } else ctx = mapping.get(getKey(item, i));
                     if(ctx) {
                         if(prevNode.nextSibling != ctx.first) {
                             let insert = true;
 
                 ` + (nodeItems.length==1?`
                             if(i + 1 < array.length && prevNode.nextSibling) {
-                                next_ctx = mapping.get(array[i + 1]);
+                                next_ctx = mapping.get(getKey(array[i + 1], i + 1));
                                 if(prevNode.nextSibling.nextSibling === next_ctx.first) {
                                     parentNode.replaceChild(ctx.first, prevNode.nextSibling);
                                     insert = false;
@@ -1269,7 +1341,7 @@
                                 }
                             }
                         }
-                        ctx.reindex(i);
+                        ctx.rebind(i, item);
                     } else {
                         let tpl = itemTemplate.cloneNode(true);
                         let childCD = $cd.new();
@@ -1280,7 +1352,7 @@
                         parentNode.insertBefore(tpl, prevNode.nextSibling);
                     }
                     prevNode = ctx.last;
-                    newMapping.set(item, ctx);
+                    newMapping.set(getKey(item, i), ctx);
                 };
                 mapping.clear();
                 mapping = newMapping;
@@ -1310,9 +1382,7 @@
             }, 1);
         };
         return (function() {
-            let $cd = new $ChangeDetector();
-
-            let $component = {$cd};
+            let $cd = $component.$cd;
             $component.destroy = () => {
                 $cd.destroy();
             };
@@ -1327,7 +1397,7 @@
             };
     `];
 
-        const Q$1 = config.inlineTemplate?Q2:Q;
+        const Q$1 = config.inlineTemplate ? Q2 : Q;
         const ctx = {
             uniqIndex: 0,
             Q: Q$1,
@@ -1340,7 +1410,8 @@
             makeifBlock,
             makeComponent,
             makeHtmlBlock,
-            parseText
+            parseText,
+            checkRootName: checkRootName
         };
 
         if(css) css.process(data);
