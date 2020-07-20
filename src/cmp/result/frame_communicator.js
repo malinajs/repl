@@ -44,7 +44,7 @@ export function frameCommunicator(iframe,callback){
 
 export function getSrcdoc(){
     return `<!doctype html>
-<html style="position: relative; width: 100%; height: 100%;">
+<html>
 
     <head>
         <meta charset='utf-8'>
@@ -55,7 +55,7 @@ export function getSrcdoc(){
         (${frame_inner.toString()})();
     </scr`+`ipt>
 
-    <body style="position: relative; width: 100%; height: 100%;"></body>
+    <body></body>
 </html>    
 `;
 }
