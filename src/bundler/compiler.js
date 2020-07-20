@@ -31,6 +31,6 @@ async function treeshake(code){
         }],
         onwarn: ()=>{}
     });
-
-    return (await bundle.generate({format: "es"})).output[0].code;
+    const result = (await bundle.generate({format: "es"})).output[0].code;
+    return astring.generate( acorn.parse(result, {sourceType: 'module'}) )
 }
