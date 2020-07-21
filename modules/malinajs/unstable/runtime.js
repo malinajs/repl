@@ -205,12 +205,27 @@ function $digest($cd, onFinishLoop) {
 }
 function $makeEmitter(option) {
     return (name, detail) => {
-        let fn = option.events && option.events[name];
+        let fn = option.events[name];
         if(!fn) return;
         let e = document.createEvent('CustomEvent');
         e.initCustomEvent(name, false, false, detail);
         fn(e);
     };
+}
+function $$addEvent(list, event, fn) {
+    let prev = list[event];
+    if(prev) {
+        if(prev._list) prev._list.push(fn);
+        else {
+            function handler(e) {
+                handler._list.forEach(fn => {
+                    fn(e);
+                });
+            }
+            handler._list = [prev, fn];
+            list[event] = handler;
+        }
+    } else list[event] = fn;
 }
 
 function $$htmlBlock($cd, tag, fn) {
@@ -269,4 +284,4 @@ function $$ifBlock($cd, $parentElement, fn, tpl, build, tplElse, buildElse) {
     });
 }
 
-export { $$childNodes, $$compareArray, $$compareDeep, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };
+export { $$addEvent, $$childNodes, $$compareArray, $$compareDeep, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };

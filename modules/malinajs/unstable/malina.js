@@ -655,28 +655,12 @@
         });
 
         let header = [];
-        header.push({
-            type: 'IfStatement',
-            test: {
-                type: 'BinaryExpression',
-                left: {type: 'Identifier', name: '$option'},
-                operator: '==',
-                right: {type: 'Literal', value: null}
-            },
-            consequent: {
-                type: 'ExpressionStatement',
-                expression: {
-                    type: 'AssignmentExpression',
-                    operator: '=',
-                    left: {type: 'Identifier', name: '$option'},
-                    right: {type: 'ObjectExpression', properties: []}
-                }
-            }
-        });
+        header.push(parseExp('if(!$option) $option = {}'));
+        header.push(parseExp('if(!$option.events) $option.events = {}'));
+        if(result.props.length) header.push(parseExp('if(!$option.props) $option.props = {}'));
         if(!rootFunctions.$emit) header.push(makeEmitter());
         header.push(parseExp('let $component = { $cd: new $ChangeDetector() }'));
         if(insertOnDestroy) header.push(parseExp('function $onDestroy(fn) {$component.$cd.d(fn);}'));
-        if(result.props.length) header.push(ensureOptionProps());
         while(header.length) {
             resultBody.unshift(header.pop());
         }
@@ -772,49 +756,6 @@
         };
     }
 
-    function ensureOptionProps() {
-        return {
-            type: 'IfStatement',
-            test: {
-                type: 'UnaryExpression',
-                operator: '!',
-                prefix: true,
-                argument: {
-                    type: 'MemberExpression',
-                    object: {
-                        type: 'Identifier',
-                        name: '$option'
-                    },
-                    property: {
-                        type: 'Identifier',
-                        name: 'props'
-                    }
-                }
-            },
-            consequent: {
-                type: 'ExpressionStatement',
-                expression: {
-                    type: 'AssignmentExpression',
-                    operator: '=',
-                    left: {
-                        type: 'MemberExpression',
-                        object: {
-                            type: 'Identifier',
-                            name: '$option'
-                        },
-                        property: {
-                            type: 'Identifier',
-                            name: 'props'
-                        }
-                    },
-                    right: {
-                        type: 'ObjectExpression',
-                        properties: []
-                    }
-                }
-            }
-        };
-    }
     function makeEmitter() {
         return {
             type: 'VariableDeclaration',
@@ -841,6 +782,7 @@
         let propList = parseElement(node.openTag);
         let binds = [];
         let head = [];
+        let forwardAllEvents = false;
         
         function unwrapExp(e) {
             assert(e, 'Empty expression');
@@ -848,6 +790,15 @@
             assert(rx, 'Wrong expression: ' + e);
             return rx[1];
         }
+        let boundEvents = {};
+        propList = propList.filter(prop => {
+            if(prop.name == '@@') {
+                forwardAllEvents = true;
+                return false;
+            }
+            return true;
+        });
+
         propList.forEach(prop => {
             let name = prop.name;
             let value = prop.value;
@@ -873,7 +824,9 @@
                 else {
                     if(!arg.length) {
                         // forwarding
-                        head.push(`events.${event} = $option.events && $option.events.${event};`);
+                        if(forwardAllEvents || boundEvents[event]) head.push(`$$addEvent(events, '${event}', $option.events.${event});`);
+                        else head.push(`events.${event} = $option.events.${event};`);
+                        boundEvents[event] = true;
                         return;
                     }
                     handler = arg.pop();
@@ -889,14 +842,19 @@
                     } else isFunc = type == 'function';
                 }
 
+                let callback;
                 if(isFunc) {
-                    head.push(`events.${event} = ${exp};`);
+                    callback = `${exp}`;
                 } else if(handler) {
                     this.checkRootName(handler);
-                    head.push(`events.${event} = ${handler};`);
+                    callback = `${handler}`;
                 } else {
-                    head.push(`events.${event} = ($event) => {${this.Q(exp)}};`);
+                    callback = `($event) => {${this.Q(exp)}}`;
                 }
+
+                if(forwardAllEvents || boundEvents[event]) head.push(`$$addEvent(events, '${event}', ${callback});`);
+                else head.push(`events.${event} = ${callback};`);
+                boundEvents[event] = true;
                 return;
             }
             if(name[0] == ':' || name.startsWith('bind:')) {
@@ -943,11 +901,13 @@
             }
         });
 
+        if(forwardAllEvents) head.unshift('let events = Object.assign({}, $option.events);');
+        else head.unshift('let events = {};');
+
         return {
             bind:`
         {
             let props = {};
-            let events = {};
             ${head.join('\n')};
             let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, events});
             if($component) {
@@ -1006,6 +966,16 @@
             this.checkRootName(target);
             return {bind: `${target}=${makeEl()};`};
         } else if(name == 'on') {
+            if(arg == '@') {
+                assert(!prop.value);
+                return {bind: `
+                {
+                    for(let event in $option.events) {
+                        $cd.ev(${makeEl()}, event, $option.events[event]);
+                    }
+                }
+            `};
+            }
             let mod = '', opts = arg.split(/[\|:]/);
             let event = opts.shift();
             let exp, handler, funcName;
@@ -1016,7 +986,7 @@
                     // forwarding
                     return {bind: `
                     $cd.ev(${makeEl()}, "${event}", ($event) => {
-                        const fn = $option.events && $option.events.${event};
+                        const fn = $option.events.${event};
                         if(fn) fn($event);
                     });\n`
                     };
@@ -3656,7 +3626,8 @@
         let code = `
         import {
             ${htmlFragment}, $$removeItem, $$childNodes, $watch, $ChangeDetector, $$removeElements,
-            $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter
+            $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter,
+            $$addEvent
         } from 'malinajs/runtime.js';
     `;
         code += script.code.split('$$runtime()').join(runtime);
