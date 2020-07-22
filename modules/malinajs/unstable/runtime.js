@@ -111,7 +111,7 @@ function $$compareArray(w, value) {
     if(Array.isArray(value)) w.value = value.slice();
     else w.value = value;
     w.cb(w.value);
-    return w.ro?0:1;
+    return w.ro ? 0 : 1;
 }
 
 const compareDeep = (a, b, lvl) => {
@@ -158,12 +158,16 @@ function cloneDeep(d, lvl) {
     }
     return d;
 }
-function $$compareDeep(w, value) {
-    if(!compareDeep(w.value, value, 10)) return 0;
-    w.value = cloneDeep(value, 10);
-    w.cb(value);
-    return w.ro?0:1;
+function $$deepComparator(depth) {
+    return function(w, value) {
+        if(!compareDeep(w.value, value, depth)) return 0;
+        w.value = cloneDeep(value, depth);
+        w.cb(value);
+        return w.ro ? 0 : 1;
+    };
 }
+const $$compareDeep = $$deepComparator(10);
+
 function $digest($cd, onFinishLoop) {
     let loop = 10;
     let w;
@@ -227,6 +231,65 @@ function $$addEvent(list, event, fn) {
         }
     } else list[event] = fn;
 }
+function $$makeSpreadObject($cd, el, css) {
+    let prev = {};
+    let index = 0;
+    let list = [];
+
+    let timeout;
+    const props = Object.getOwnPropertyDescriptors(el.__proto__);
+
+    function render() {
+        timeout = false;
+        let obj, name, value, used = {};
+        for(let i=index-1; i>=0; i--) {
+            obj = list[i];
+            for(name in obj) {
+                if(used[name]) continue;
+                used[name] = true;
+                value = obj[name];
+                if(prev[name] == value) continue;
+                prev[name] = value;
+
+                if(props[name] && props[name].set) {
+                    el[name] = value;
+                } else {
+                    if(value == null) el.removeAttribute(name);
+                    else {
+                        if(name == 'class' && css) value += ' ' + css;
+                        el.setAttribute(name, value);
+                    }
+                }
+            }
+        }
+    }
+    return {
+        spread: function(fn) {
+            let i = index++;
+            $watch($cd, fn, value => {
+                list[i] = value;
+                if(timeout) return;
+                timeout = true;
+                setTimeout(render, 1);
+            }, {ro: true, cmp: $$deepComparator(1)});
+        },
+        prop: function(name, fn) {
+            let i = index++;
+            list[i] = {};
+            $watch($cd, fn, value => {
+                list[i][name] = value;
+                if(timeout) return;
+                timeout = true;
+                setTimeout(render, 1);
+            }, {ro: true});
+        },
+        attr: function(name, value) {
+            let d = {};
+            d[name] = value;
+            list[index++] = d;
+        }
+    }
+}
 
 function $$htmlBlock($cd, tag, fn) {
     let lastElement;
@@ -284,4 +347,4 @@ function $$ifBlock($cd, $parentElement, fn, tpl, build, tplElse, buildElse) {
     });
 }
 
-export { $$addEvent, $$childNodes, $$compareArray, $$compareDeep, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };
+export { $$addEvent, $$childNodes, $$compareArray, $$compareDeep, $$deepComparator, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };

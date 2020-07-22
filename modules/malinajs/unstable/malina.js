@@ -944,7 +944,16 @@
             let rx = prop.name.match(/^\{(.*)\}$/);
             if(rx) {
                 name = rx[1];
-                prop.value = prop.name;
+                if(name.startsWith('...')) {
+                    // spread operator
+                    name = name.substring(3);
+                    assert(detectExpressionType(name) == 'identifier');
+                    return {bind: `
+                    ${node.spreadObject}.spread(() => ${name});
+                `};
+                } else {
+                    prop.value = prop.name;
+                }
             }
         }
         if(!name) {
@@ -1102,6 +1111,12 @@
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
                 let exp = this.parseText(prop.value);
+
+                if(node.spreadObject) {
+                    return {bind: `
+                    ${node.spreadObject}.prop('${name}', () => ${exp});
+                `};
+                }
                 const propList = {
                     hidden: true,
                     checked: true,
@@ -1125,7 +1140,7 @@
                         bind: `{
                         let $element=${makeEl()};
                         $watchReadOnly($cd, () => (${exp})${suffix}, (value) => {
-                            if(value) $element.setAttribute('${name}', value);
+                            if(value != null) $element.setAttribute('${name}', value);
                             else $element.removeAttribute('${name}');
                         });
                     }`,
@@ -1133,6 +1148,13 @@
                     };
                 }
             }
+
+            if(node.spreadObject) {
+                return {bind: `
+                ${node.spreadObject}.attr('${name}', '${prop.value}');
+            `};
+            }
+
             if(name == 'class' && node.scopedClass) {
                 let classList = prop.value.trim();
                 if(classList) classList += ' ';
@@ -1506,6 +1528,13 @@
 
                     let hasClass = false;
                     let el = ['<' + n.name];
+                    if(n.attributes.some(a => a.name.startsWith('{...'))) {
+                        n.spreadObject = 'spread' + (this.uniqIndex++);
+                        n.scopedClass = !!this.css;
+                        binds.push(`
+                        let ${n.spreadObject} = $$makeSpreadObject($cd, ${getElementName()}, '${this.css && this.css.id}');
+                    `);
+                    }
                     n.attributes.forEach(p => {
                         let b = this.bindProp(p, getElementName, n);
                         if(b.prop) el.push(b.prop);
@@ -3628,7 +3657,7 @@
         import {
             ${htmlFragment}, $$removeItem, $$childNodes, $watch, $ChangeDetector, $$removeElements,
             $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter,
-            $$addEvent
+            $$addEvent, $$deepComparator, $$makeSpreadObject
         } from 'malinajs/runtime.js';
     `;
         code += script.code.split('$$runtime()').join(runtime);
