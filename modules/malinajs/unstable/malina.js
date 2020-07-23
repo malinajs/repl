@@ -627,7 +627,7 @@
                 });
                 resultBody.push(n.declaration);
                 forInit.forEach(n => {
-                    resultBody.push(initProp(n));
+                    resultBody.push(parseExp(`$$makeProp($component, $$props, $option.boundProps || {}, '${n}', () => ${n}, _${n} => {${n} = _${n}; $$apply();})`));
                 });
                 return;
             }
@@ -643,6 +643,14 @@
             resultBody.push(n);
         });
 
+        if(result.props.length) {
+            resultBody.push(parseExp('$$componentCompleteProps($component, $$apply)'));
+            resultBody.push(parseExp('let $$restProps = $$calcRestProps($component, $$props)'));
+        } else {
+            resultBody.push(parseExp('$component.push = $$apply'));
+            resultBody.push(parseExp('const $$restProps = $$props'));
+        }
+
         resultBody.push({
             type: 'ExpressionStatement',
             expression: {
@@ -657,9 +665,10 @@
         let header = [];
         header.push(parseExp('if(!$option) $option = {}'));
         header.push(parseExp('if(!$option.events) $option.events = {}'));
-        if(result.props.length) header.push(parseExp('if(!$option.props) $option.props = {}'));
+        header.push(parseExp('const $$props = $option.props || {}'));
+        header.push(parseExp('const $component = $$makeComponent($element, $option);'));
+        header.push(parseExp('const $$apply = $$makeApply($component.$cd)'));
         if(!rootFunctions.$emit) header.push(makeEmitter());
-        header.push(parseExp('let $component = { $cd: new $ChangeDetector() }'));
         if(insertOnDestroy) header.push(parseExp('function $onDestroy(fn) {$component.$cd.d(fn);}'));
         while(header.length) {
             resultBody.unshift(header.pop());
@@ -697,65 +706,6 @@
         return result;
     }
 
-
-    function initProp(name) {
-        return {
-            type: "IfStatement",
-            test: {
-                type: "BinaryExpression",
-                left: {
-                    type: "Literal",
-                    value: name
-                },
-                operator: "in",
-                right: {
-                    type: "MemberExpression",
-                    object: {
-                        type: "Identifier",
-                        name: "$option"
-                    },
-                    property: {
-                        type: "Identifier",
-                        name: "props"
-                    },
-                    computed: false
-                }
-            },
-            consequent: {
-                type: "ExpressionStatement",
-                expression: {
-                    type: "AssignmentExpression",
-                    operator: "=",
-                    left: {
-                        type: "Identifier",
-                        name: name
-                    },
-                    right: {
-                        type: "MemberExpression",
-                        object: {
-                            type: "MemberExpression",
-                            object: {
-                                type: "Identifier",
-                                name: "$option"
-                            },
-                            property: {
-                                type: "Identifier",
-                                name: "props"
-                            },
-                            computed: false
-                        },
-                        property: {
-                            type: "Identifier",
-                            name: name
-                        },
-                        computed: false
-                    }
-                }
-            },
-            alternate: null
-        };
-    }
-
     function makeEmitter() {
         return {
             type: 'VariableDeclaration',
@@ -783,6 +733,8 @@
         let binds = [];
         let head = [];
         let forwardAllEvents = false;
+        let injectGroupCall = 0;
+        let spreading = false;
         
         function unwrapExp(e) {
             assert(e, 'Empty expression');
@@ -791,13 +743,56 @@
             return rx[1];
         }
         let boundEvents = {};
+        let twoBinds = [];
         propList = propList.filter(prop => {
-            if(prop.name == '@@') {
+            let name = prop.name;
+            let value = prop.value;
+            if(name == '@@') {
                 forwardAllEvents = true;
+                return false;
+            } else if(name.startsWith('{...')) {
+                spreading = true;
+            } else if(name[0] == ':' || name.startsWith('bind:')) {
+                let inner, outer;
+                if(name[0] == ':') inner = name.substring(1);
+                else inner = name.substring(5);
+                if(value) outer = unwrapExp(value);
+                else outer = inner;
+                assert(isSimpleName(inner), `Wrong property: '${inner}'`);
+                assert(detectExpressionType(outer) == 'identifier', 'Wrong bind name: ' + outer);
+                twoBinds.push(inner);
+                let valueName = 'v' + (this.uniqIndex++);
+                head.push(`props.${inner} = ${outer};`);
+                head.push(`boundProps.${inner} = 2;`);
+                binds.push(`
+                if('${inner}' in $component) {
+                    let value = $$cloneDeep(props.${inner});
+                    let $$_w0 = $watch($cd, () => (${outer}), (value) => {
+                        props.${inner} = value;
+                        $$_w1.value = $$_w0.value;
+                        $component.${inner} = value;
+                    }, {ro: true, cmp: $$compareDeep, value});
+                    let $$_w1 = $watch($component.$cd, () => ($component.${inner}), (${valueName}) => {
+                        props.${inner} = ${valueName};
+                        $$_w0.value = $$_w1.value;
+                        ${outer} = ${valueName};
+                        $$apply();
+                    }, {cmp: $$compareDeep, value});
+                } else console.error("Component ${node.name} doesn't have prop ${inner}");
+            `);
                 return false;
             }
             return true;
         });
+
+        if(spreading) {
+            head.push('let spreadObject = $$makeSpreadObject2($cd, props);');
+            head.push('boundProps.$$spreading = true;');
+            binds.push('spreadObject.emit = $component.push;');
+            if(twoBinds.length) {
+                head.push(`spreadObject.except(['${twoBinds.join(',')}']);`);
+            }
+        }
 
         propList.forEach(prop => {
             let name = prop.name;
@@ -812,7 +807,12 @@
             } else if(name[0] == '{') {
                 value = name;
                 name = unwrapExp(name);
-                assert(detectExpressionType(name) == 'identifier', 'Wrong prop');
+                if(name.startsWith('...')) {
+                    name = name.substring(3);
+                    assert(detectExpressionType(name) == 'identifier', 'Wrong prop');
+                    head.push(`spreadObject.spread(() => ${name})`);
+                    return;
+                }            assert(detectExpressionType(name) == 'identifier', 'Wrong prop');
             } else if(name[0] == '@' || name.startsWith('on:')) {
                 if(name[0] == '@') name = name.substring(1);
                 else name = name.substring(3);
@@ -857,60 +857,60 @@
                 boundEvents[event] = true;
                 return;
             }
-            if(name[0] == ':' || name.startsWith('bind:')) {
-                let inner, outer;
-                if(name[0] == ':') inner = name.substring(1);
-                else inner = name.substring(5);
-                if(value) outer = unwrapExp(value);
-                else outer = inner;
-                assert(isSimpleName(inner), `Wrong property: '${inner}'`);
-                assert(detectExpressionType(outer) == 'identifier', 'Wrong bind name: ' + outer);
-                let valueName = 'v' + (this.uniqIndex++);
-                head.push(`props.${inner} = ${outer};`);
-                binds.push(`
-                if('${inner}' in $component) {
-                    let $$_w0 = $watch($cd, () => (${outer}), (value) => {
-                        $$_w1.value = $$_w0.value;
-                        $component.${inner} = value;
-                    }, {ro: true, cmp: $$compareDeep});
-                    let $$_w1 = $watch($component.$cd, () => ($component.${inner}), (${valueName}) => {
-                        $$_w0.value = $$_w1.value;
-                        ${outer} = ${valueName}; $$apply();
-                    }, {ro: true, cmp: $$compareDeep});
-                } else console.error("Component ${node.name} doesn't have prop ${inner}");
-            `);
-                return;
-            }
             assert(value, 'Empty property');
             assert(isSimpleName(name), `Wrong property: '${name}'`);
             if(value.indexOf('{') >= 0) {
                 let exp = this.parseText(value);
                 let fname = 'pf' + (this.uniqIndex++);
                 let valueName = 'v' + (this.uniqIndex++);
+                if(spreading) {
+                    return head.push(`
+                    spreadObject.prop('${name}', () => ${exp});
+                `);
+                }
+                injectGroupCall++;
                 head.push(`
                 let ${fname} = () => (${exp});
                 let ${valueName} = ${fname}()
                 props.${name} = ${valueName};
-            `);
-                binds.push(`
-                if('${name}' in $component) {
-                    $watch($cd, ${fname}, (value) => {$component.${name} = value}, {ro: true, cmp: $$compareDeep});
-                } else console.error("Component ${node.name} doesn't have prop ${name}");
+                boundProps.${name} = 1;
+
+                $watch($cd, ${fname}, _${name} => {
+                    props.${name} = _${name};
+                    groupCall();
+                }, {ro: true, cmp: $$compareDeep, value: $$cloneDeep(${valueName})});
             `);
             } else {
-                head.push(`props.${name} = \`${this.Q(value)}\``);
+                if(spreading) {
+                    head.push(`
+                    spreadObject.attr('${name}', \`${this.Q(value)}\`);
+                `);
+                } else {
+                    head.push(`props.${name} = \`${this.Q(value)}\``);
+                }
             }
         });
 
         if(forwardAllEvents) head.unshift('let events = Object.assign({}, $option.events);');
         else head.unshift('let events = {};');
+        if(injectGroupCall) {
+            if(injectGroupCall == 1) {
+                head.push('let groupCall;');
+                binds.push('groupCall = $component.push;');
+            } else {
+                head.push('let groupCall = $$groupCall();');
+                binds.push('groupCall.emit = $component.push;');
+            }
+        }
+        if(spreading) head.push('spreadObject.build();');
 
         return {
             bind:`
         {
             let props = {};
+            let boundProps = {};
             ${head.join('\n')};
-            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, events});
+            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, boundProps, events});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 ${binds.join('\n')};
@@ -1070,7 +1070,11 @@
             assert(detectExpressionType(exp) == 'identifier', 'Wrong bind name: ' + prop.content);
             let watchExp = attr == 'checked' ? '!!' + exp : exp;
 
+            let spreading;
+            if(node.spreadObject) spreading = `${node.spreadObject}.except(['${attr}']);`;
+
             return {bind: `{
+            ${spreading}
             let $element=${makeEl()};
             $cd.ev($element, 'input', () => { ${exp}=$element.${attr}; $$apply(); });
             $watchReadOnly($cd, () => (${watchExp}), (value) => { if(value != $element.${attr}) $element.${attr} = value; });
@@ -1365,29 +1369,8 @@
 
     function buildRuntime(data, script, css, config) {
         let runtime = [`
-        function $$apply() {
-            if($$apply._p) return;
-            if($$apply.planned) return;
-            $$apply.planned = true;
-            setTimeout(() => {
-                $$apply.planned = false;
-                $$apply.go();
-            }, 1);
-        };
         return (function() {
             let $cd = $component.$cd;
-            $component.destroy = () => {
-                $cd.destroy();
-            };
-
-            $$apply.go = () => {
-                $$apply._p = true;
-                try {
-                    $digest($cd, () => $$apply._p = false);
-                } finally {
-                    $$apply._p = false;
-                }
-            };
     `];
 
         const Q$1 = config.inlineTemplate ? Q2 : Q;
@@ -1416,12 +1399,7 @@
         runtime.push(`
         const rootTemplate = $$htmlToFragment(\`${Q$1(rootTemplate)}\`);
         ${bb.name}($cd, rootTemplate);
-        if($option.afterElement) {
-            $element.parentNode.insertBefore(rootTemplate, $element.nextSibling);
-        } else {
-            $element.innerHTML = '';
-            $element.appendChild(rootTemplate);
-        }
+        $component.$$render(rootTemplate);
     `);
         if(script.onMount) runtime.push(`
         if($option.noMount) $component.onMount = onMount;
@@ -1431,20 +1409,7 @@
         if(script.watchers.length) {
             runtime.push('$cd.once(() => {\n' + script.watchers.join('\n') + '\n$$apply();\n});');
         }
-        if(script.props.length) {
-            script.props.forEach(prop => {
-                let valueName = prop=='value'?'_value':'value';
-                runtime.push(`
-                Object.defineProperty($component, '${prop}', {
-                    get: function() { return ${prop}; },
-                    set: function(${valueName}) {
-                        ${prop} = ${valueName};
-                        $$apply();
-                    }
-                });
-            `);
-            });
-        }
+
         if(css) runtime.push(`
         if(!document.head.querySelector('style#${css.id}')) {
             let style = document.createElement('style');
@@ -3657,7 +3622,8 @@
         import {
             ${htmlFragment}, $$removeItem, $$childNodes, $watch, $ChangeDetector, $$removeElements,
             $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter,
-            $$addEvent, $$deepComparator, $$makeSpreadObject
+            $$addEvent, $$deepComparator, $$makeSpreadObject, $$groupCall, $$makeProp, $$cloneDeep,
+            $$makeSpreadObject2, $$calcRestProps, $$makeApply, $$makeComponent, $$componentCompleteProps
         } from 'malinajs/runtime.js';
     `;
         code += script.code.split('$$runtime()').join(runtime);

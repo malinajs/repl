@@ -158,6 +158,10 @@ function cloneDeep(d, lvl) {
     }
     return d;
 }
+const $$cloneDeep = function(d) {
+    return cloneDeep(d, 10);
+};
+
 function $$deepComparator(depth) {
     return function(w, value) {
         if(!compareDeep(w.value, value, depth)) return 0;
@@ -235,13 +239,12 @@ function $$makeSpreadObject($cd, el, css) {
     let prev = {};
     let index = 0;
     let list = [];
+    let defaultUsed = {};
 
-    let timeout;
     const props = Object.getOwnPropertyDescriptors(el.__proto__);
 
-    function render() {
-        timeout = false;
-        let obj, name, value, used = {};
+    const render = $$groupCall(function() {
+        let obj, name, value, used = Object.assign({}, defaultUsed);
         for(let i=index-1; i>=0; i--) {
             obj = list[i];
             for(name in obj) {
@@ -262,15 +265,14 @@ function $$makeSpreadObject($cd, el, css) {
                 }
             }
         }
-    }
+    });
+
     return {
         spread: function(fn) {
             let i = index++;
             $watch($cd, fn, value => {
                 list[i] = value;
-                if(timeout) return;
-                timeout = true;
-                setTimeout(render, 1);
+                render();
             }, {ro: true, cmp: $$deepComparator(1)});
         },
         prop: function(name, fn) {
@@ -278,17 +280,147 @@ function $$makeSpreadObject($cd, el, css) {
             list[i] = {};
             $watch($cd, fn, value => {
                 list[i][name] = value;
-                if(timeout) return;
-                timeout = true;
-                setTimeout(render, 1);
+                render();
             }, {ro: true});
         },
         attr: function(name, value) {
             let d = {};
             d[name] = value;
             list[index++] = d;
+        },
+        except: function(list) {
+            list.forEach(n => defaultUsed[n] = true);
         }
     }
+}
+function $$makeSpreadObject2($cd, props) {
+    let index = 0;
+    let list = [];
+    let self = {};
+    let defaultUsed = {};
+
+    const emit = $$groupCall(() => {
+        self.build();
+        self.emit && self.emit();
+    });
+
+    self.build = () => {
+        let obj, name, used = Object.assign({}, defaultUsed);
+        for(let i=index-1; i>=0; i--) {
+            obj = list[i];
+            for(name in obj) {
+                if(used[name]) continue;
+                used[name] = true;
+                props[name] = obj[name];
+            }
+        }
+    };
+
+    self.spread = function(fn) {
+        let i = index++;
+        let value = fn();
+        list[i] = value;
+        $watch($cd, fn, value => {
+            list[i] = value;
+            emit();
+        }, {ro: true, cmp: $$compareDeep, value: $$cloneDeep(value)});
+    };
+    self.prop = function(name, fn) {
+        let value = fn();
+        let i = index++;
+        list[i] = {};
+        list[i][name] = value;
+        $watch($cd, fn, value => {
+            list[i][name] = value;
+            emit();
+        }, {ro: true, cmp: $$compareDeep, value: $$cloneDeep(value)});
+    };
+    self.attr = function(name, value) {
+        let d = {};
+        d[name] = value;
+        list[index++] = d;
+    };
+    self.except = function(list) {
+        list.forEach(n => defaultUsed[n] = true);
+    };
+    return self;
+}
+function $$makeProp($component, $$props, bound, name, getter, setter) {
+    let value = $$props[name];
+    if(value !== void 0) setter(value);
+    if((bound[name] || bound.$$spreading) && (bound[name] !== 2)) $component.push.push(() => setter($$props[name]));
+    $component.exportedProps[name] = true;
+
+    Object.defineProperty($component, name, {
+        get: getter,
+        set: setter
+    });
+}
+
+function $$calcRestProps($component, props) {
+    let result = {};
+    for(let k in props) {
+        if($component.exportedProps[k]) continue;
+        result[k] = props[k];
+    }
+    return result;
+}
+
+function $$groupCall(emit) {
+    let timeout;
+    const fn = function() {
+        if(timeout) return;
+        timeout = true;
+        setTimeout(() => {
+            timeout = false;
+            fn.emit && fn.emit();
+        }, 1);
+    };
+    fn.emit = emit;
+    return fn;
+}
+function $$makeApply($cd) {
+    return function apply() {
+        if(apply._p) return;
+        if(apply.planned) return;
+        apply.planned = true;
+        setTimeout(() => {
+            apply.planned = false;
+            try {
+                apply._p = true;
+                $digest($cd, () => apply._p = false);
+            } finally {
+                apply._p = false;
+            }
+        }, 1);
+    };
+}
+
+function $$makeComponent($element, $option) {
+    let $component = {
+        $cd: new $ChangeDetector(),
+        exportedProps: {},
+        push: []
+    };
+
+    $component.destroy = () => $component.$cd.destroy();
+    $component.$$render = (rootTemplate) => {
+        if ($option.afterElement) {
+            $element.parentNode.insertBefore(rootTemplate, $element.nextSibling);
+        } else {
+            $element.innerHTML = '';
+            $element.appendChild(rootTemplate);
+        }
+    };
+
+    return $component;
+}
+function $$componentCompleteProps($component, $$apply) {
+    let list = $component.push;
+    $component.push = () => {
+        list.forEach(fn => fn());
+        $$apply();
+    };
 }
 
 function $$htmlBlock($cd, tag, fn) {
@@ -347,4 +479,4 @@ function $$ifBlock($cd, $parentElement, fn, tpl, build, tplElse, buildElse) {
     });
 }
 
-export { $$addEvent, $$childNodes, $$compareArray, $$compareDeep, $$deepComparator, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };
+export { $$addEvent, $$calcRestProps, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };
