@@ -299,6 +299,35 @@
                             assert(parent.type === 'if', 'Bind error: :else');
                             parent.bodyMain = parent.body;
                             parent.body = [];
+                        } else if(bind.value.startsWith('#await ')) {
+                            let mainPart = [];
+                            let tag = {
+                                type: 'await',
+                                value: bind.value,
+                                body: mainPart,
+                                parts: {
+                                    main: mainPart,
+                                    mainValue: bind.value
+                                }
+                            };
+                            parent.body.push(tag);
+                            go(tag);
+                            continue;
+                        } else if(bind.value.match(/^\:then( |$)/)) {
+                            assert(parent.type === 'await', 'Bind error: await-then');
+                            let thenPart = [];
+                            parent.parts.then = thenPart;
+                            parent.parts.thenValue = bind.value;
+                            parent.body = thenPart;
+                        } else if(bind.value.match(/^\:catch( |$)/)) {
+                            assert(parent.type === 'await', 'Bind error: await-catch');
+                            let catchPart = [];
+                            parent.parts.catch = catchPart;
+                            parent.parts.catchValue = bind.value;
+                            parent.body = catchPart;
+                        } else if(bind.value == '/await') {
+                            assert(parent.type === 'await', 'Bind error: /await');
+                            return;
                         } else throw 'Error binding: ' + bind.value;
                     }
                 }
@@ -1367,6 +1396,75 @@
         return `$$htmlBlock($cd, ${topElementName}, () => (${exp}));\n`;
     }
 
+    function makeAwaitBlock(node, elementName) {
+        let source = [];
+        let valueForThen, exp;
+        let rx = node.value.match(/^#await\s+(\S+)\s+then\s+(\S+)\s*$/);
+        if(rx) {
+            assert(!node.parts.then);
+            node.parts.then = node.parts.main;
+            node.parts.main = null;
+            exp = rx[1];
+            valueForThen = rx[2];
+        } else {
+            rx = node.value.match(/^#await\s+(\S+)\s*$/);
+            assert(rx);
+            exp = rx[1].trim();
+        }
+
+        let block_main, block_then, block_catch;
+        let build_main, build_then, build_catch;
+        let tpl_main, tpl_then, tpl_catch;
+        if(node.parts.main && node.parts.main.length) {
+            block_main = this.buildBlock({body: node.parts.main});
+            source.push(block_main.source);
+            build_main = block_main.name;
+            source.push(`const tpl_main = $$htmlToFragment(\`${this.Q(block_main.tpl)}\`, true);`);
+            tpl_main = 'tpl_main';
+        } else tpl_main = 'null';
+        if(node.parts.then && node.parts.then.length) {
+            let args = [];
+            if(valueForThen) {
+                assert(isSimpleName(valueForThen));
+                args.push(valueForThen);
+            } else {
+                let rx = node.parts.thenValue.match(/^[^ ]+\s+(.*)$/);
+                if(rx) {
+                    assert(isSimpleName(rx[1]));
+                    args.push(rx[1]);
+                }
+            }
+
+            block_then = this.buildBlock({body: node.parts.then, args});
+            source.push(block_then.source);
+            build_then = block_then.name;
+            source.push(`const tpl_then = $$htmlToFragment(\`${this.Q(block_then.tpl)}\`, true);`);
+            tpl_then = 'tpl_then';
+        } else tpl_then = 'null';
+        if(node.parts.catch && node.parts.catch.length) {
+            let args = [];
+            let rx = node.parts.catchValue.match(/^[^ ]+\s+(.*)$/);
+            if(rx) {
+                assert(isSimpleName(rx[1]));
+                args.push(rx[1]);
+            }
+
+            block_catch = this.buildBlock({body: node.parts.catch, args});
+            source.push(block_catch.source);
+            build_catch = block_catch.name;
+            source.push(`const tpl_catch = $$htmlToFragment(\`${this.Q(block_catch.tpl)}\`, true);`);
+            tpl_catch = 'tpl_catch';
+        } else tpl_catch = 'null';
+
+        source.push(`
+        $$awaitBlock($cd, ${elementName}, () => ${exp}, $$apply, ${build_main}, ${build_then}, ${build_catch}, ${tpl_main}, ${tpl_then}, ${tpl_catch});
+    `);
+
+        return {source: `{
+        ${source.join('\n')}
+    }`};
+    }
+
     function buildRuntime(data, script, css, config) {
         let runtime = [`
         return (function() {
@@ -1387,6 +1485,7 @@
             makeComponent,
             makeHtmlBlock,
             parseText,
+            makeAwaitBlock,
             checkRootName: checkRootName
         };
 
@@ -1542,6 +1641,12 @@
                         else tpl.push(`<!-- html -->`);
                         binds.push(this.makeHtmlBlock(exp, getElementName()));
                     } else throw 'Wrong tag';
+                } else if(n.type === 'await') {
+                    setLvl();
+                    if(this.config.hideLabel) tpl.push(`<!---->`);
+                    else tpl.push(`<!-- ${n.value} -->`);
+                    let block = this.makeAwaitBlock(n, getElementName());
+                    binds.push(block.source);
                 } else if(n.type === 'comment') {
                     if(!this.config.preserveComments) return;
                     setLvl();
@@ -1571,7 +1676,10 @@
         let source = [];
         let buildName = '$$build' + (this.uniqIndex++);
         tpl = this.Q(tpl.join(''));
-        source.push(`function ${buildName}($cd, $parentElement) {\n`);
+        
+        let args = ['$cd', '$parentElement'];
+        if(data.args) args.push.apply(args, data.args);
+        source.push(`function ${buildName}(${args.join(', ')}) {\n`);
 
         const buildNodes = (d, lvl) => {
             let keys = Object.keys(d).filter(k => k != 'name');
@@ -3623,7 +3731,7 @@
         let script = data.body.filter(n => n.type == 'script');
         assert(script.length <= 1, 'Only one script section');
 
-        script = transformJS(script[0]?script[0].content:null, config);
+        script = transformJS(script[0] ? script[0].content : null, config);
 
         let css = data.body.filter(n => n.type == 'style');
         assert(css.length <= 1, 'Only one style section');
@@ -3637,7 +3745,8 @@
             ${htmlFragment}, $$removeItem, $$childNodes, $watch, $ChangeDetector, $$removeElements,
             $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter,
             $$addEvent, $$deepComparator, $$makeSpreadObject, $$groupCall, $$makeProp, $$cloneDeep,
-            $$makeSpreadObject2, $$calcRestProps, $$makeApply, $$makeComponent, $$componentCompleteProps
+            $$makeSpreadObject2, $$calcRestProps, $$makeApply, $$makeComponent, $$componentCompleteProps,
+            $$awaitBlock
         } from 'malinajs/runtime.js';
     `;
         code += script.code.split('$$runtime()').join(runtime);
