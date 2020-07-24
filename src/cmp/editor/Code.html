@@ -13,14 +13,25 @@
     hljs.registerLanguage('css', css);
     svelte(hljs);
 
+    let ext = 'html';
+    files.current.subscribe(f => {
+        ext = f.name.split('.').pop();
+        if(!['html','js','json'].includes(ext)) ext = 'html';
+    });
+
     function codeJarAction(node){
 
         function inputHandler(){
             files.current.save(node.textContent);
         }
 
+        function highlight(text){
+            let syntax = (ext === 'js' || ext === 'json') ? 'javascript':'svelte';
+            return hljs.highlight(syntax,text).value
+        }
+
         const editor = new CodeJar(node,e => {
-           e.innerHTML = hljs.highlight('svelte',e.textContent).value;
+           e.innerHTML = highlight(e.textContent);
         },{tab: ' '.repeat(4)});
 
         node.addEventListener('input',inputHandler);
