@@ -1,6 +1,5 @@
 <script>    
-    import hljs from 'highlight.js/lib/core.js';
-    import js from 'highlight.js/lib/languages/javascript.js';
+    import {highlight} from './../../lib/highlight.js';
 
     import {files} from './../../stores/files.js';
     import {bundler} from './../../stores/bundler.js';
@@ -15,7 +14,7 @@
 
 
 <div>
-    <pre>{@html hljs.highlight('js',code).value }</pre>
+    <pre>{@html highlight('javascript',code) }</pre>
 </div>
 
 
