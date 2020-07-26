@@ -48,13 +48,13 @@ function bundleStore(){
 
             const thCompile = asyncThrottle(file => new Promise((resolve)=>{
                 compileCallback = ()=>resolve(true);
-
                 errors.set(null);
                 clear();
             
-                let filenameParts = file.name.split('.');
-                if(filenameParts.pop() !== 'html'){
-                    setOutput('component','/* Choose component to see its compiled version */');
+                let filenameParts = file.name.split('.');                
+                if(!/^(?:html|ma)$/.test(filenameParts.pop())){
+                    setOutput({component:'/* Choose component to see its compiled version */'});
+                    resolve(true);
                 }else{
                     emit('compile',{
                         code: file.body, 
@@ -88,13 +88,16 @@ function bundleStore(){
     
             files.subscribe(async sources => {
                 if(!output.get().ready) return;
-    
-                let currentMode = mode.get();
-                
-                if( currentMode === 'application' ) 
+                    
+                if( mode.get() === 'application' ) 
                     thBundle(sources);
                 else
                     thCompile(files.current.get())  
+            });
+
+            files.current.subscribe(async file => {
+                if(!output.get().ready) return;
+                if( mode.get() === 'component' ) thCompile(file)       
             });
             
             setOutput({ready: false});
