@@ -127,7 +127,7 @@ const compareDeep = (a, b, lvl) => {
     if(a0 !== a1) return true;
 
     if(a0) {
-        if(a.length !== b.length) return false;
+        if(a.length !== b.length) return true;
         for(let i=0;i<a.length;i++) {
             if(compareDeep(a[i], b[i], lvl-1)) return true;
         }
@@ -152,7 +152,7 @@ function cloneDeep(d, lvl) {
 
     if(typeof(d) == 'object') {
         if(d instanceof Date) return d;
-        if(Array.isArray(d)) return d.map(i => cloneDeep(t, lvl-1));
+        if(Array.isArray(d)) return d.map(i => cloneDeep(i, lvl-1));
         let r = {};
         for(let k in d) r[k] = cloneDeep(d[k], lvl-1);
         return r;
@@ -346,25 +346,16 @@ function $$makeSpreadObject2($cd, props) {
     };
     return self;
 }
-function $$makeProp($component, $$props, bound, name, getter, setter) {
-    let value = $$props[name];
+function $$makeProp($component, $props, bound, name, getter, setter) {
+    let value = $props[name];
     if(value !== void 0) setter(value);
-    if((bound[name] || bound.$$spreading) && (bound[name] !== 2)) $component.push.push(() => setter($$props[name]));
+    if((bound[name] || bound.$$spreading) && (bound[name] !== 2)) $component.push.push(() => setter($props[name]));
     $component.exportedProps[name] = true;
 
     Object.defineProperty($component, name, {
         get: getter,
         set: setter
     });
-}
-
-function $$calcRestProps($component, props) {
-    let result = {};
-    for(let k in props) {
-        if($component.exportedProps[k]) continue;
-        result[k] = props[k];
-    }
-    return result;
 }
 
 function $$groupCall(emit) {
@@ -386,6 +377,7 @@ function $$makeApply($cd) {
         if(apply.planned) return;
         apply.planned = true;
         setTimeout(() => {
+            if(apply.planned == 'stop') return apply.planned = false;
             apply.planned = false;
             try {
                 apply._p = true;
@@ -416,12 +408,29 @@ function $$makeComponent($element, $option) {
 
     return $component;
 }
-function $$componentCompleteProps($component, $$apply) {
+function $$componentCompleteProps($component, $$apply, $props) {
     let list = $component.push;
+    let recalcAttributes, $attributes = $props;
     $component.push = () => {
         list.forEach(fn => fn());
+        recalcAttributes();
         $$apply();
     };
+
+    $attributes = {};
+    for(let k in $props) {
+        if(!$component.exportedProps[k]) {
+            $attributes[k] = $props[k];
+            recalcAttributes = 1;
+        }
+    }
+    if(recalcAttributes) {
+        recalcAttributes = () => {
+            for(let k in $attributes) $attributes[k] = $props[k];
+        };
+    } else recalcAttributes = () => {};
+
+    return $attributes;
 }
 
 function $$htmlBlock($cd, tag, fn) {
@@ -521,4 +530,4 @@ function $$awaitBlock($cd, label, fn, $$apply, build_main, build_then, build_cat
     });
 }
 
-export { $$addEvent, $$awaitBlock, $$calcRestProps, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };
+export { $$addEvent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };

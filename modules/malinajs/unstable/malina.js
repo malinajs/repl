@@ -9,7 +9,7 @@
     csstree = csstree && Object.prototype.hasOwnProperty.call(csstree, 'default') ? csstree['default'] : csstree;
 
     function assert(x, info) {
-        if(!x) throw info || 'AssertError';
+        if(!x) throw info || (new Error('AssertError'));
     }
 
     function Q(s) {
@@ -17,6 +17,12 @@
     }
     function Q2(s) {
         return s.replace(/`/g, '\\`').replace(/\n/g, '\\n');
+    }
+    function unwrapExp(e) {
+        assert(e, 'Empty expression');
+        let rx = e.match(/^\{(.*)\}$/);
+        assert(rx, 'Wrong expression: ' + e);
+        return rx[1];
     }
     function isSimpleName(name) {
         return !!name.match(/^([\w\$_][\w\d\$_]*)$/);
@@ -70,6 +76,7 @@
         const details = {
             node: [n => n.body],
             each: [n => n.body],
+            slot: [n => n.body],
             if: [n => n.body, n => n.bodyMain],
             await: [n => n.parts.main, n => n.parts.then, n => n.parts.catch]
         };
@@ -207,7 +214,11 @@
                 if(a === '>') {
                     const voidTags = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
                     let voidTag = voidTags.indexOf(name) >= 0;
-                    let closedTag = voidTag || (name.match(/^[A-Z]/) && source[index-2] == '/');
+                    let closedTag = voidTag;
+                    if(!closedTag && source[index-2] == '/') {
+                        if(name.match(/^[A-Z]/)) closedTag = true;
+                        else if(name == 'slot' || name.match(/^slot\:\S/)) closedTag = true;
+                    }
                     return {
                         type: 'node',
                         name: name,
@@ -219,7 +230,7 @@
                     }
                 }
                 if(begin) {
-                    if(a.match(/[\da-zA-Z]/)) {
+                    if(a.match(/[\da-zA-Z\:]/)) {
                         name += a;
                         continue;
                     } else begin = false;
@@ -425,6 +436,18 @@
                         } else if(bind.value == '/await') {
                             assert(parent.type === 'await', 'Bind error: /await');
                             return;
+                        } else if(bind.value.match(/^\#slot(\:| |$)/)) {
+                            let tag = {
+                                type: 'slot',
+                                value: bind.value,
+                                body: []
+                            };
+                            parent.body.push(tag);
+                            go(tag);
+                            continue;
+                        } else if(bind.value == '/slot') {
+                            assert(parent.type === 'slot', 'Slot error: /slot');
+                            return;
                         } else throw 'Error binding: ' + bind.value;
                     }
                 }
@@ -574,6 +597,13 @@
         };
         var ast;
         if(code) {
+            code = code.split(/\n/).map(line => {
+                let rx = line.match(/^(\s*)\/\/(.*)$/);
+                if(!rx) return line;
+                let code = rx[2].trim();
+                if(code != '!check-stop') return line;
+                return rx[1] + '$$_checkStop;';
+            }).join('\n');
             ast = acorn.parse(code, {sourceType: 'module'});
         } else {
             ast = {
@@ -623,9 +653,18 @@
             return method == 'forEach' || method == 'map' || method == 'filter';
         }
 
+        function isStopOption(node) {
+            return node.type == 'ExpressionStatement' && node.expression.type == 'Identifier' && node.expression.name == '$$_checkStop';
+        }
         function transformNode(node) {
             if(funcTypes[node.type] && node.body.body && node.body.body.length) {
                 if(insertOnDestroy && node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
+                for(let i=0; i<node.body.body.length; i++) {
+                    let n = node.body.body[i];
+                    if(!isStopOption(n)) continue;
+                    node.body.body[i] = parseExp('if($$apply.planned) $$apply.planned=\'stop\'');
+                    return 'stop';
+                }
                 if(!isInLoop(node)) {
                     node.body.body.unshift(applyBlock());
                 }
@@ -733,6 +772,7 @@
 
         let imports = [];
         let resultBody = [];
+        let lastPropIndex = null;
 
         ast.body.forEach(n => {
             if(n.type == 'ImportDeclaration') {
@@ -753,7 +793,8 @@
                 });
                 resultBody.push(n.declaration);
                 forInit.forEach(n => {
-                    resultBody.push(parseExp(`$$makeProp($component, $$props, $option.boundProps || {}, '${n}', () => ${n}, _${n} => {${n} = _${n}; $$apply();})`));
+                    resultBody.push(parseExp(`$$makeProp($component, $props, $option.boundProps || {}, '${n}', () => ${n}, _${n} => {${n} = _${n}; $$apply();})`));
+                    lastPropIndex = resultBody.length;
                 });
                 return;
             }
@@ -769,14 +810,6 @@
             resultBody.push(n);
         });
 
-        if(result.props.length) {
-            resultBody.push(parseExp('$$componentCompleteProps($component, $$apply)'));
-            resultBody.push(parseExp('let $$restProps = $$calcRestProps($component, $$props)'));
-        } else {
-            resultBody.push(parseExp('$component.push = $$apply'));
-            resultBody.push(parseExp('const $$restProps = $$props'));
-        }
-
         resultBody.push({
             type: 'ExpressionStatement',
             expression: {
@@ -791,9 +824,17 @@
         let header = [];
         header.push(parseExp('if(!$option) $option = {}'));
         header.push(parseExp('if(!$option.events) $option.events = {}'));
-        header.push(parseExp('const $$props = $option.props || {}'));
+        header.push(parseExp('const $props = $option.props || {}'));
         header.push(parseExp('const $component = $$makeComponent($element, $option);'));
         header.push(parseExp('const $$apply = $$makeApply($component.$cd)'));
+
+        if(lastPropIndex != null) {
+            resultBody.splice(lastPropIndex, 0, parseExp('let $attributes = $$componentCompleteProps($component, $$apply, $props)'));
+        } else {
+            header.push(parseExp('$component.push = $$apply'));
+            header.push(parseExp('const $attributes = $props'));
+        }
+
         if(!rootFunctions.$emit) header.push(makeEmitter());
         if(insertOnDestroy) header.push(parseExp('function $onDestroy(fn) {$component.$cd.d(fn);}'));
         while(header.length) {
@@ -855,19 +896,70 @@
     }
 
     function makeComponent(node, makeEl) {
-        let propList = parseElement(node.openTag);
+        let propList = node.attributes;
         let binds = [];
         let head = [];
         let forwardAllEvents = false;
         let injectGroupCall = 0;
         let spreading = false;
-        
-        function unwrapExp(e) {
-            assert(e, 'Empty expression');
-            let rx = e.match(/^\{(.*)\}$/);
-            assert(rx, 'Wrong expression: ' + e);
-            return rx[1];
+
+        if(node.body && node.body.length) {
+            let slots = {};
+            let defaultSlot = {
+                name: 'default',
+                type: 'slot'
+            };
+            defaultSlot.body = node.body.filter(n => {
+                if(n.type != 'slot') return true;
+                let rx = n.value.match(/^\#slot:(\S+)/);
+                if(rx) n.name = rx[1];
+                else n.name = 'default';
+                assert(!slots[n], 'double slot');
+                slots[n.name] = n;
+            });
+
+            if(!slots.default) slots.default = defaultSlot;
+            // TODO: (else) check if defaultSlot is empty
+
+            Object.values(slots).forEach(slot => {
+                assert(isSimpleName(slot.name));
+                let args = '', setters = '';
+                let rx = slot.value && slot.value.match(/^#slot\S*\s+(.*)$/);
+                if(rx) {
+                    let props = rx[1].trim().split(/\s*,\s*/);
+                    props.forEach(n => {
+                        assert(isSimpleName(n), 'Wrong prop for slot');
+                    });
+                    args = `let ${props.join(', ')};`;
+                    setters = ',' + props.map(name => {
+                        return `set_${name}: (_${name}) => {${name} = _${name}; $$apply();}`;
+                    }).join(',\n');
+                }
+
+                let block = this.buildBlock(slot);
+                head.push(`
+                slots.${slot.name} = function($label) {
+                    let $childCD = $cd.new();
+                    let $tpl = $$htmlToFragment(\`${this.Q(block.tpl)}\`);
+
+                    ${args}
+
+                    ${block.source};
+                    ${block.name}($childCD, $tpl);
+                    $label.parentNode.insertBefore($tpl, $label.nextSibling);
+
+                    return {
+                        destroy: () => {
+                            $$removeItem($cd.children, $childCD);
+                            $childCD.destroy();
+                        }
+                        ${setters}
+                    }
+                }
+            `);
+            });
         }
+
         let boundEvents = {};
         let twoBinds = [];
         propList = propList.filter(prop => {
@@ -1035,8 +1127,9 @@
         {
             let props = {};
             let boundProps = {};
+            let slots = {};
             ${head.join('\n')};
-            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, boundProps, events});
+            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, boundProps, events, slots});
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 ${binds.join('\n')};
@@ -1576,6 +1669,56 @@
     }`};
     }
 
+    function attachSlot(slotName, label, node) {
+        let placeholder = '';
+
+        let bind = [];
+        if(node.attributes && node.attributes.length) {
+            node.attributes.forEach(prop => {
+                let name = prop.name;
+                let value = prop.value;
+                if(name[0] == '{') {
+                    assert(value == null);
+                    value = name;
+                    name = unwrapExp(name);
+                }            assert(value != null);
+                assert(isSimpleName(name));
+                if(value[0] == '{') {
+                    value = unwrapExp(value);
+                    bind.push(`
+                    if('set_${name}' in s) {
+                        $watch($cd, () => (${value}), s.set_${name}, {ro: true, cmp: $$compareDeep});
+                    }
+                `);
+                } else {
+                    bind.push(`
+                    if('set_${name}' in s) s.set_${name}(\`${this.Q(value)}\`);
+                `);
+                }
+            });
+        }
+        if(node.body && node.body.length) {
+            let block = this.buildBlock(node);
+            placeholder = ` else {
+            ${block.source};
+            let $tpl = $$htmlToFragment(\`${this.Q(block.tpl)}\`);
+            ${block.name}($cd, $tpl);
+            ${label}.parentNode.insertBefore($tpl, ${label}.nextSibling);
+        }`;
+        }
+        
+        return {source: `{
+        let $slot = $option.slots && $option.slots.${slotName};
+        if($slot) {
+            let s = $slot(${label});
+            $cd.d(s.destroy);
+            ${bind.join('\n')}
+        } ${placeholder};
+    }`};
+    }
+
+    const assert$1 = assert;
+
     function buildRuntime(data, script, css, config) {
         let runtime = [`
         return (function() {
@@ -1597,6 +1740,7 @@
             makeHtmlBlock,
             parseText,
             makeAwaitBlock,
+            attachSlot,
             checkRootName: checkRootName
         };
 
@@ -1657,26 +1801,31 @@
                 return d.name;
             };
 
-            let n, body = data.body.filter(n => n.type != 'script' && n.type != 'style');
-            if(data.type == 'root') {
-                while(n = body[0]) {
-                    if(n.type != 'text') break;
-                    n.value = n.value.trimLeft();
-                    if(n.value) break;
-                    else body.shift();
-                }
-                while(n = body[body.length - 1]) {
-                    if(n.type != 'text') break;
-                    n.value = n.value.trimRight();
-                    if(n.value) break;
-                    else body.pop();
+            let body = data.body.filter(n => {
+                if(n.type == 'script' || n.type == 'style' || n.type == 'slot') return false;
+                if(n.type == 'comment' && !this.config.preserveComments) return false;
+                return true;
+            });
+
+            {
+                let i = 0;
+                while(i < body.length - 1) {
+                    let node = body[i];
+                    let next = body[i + 1];
+                    if(node.type == 'text' && next.type == 'text') {
+                        node.value += next.value;
+                        body.splice(i + 1, 1);
+                        continue;
+                    }
+                    i++;
                 }
             }
 
             let lastText;
             const bindNode = (n) => {
                 if(n.type === 'text') {
-                    if(lastText !== tpl.length) setLvl();
+                    assert$1(lastText !== tpl.length);
+                    setLvl();
                     if(n.value.indexOf('{') >= 0) {
                         tpl.push(' ');
                         let exp = this.parseText(n.value);
@@ -1698,6 +1847,21 @@
                         else tpl.push(`<!-- ${n.name} -->`);
                         let b = this.makeComponent(n, getElementName);
                         binds.push(b.bind);
+                        return;
+                    }
+                    if(n.name.match(/^slot(\:|$)/)) {
+                        let slotName;
+                        if(n.name == 'slot') slotName = 'default';
+                        else {
+                            let rx = n.name.match(/^slot\:(\S+)(.*)$/);
+                            assert$1(rx);
+                            slotName = rx[1];
+                            // rx[2];  args
+                        }
+                        if(this.config.hideLabel) tpl.push(`<!---->`);
+                        else tpl.push(`<!-- Slot ${slotName} -->`);
+                        let b = this.attachSlot(slotName, getElementName(), n);
+                        binds.push(b.source);
                         return;
                     }
 
@@ -1759,7 +1923,6 @@
                     let block = this.makeAwaitBlock(n, getElementName());
                     binds.push(block.source);
                 } else if(n.type === 'comment') {
-                    if(!this.config.preserveComments) return;
                     setLvl();
                     tpl.push(n.content);
                 }
@@ -3858,7 +4021,7 @@
             ${htmlFragment}, $$removeItem, $$childNodes, $watch, $ChangeDetector, $$removeElements,
             $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter,
             $$addEvent, $$deepComparator, $$makeSpreadObject, $$groupCall, $$makeProp, $$cloneDeep,
-            $$makeSpreadObject2, $$calcRestProps, $$makeApply, $$makeComponent, $$componentCompleteProps,
+            $$makeSpreadObject2, $$makeApply, $$makeComponent, $$componentCompleteProps,
             $$awaitBlock
         } from 'malinajs/runtime.js';
     `;
