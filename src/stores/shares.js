@@ -76,6 +76,12 @@ async function fetchShare(id){
             if(result.ok) {
                 const answer = await result.json();
                 if(answer.length === 0) throw new Error(`Shared code not found.`);
+                answer.files = answer.files.map(file => {
+                    if(file.name === 'App.html') {
+                        file.name = 'App.ma';
+                    }
+                    return file;
+                });
                 cash[id] = JSON.stringify({meta:answer.meta,files:answer.files});
             }else{
                 throw new Error(`Error while loading shared code.`);
