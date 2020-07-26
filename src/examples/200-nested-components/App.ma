@@ -1,6 +1,6 @@
 <!-- Nested components -->
 <script>
-    import Hello from './Hello.html';
+    import Hello from './Hello.ma';
     let name = 'Everybody';
 </script>
 
