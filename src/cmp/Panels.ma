@@ -1,6 +1,6 @@
 <script>
-    import Editor from './editor/Editor.html';
-    import Result from './result/Result.html';
+    import Editor from './editor/Editor.ma';
+    import Result from './result/Result.ma';
 
     let percent = 60;
     let dragging = false;

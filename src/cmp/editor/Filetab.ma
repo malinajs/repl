@@ -1,5 +1,5 @@
 <script>
-    import Icon from './../icons/Icon.html';
+    import Icon from './../icons/Icon.ma';
     import {files} from './../../stores/files.js';
 
     export let file;

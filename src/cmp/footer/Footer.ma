@@ -1,5 +1,5 @@
 <script>
-    import VersionsList from './VersionsList.html';
+    import VersionsList from './VersionsList.ma';
 
     import {errors} from './../../stores/errors.js';
 

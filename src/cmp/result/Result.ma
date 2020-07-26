@@ -1,7 +1,7 @@
 <script>
-    import ResultTabs from './ResultTabs.html';
-    import Application from './Application.html';
-    import Component from './Component.html';
+    import ResultTabs from './ResultTabs.ma';
+    import Application from './Application.ma';
+    import Component from './Component.ma';
     import {bundler} from './../../stores/bundler.js';
 
     let mode = 'application';

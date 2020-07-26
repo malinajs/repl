@@ -1,6 +1,6 @@
 <script>
-    import Filestabs from './Filestabs.html';
-    import Code from './Code.html';
+    import Filestabs from './Filestabs.ma';
+    import Code from './Code.ma';
 </script>
 
 <div class="wrapper">

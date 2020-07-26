@@ -1,6 +1,6 @@
 <script>
-    import Icon from './../icons/Icon.html';
-    import Filetab from './Filetab.html';
+    import Icon from './../icons/Icon.ma';
+    import Filetab from './Filetab.ma';
     import {files} from './../../stores/files.js';
 
     let list = [];

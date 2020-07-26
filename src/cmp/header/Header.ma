@@ -1,6 +1,6 @@
 <script>
-    import Examples from './ExamplesList.html';
-    import Github from './Github.html';
+    import Examples from './ExamplesList.ma';
+    import Github from './Github.ma';
 
     import {files} from './../../stores/files.js';
     import {router} from './../../stores/router.js';
