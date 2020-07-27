@@ -77,6 +77,7 @@
             node: [n => n.body],
             each: [n => n.body],
             slot: [n => n.body],
+            fragment: [n => n.body],
             if: [n => n.body, n => n.bodyMain],
             await: [n => n.parts.main, n => n.parts.then, n => n.parts.catch]
         };
@@ -183,41 +184,66 @@
             let start = index;
             let a = readNext();
             assert(a === '<', 'Tag error');
-            let q = null;
+            let attributes = [];
             let begin = true;
             let name = '';
             let bind;
+            let eq, attr_start;
+
+            function flush(shift) {
+                if(!attr_start) return;
+                shift = shift || 0;
+                let end = index - 1 + shift;
+                let a = {
+                    content: source.substring(attr_start, end)
+                };
+                if(eq) {
+                    a.name = source.substring(attr_start, eq);
+                    a.value = source.substring(eq + 1, end);
+                    if(a.value[0] == '"' || a.value[0] == '"') a.value = a.value.substring(1);
+                    let i = a.value.length - 1;
+                    if(a.value[i] == '"' || a.value[i] == '"') a.value = a.value.substring(0, i);
+                } else a.name = a.content;
+                attributes.push(a);
+                attr_start = null;
+                eq = null;
+            }
             while(true) {
                 a = readNext();
-                if(q) {
-                    if(a != q) continue;
-                    q = null;
-                    continue
-                }
-                if(a == '"' || a == "'") {
-                    q = a;
+                if(!begin && !attr_start && a.match(/\S/) && a != '/' && a != '>') attr_start = index - 1;
+                if(a == '"' || a == "'" || a == '`') {
+                    while(a != readNext());
                     continue;
                 }
                 if(bind) {
-                    bind = a != '}';
+                    if(a == '}') {
+                        bind = false;
+                        flush(1);
+                    }
                     continue;
                 }
                 if(a == '{') {
                     bind = true;
                     continue;
                 }
-                if(a === '<') {
+                if(a == '<') {
                     let e = new Error('Wrong tag');
                     e.details = source.substring(start, index);
                     throw e;
                 }
-                if(a === '>') {
+                if(a == '/') {
+                    a = readNext();
+                    assert(a == '>');
+                    flush(-1);
+                }
+                if(a == '>') {
+                    flush();
                     const voidTags = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
                     let voidTag = voidTags.indexOf(name) >= 0;
+                    if(name.match(/^fragment($| |\:)/)) voidTag = true;
                     let closedTag = voidTag;
                     if(!closedTag && source[index-2] == '/') {
-                        if(name.match(/^[A-Z]/)) closedTag = true;
-                        else if(name == 'slot' || name.match(/^slot\:\S/)) closedTag = true;
+                        closedTag = !!(name.match(/^[A-Z]/) || name.match(/^slot($| |\:)/));
                     }
                     return {
                         type: 'node',
@@ -226,7 +252,8 @@
                         start: start,
                         end: index,
                         closedTag,
-                        voidTag
+                        voidTag,
+                        attributes
                     }
                 }
                 if(begin) {
@@ -234,6 +261,9 @@
                         name += a;
                         continue;
                     } else begin = false;
+                } else if(attr_start) {
+                    if(a == '=' && !eq) eq = index - 1;
+                    else if(a.match(/\s/)) flush();
                 }
             }
         };
@@ -355,8 +385,7 @@
                         tag.type = 'style';
                         tag.content = readStyle();
                         continue;
-                    }                tag.attributes = parseElement(tag.openTag);
-
+                    }
                     if(tag.closedTag) continue;
 
                     tag.body = [];
@@ -448,6 +477,18 @@
                         } else if(bind.value == '/slot') {
                             assert(parent.type === 'slot', 'Slot error: /slot');
                             return;
+                        } else if(bind.value.match(/^\#fragment\W/)) {
+                            let tag = {
+                                type: 'fragment',
+                                value: bind.value,
+                                body: []
+                            };
+                            parent.body.push(tag);
+                            go(tag);
+                            continue;
+                        } else if(bind.value == '/fragment') {
+                            assert(parent.type === 'fragment', 'Fragment error: /fragment');
+                            return;
                         } else throw 'Error binding: ' + bind.value;
                     }
                 }
@@ -473,73 +514,6 @@
         return root;
     }
 
-    function parseElement(source) {
-        let len = source.length - 1;
-        assert(source[0] === '<');
-        assert(source[len] === '>');
-        if(source[len - 1] == '/') len--;
-
-        let index = 1;
-        let start = 1;
-        let eq;
-        let result = [];
-        let first = true;
-
-        const next = () => {
-            assert(index < source.length, 'EOF');
-            return source[index++];
-        };
-        const flush = (shift) => {
-            if(start >= index + shift) return;
-            if(first) {
-                first = false;
-                return;
-            }
-            let prop = {
-                content: source.substring(start, index + shift)
-            };
-            if(eq) {
-                prop.name = source.substring(start, eq - 1);
-                prop.value = source.substring(eq, index + shift).match(/^['"]?([\s\S]*?)['"]?$/)[1];
-                eq = null;
-            } else {
-                prop.name = prop.content;
-            }        result.push(prop);
-        };
-
-        let bind = false;
-
-        while(index < len) {
-            let a = next();
-
-            if(a === '"' || a === "'") {
-                while(a != next());
-                continue;
-            }
-
-            if(bind) {
-                bind = a != '}';
-                continue;
-            }
-
-            if(a == '{') {
-                bind = true;
-                continue;
-            }
-
-            if(a.match(/^\s$/)) {
-                flush(-1);
-                start = index;
-                continue;
-            }
-            if(a == '=' && !eq) {
-                eq = index;
-            }
-        }
-        flush(0);
-        return result;
-    }
-
     function parseText(source) {
         let i = 0;
         let step = 0;
@@ -556,7 +530,7 @@
                     exp += a;
                     continue;
                 }
-                if(a === '"' || a === "'") {
+                if(a === '"' || a === "'" || a === '`') {
                     q = a;
                     exp += a;
                     continue;
@@ -1062,10 +1036,10 @@
 
                 let callback;
                 if(isFunc) {
-                    callback = `${exp}`;
+                    callback = exp;
                 } else if(handler) {
                     this.checkRootName(handler);
-                    callback = `${handler}`;
+                    callback = handler;
                 } else {
                     callback = `($event) => {${this.Q(exp)}}`;
                 }
@@ -1289,7 +1263,7 @@
             assert(detectExpressionType(exp) == 'identifier', 'Wrong bind name: ' + prop.content);
             let watchExp = attr == 'checked' ? '!!' + exp : exp;
 
-            let spreading;
+            let spreading = '';
             if(node.spreadObject) spreading = `${node.spreadObject}.except(['${attr}']);`;
 
             return {bind: `{
@@ -1706,7 +1680,7 @@
             ${label}.parentNode.insertBefore($tpl, ${label}.nextSibling);
         }`;
         }
-        
+
         return {source: `{
         let $slot = $option.slots && $option.slots.${slotName};
         if($slot) {
@@ -1714,6 +1688,129 @@
             $cd.d(s.destroy);
             ${bind.join('\n')}
         } ${placeholder};
+    }`};
+    }
+
+    function makeFragment(node) {
+        let rx = node.value.match(/#fragment\:(\S+)(.*)$/);
+        assert(rx);
+        let name = rx[1];
+        let args = rx[2].trim().split(/\s*,\s*/);
+        let head = [];
+        assert(isSimpleName(name));
+        args.forEach(name => {
+            assert(isSimpleName(name));
+            head.push(`
+            let ${name};
+            if($$args.${name} != null) {
+                if(typeof $$args.${name} == 'function') {
+                    $watchReadOnly($cd, $$args.${name}, _${name} => ${name} = _${name});
+                } else ${name} = $$args.${name};
+            }
+        `);
+        });
+
+        let block;
+        if(node.body && node.body.length) block = this.buildBlock(node);
+        else {
+            this.option.warning(`Empty fragment: '${node.value}'`);
+            return {source: `function $fragment_${name}() {};`};
+        }
+
+        return {source: `
+        function $fragment_${name}($cd, label, $option) {
+            let $$args = $option.args;
+            ${head.join('\n')}
+
+            ${block.source};
+            let $tpl = $$htmlToFragment(\`${this.Q(block.tpl)}\`);
+            ${block.name}($cd, $tpl);
+            label.parentNode.insertBefore($tpl, label.nextSibling);
+        };
+    `};
+    }
+
+
+    function attachFragment(node, elementName) {
+
+        let head = [];
+        let rx = node.name.match(/^fragment\:(\w+)$/);
+        assert(rx);
+        let name = rx[1];
+        assert(isSimpleName(name));
+
+        node.attributes.forEach(prop => {
+            let name = prop.name;
+            let value = prop.value;
+
+            if(name[0] == '@' || name.startsWith('on:')) {
+                if(name[0] == '@') name = name.substring(1);
+                else name = name.substring(3);
+
+                if(name == '@') {
+                    head.push(`events = $option.events;`);
+                    return;
+                }
+
+                let args = name.split(':');
+                name = args.shift();
+                assert(isSimpleName(name));
+
+                let exp, handler, isFunc;
+                if(value) exp = unwrapExp(value);
+                else {
+                    if(args.length) handler = args.pop();
+                    else {
+                        head.push(`events.${name} = $option.events.${name};`);
+                        return;
+                    }
+                }
+                assert(!handler ^ !exp, prop.content);
+
+                if(exp) {
+                    let type = detectExpressionType(exp);
+                    if(type == 'identifier') {
+                        handler = exp;
+                        exp = null;
+                    } else {
+                        isFunc = (type == 'function');
+                    }
+                }
+
+                let callback;
+                if(isFunc) {
+                    callback = exp;
+                } else if(handler) {
+                    this.checkRootName(handler);
+                    callback = handler;
+                } else {
+                    callback = `($event) => {${this.Q(exp)}}`;
+                }
+                head.push(`events.${name} = ${callback};`);
+            } else {
+                if(name[0] == '{') {
+                    assert(!value);
+                    value = name;
+                    name = unwrapExp(name);
+                }
+
+                assert(isSimpleName(name));
+                assert(value);
+                if(value.indexOf('{') >= 0) {
+                    let exp = unwrapExp(value);
+                    head.push(`args.${name} = () => (${exp});`);
+                } else {
+                    head.push(`args.${name} = \`${this.Q(value)}\`;`);
+                }
+            }
+
+        });
+
+        return {source: `{
+        let args = {};
+        let events = {};
+        ${head.join('\n')}
+        $fragment_${name}($cd, ${elementName}, {args, events});
     }`};
     }
 
@@ -1741,6 +1838,8 @@
             parseText,
             makeAwaitBlock,
             attachSlot,
+            makeFragment,
+            attachFragment,
             checkRootName: checkRootName
         };
 
@@ -1804,6 +1903,15 @@
             let body = data.body.filter(n => {
                 if(n.type == 'script' || n.type == 'style' || n.type == 'slot') return false;
                 if(n.type == 'comment' && !this.config.preserveComments) return false;
+                if(n.type == 'fragment') {
+                    try {
+                        let b = this.makeFragment(n);
+                        binds.push(b.source);
+                    } catch (e) {
+                        wrapException(e, n);
+                    }
+                    return false;
+                }
                 return true;
             });
 
@@ -1849,18 +1957,24 @@
                         binds.push(b.bind);
                         return;
                     }
-                    if(n.name.match(/^slot(\:|$)/)) {
+                    if(n.name.match(/^slot(\:|$| )/)) {
                         let slotName;
                         if(n.name == 'slot') slotName = 'default';
                         else {
                             let rx = n.name.match(/^slot\:(\S+)(.*)$/);
                             assert$1(rx);
                             slotName = rx[1];
-                            // rx[2];  args
                         }
                         if(this.config.hideLabel) tpl.push(`<!---->`);
                         else tpl.push(`<!-- Slot ${slotName} -->`);
                         let b = this.attachSlot(slotName, getElementName(), n);
+                        binds.push(b.source);
+                        return;
+                    }
+                    if(n.name.match(/^fragment(\:|$| )/)) {
+                        if(this.config.hideLabel) tpl.push(`<!---->`);
+                        else tpl.push(`<!-- Slot ${n.name} -->`);
+                        let b = this.attachFragment(n, getElementName());
                         binds.push(b.source);
                         return;
                     }
@@ -1927,19 +2041,11 @@
                     tpl.push(n.content);
                 }
             };
-            body.forEach(n => {
+            body.forEach(node => {
                 try {
-                    bindNode(n);
+                    bindNode(node);
                 } catch (e) {
-                    if(typeof e === 'string') e = new Error(e);
-                    if(!e.details) {
-                        console.log('Node: ', n);
-                        if(n.type == 'text') e.details = n.value.trim();
-                        else if(n.type == 'node') e.details = n.openTag.trim();
-                        else if(n.type == 'each') e.details = n.value.trim();
-                        else if(n.type == 'if') e.details = n.value.trim();
-                    }
-                    throw e;
+                    wrapException(e, node);
                 }
             });
 
@@ -1980,6 +2086,17 @@
             source: source.join('')
         }
 
+    }
+    function wrapException(e, n) {
+        if(typeof e === 'string') e = new Error(e);
+        if(!e.details) {
+            console.log('Node: ', n);
+            if(n.type == 'text') e.details = n.value.trim();
+            else if(n.type == 'node') e.details = n.openTag.trim();
+            else if(n.type == 'each') e.details = n.value.trim();
+            else if(n.type == 'if') e.details = n.value.trim();
+        }
+        throw e;
     }
 
     var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
@@ -3906,10 +4023,17 @@
 
         function build(parent, list) {
             list.forEach(e => {
-                if(e.type == 'each' || e.type == 'if') {
+                if(e.type == 'each' || e.type == 'fragment' || e.type == 'slot') {
+                    if(e.body && e.body.length) build(parent, e.body);
+                    return;
+                } else if(e.type == 'if') {
                     if(e.bodyMain && e.bodyMain.length) build(parent, e.bodyMain);
                     if(e.body && e.body.length) build(parent, e.body);
                     return;
+                } else if(e.type == 'await') {
+                    if(e.parts.main && e.parts.main.length) build(parent, e.parts.main);
+                    if(e.parts.then && e.parts.then.length) build(parent, e.parts.then);
+                    if(e.parts.catch && e.parts.catch.length) build(parent, e.parts.catch);
                 } else if(e.type != 'node') return;
                 let n = new Node(e.name, {__node: e});
                 e.attributes.forEach(a => {
