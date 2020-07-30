@@ -1,63 +1,145 @@
-import hljs from 'highlight.js/lib/core.js';
-import xml from 'highlight.js/lib/languages/xml.js';
-import js from 'highlight.js/lib/languages/javascript.js';
-import css from 'highlight.js/lib/languages/css.js';
+import Prism  from 'prismjs/components/prism-core.js';
+import 'prismjs/components/prism-clike';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-css';
 
-hljs.registerLanguage('xml', xml);
-hljs.registerLanguage('javascript', js);
-hljs.registerLanguage('css', css);
-hljs.registerLanguage('malina', hljsDefineMalina);
-
+langDefinitionMalina(Prism);
+         
 export function highlight(syntax,code){
-    if(!['html','xml','javascript','css','malina'].includes(syntax)) syntax='malina';
-    return hljs.highlight(syntax,code).value;
+    if(!['javascript','malina'].includes(syntax)) syntax='malina';
+    return Prism.highlight(code, Prism.languages[syntax], 'malina');
 }
 
-function hljsDefineMalina(hljs) {
-    return {
-      subLanguage: "xml",
-      contains: [
-        hljs.COMMENT("<!--", "-->", {
-          relevance: 10,
-        }),
-        {
-          begin: /^(\s*)(<script(\s*context="module")?>)/gm,
-          end: /^(\s*)(<\/script>)/gm,
-          subLanguage: "javascript",
-          excludeBegin: true,
-          excludeEnd: true,
-          contains:[
-            { 
-              begin: /^(\s*)(\$:)/gm,
-              end: /(\s*)/gm,
-              className: 'keyword'
-            }
-          ]
-        },
-        {
-          begin: /^(\s*)(<style.*>)/gm,
-          end: /^(\s*)(<\/style>)/gm,
-          subLanguage: "css",
-          excludeBegin: true,
-          excludeEnd: true,
-        },
-        {
-          begin: /\{/gm,
-          end: /\}/gm,
-          subLanguage: "javascript",
-          contains:[
-            {
-              begin: /[\{]/, 
-              end: /[\}]/, 
-              skip: true
+function langDefinitionMalina(Prism) {
+
+    const expression = {            
+        pattern: /\{[\s\S]*?\}/,
+        inside:{
+            'punctuation': /\{|\}$/,
+            'eachfix':{
+                pattern:/(?<=(each .+ as .+))[a-zA-Z$_0-9]+\s*\(.+\)\s*$/,
+                inside:{
+                    'javascript': /^[a-zA-Z$_0-9]+/
+                }
             },
-            {
-              begin: /([#:\/@])(if|else|each|await|then|catch|debug|html)/gm,
-              className:'keyword',
-              relevance: 10,
+            'keyword':/([#:\/@](if|else|each|await|then|catch|html|slot|fragment))|\$element|\$event|\$onDestroy|\$onMount|\$props|\$attributes|\$emit/,
+            'selector': /^:[A-Za-z0-9]+/,
+            
+            'javascript':{
+                pattern:/[\s\S]+/,
+                inside:Prism.languages.javascript
             }
-          ],
         }
-      ]
     }
-  }
+
+    function getTag(validonly){
+
+        return {
+            pattern: /<\/?[^>\/]+\/?>/,
+            inside:{
+                'tagstart': {
+                    pattern: /^<\/?[A-Za-z0-9-:]+/,
+                    inside: {
+                        'punctuation': /^<\/?/,
+                        'keyword': /^(fragment|slot|[A-Z])[A-Za-z0-9-]*/,
+                        'tag': /^[a-z][A-Za-z0-9-]*/, 
+                        'selector': /^:[A-Za-z0-9]+/,
+                    }
+                },
+                'expression':!validonly && expression,
+                'attr-value':{
+                    pattern:/="[\S\s]*?(?<!\\)"|="[^"]*|[^"]*"(?=(>|\s))|='[\S\s]*?(?<!\\)'|='[^']*|[^']*'(?=(>|\s))/,
+                    inside:{
+                        'punctuation': /="|='|"$|'$/
+                    }
+                },
+                'expression':!validonly && expression,
+                'ref':!validonly && {
+                    pattern:/\s#([A-Za-z0-9_$]+)?/,
+                    inside:{
+                        'keyword':/#/,
+                        'javascript': /[A-Za-z0-9_$]+/
+                    }
+                },
+                'action':!validonly && {
+                    pattern:/\s(\*|use:|use)([A-Za-z0-9_$]+)?=?/,
+                    inside:{
+                        'keyword':/\*|use:|use/,
+                        'punctuation':/=$/,
+                        'javascript': /[A-Za-z0-9_$]+/
+                    }
+                },
+                'event':!validonly && {
+                    pattern:/\s(@@|@|on:@?)([A-Za-z0-9_$:|]+)?/,
+                    inside:{
+                        'keyword':/@@|on:@?|@/,
+                        'javascript': /:[A-Za-z0-9_$]+/,
+                        'attr-name': {
+                            pattern: /[A-Za-z0-9|]+/,
+                            inside: {
+                                'italic':/\|[A-Za-z0-9]+/
+                            }
+                        }
+                    }
+                },
+                'bind':!validonly && {
+                    pattern:/\s(:|bind:)([A-Za-z0-9_$]+)?=?/,
+                    inside:{
+                        'keyword':/:|bind:/,
+                        'attr-name':/[a-z]+(?=\=)/,
+                        'punctuation':/=$/,
+                        'javascript': /[A-Za-z0-9_$]+/
+                    }
+                },
+                'style':!validonly && {
+                    pattern:/\s(class:|style:)([A-Za-z0-9_$]+)?=?/,
+                    inside:{
+                        'keyword':/class:|style:/,
+                        'attr-name':/[a-z]+(?=\=)/,
+                        'punctuation':/=$/,
+                        'javascript': /[A-Za-z0-9_$]+/
+                    }
+                },
+                'attr-name':/\s[a-z0-9-]+/,
+                                
+                'punctuation': /=|\/?>$/,
+            }
+        }
+    }
+
+	Prism.languages.malina = {
+        'script':{
+            pattern:/<script[^>]*>[\s\S]*<\/script>/,
+            inside:{
+                'scriptag':{
+                    pattern:/^<script[^>]*>|<\/script>$/,
+                    inside:{
+                        'htmltag':getTag(true)
+                    }
+                },
+                'keyword':/\$:|\$onDestroy|\$onMount|\$props|\$attributes|\$emit/,
+                'javascript':{
+                    pattern:/[\s\S]+/,
+                    inside:Prism.languages.javascript
+                }
+            }
+        },
+        'style':{
+            pattern:/<style>[\s\S]*<\/style>/,
+            inside:{
+                'styletag':{
+                    pattern:/^<style[^>]*>|<\/style>$/,
+                    inside:{
+                        'htmltag':getTag(true)
+                    }
+                },
+                'css':{
+                    pattern:/[\s\S]+/,
+                    inside:Prism.languages.css
+                }
+            }
+        },
+		'html': getTag(),
+        'expression':expression
+	};
+}
