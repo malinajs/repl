@@ -3,11 +3,15 @@ import 'prismjs/components/prism-clike';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-css';
 
+
+
 langDefinitionMalina(Prism);
          
 export function highlight(syntax,code){
     if(!['javascript','malina'].includes(syntax)) syntax='malina';
-    return Prism.highlight(code, Prism.languages[syntax], 'malina');
+    const result = Prism.highlight(code, Prism.languages[syntax]);
+
+    return result;
 }
 
 function langDefinitionMalina(Prism) {
@@ -108,6 +112,7 @@ function langDefinitionMalina(Prism) {
     }
 
 	Prism.languages.malina = {
+        'comment': /<!--[\s\S]*-->/,
         'script':{
             pattern:/<script[^>]*>[\s\S]*<\/script>/,
             inside:{

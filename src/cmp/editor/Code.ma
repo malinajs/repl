@@ -28,6 +28,7 @@
         node.style.resize = 'none';
 
         const unsbcr = files.current.subscribe(file => {
+            console.log(editor.toString(),file.body, editor.toString()===file.body);
             if(editor.toString() !== file.body) editor.updateCode(file.body);
         });
 
