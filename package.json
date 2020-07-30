@@ -13,7 +13,7 @@
         "cjs2es": "^1.1.0",
         "codejar": "^3.1.0",
         "fs-extra": "^9.0.1",
-        "malinajs": "github:malinajs/malinajs#f1b0c77a8e7184dccb69cc127a91f899fba08fa5",
+        "malinajs": "github:malinajs/malinajs",
         "node-watch": "^0.6.4",
         "prismjs": "^1.20.0",
         "rollup": "^2.18.1",
