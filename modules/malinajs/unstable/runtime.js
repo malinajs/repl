@@ -1,5 +1,7 @@
 let templatecache = {false: {}, true: {}};
 
+let $$uniqIndex = 1;
+
 function $$htmlToFragment(html, lastNotTag) {
     lastNotTag = !!lastNotTag;
     if(templatecache[lastNotTag][html]) return templatecache[lastNotTag][html].cloneNode(true);
@@ -52,17 +54,26 @@ function $ChangeDetector(parent) {
     if(parent) this.root = parent.root;
     else {
         this.root = this;
-        this.onceList = [];
     }
-    this.children = [];
     this.watchers = [];
     this.destroyList = [];
     this.prefix = [];
+
+    this.parent = null;
+    this.first = null;
+    this.last = null;
+    this.prev = null;
+    this.next = null;
 }
 Object.assign($ChangeDetector.prototype, {
     new: function() {
         var cd = new $ChangeDetector(this);
-        this.children.push(cd);
+        let prev = this.last;
+        if(prev) prev.next = cd;
+        cd.prev = prev;
+        cd.parent = this;
+        this.last = cd;
+        if(!this.first) this.first = cd;
         return cd;
     },
     ev: function(el, event, callback) {
@@ -85,13 +96,18 @@ Object.assign($ChangeDetector.prototype, {
             }
         });
         this.destroyList.length = 0;
-        this.children.forEach(cd => {
+        if(this.prev) this.prev.next = this.next;
+        if(this.next) this.next.prev = this.prev;
+        if(this.parent) {
+            if(this.parent.first === this) this.parent.first = this.next;
+            if(this.parent.last === this) this.parent.last = this.prev;
+        }
+        let cd = this.first;
+        while(cd) {
             cd.destroy();
-        });
-        this.children.length = 0;
-    },
-    once: function(fn) {
-        this.root.onceList.push(fn);
+            cd = cd.next;
+        }
+        this.first = this.last = this.prev = this.next = this.parent = null;
     }
 });
 
@@ -175,15 +191,37 @@ function $$deepComparator(depth) {
 }
 const $$compareDeep = $$deepComparator(10);
 
-function $digest($cd, onFinishLoop) {
+let _tick_list = [];
+let _tick_planned = {};
+function $tick(fn, uniq) {
+    if(uniq) {
+        if(_tick_planned[uniq]) return;
+        _tick_planned[uniq] = true;
+    }
+    _tick_list.push(fn);
+    if(_tick_planned.$tick) return;
+    _tick_planned.$tick = true;
+    setTimeout(() => {
+        _tick_planned = {};
+        let list = _tick_list;
+        _tick_list = [];
+        list.forEach(fn => {
+            try {
+                fn();
+            } catch (e) {
+                console.error(e);
+            }
+        });
+    }, 0);
+}
+function $digest($cd) {
     let loop = 10;
-    let w;
+    let w, next;
     while(loop >= 0) {
         let changes = 0;
-        let index = 0;
-        let queue = [];
         let i, value, cd = $cd;
-        while(cd) {
+        top:
+        do {
             for(i=0;i<cd.prefix.length;i++) cd.prefix[i]();
             for(i=0;i<cd.watchers.length;i++) {
                 w = cd.watchers[i];
@@ -197,22 +235,16 @@ function $digest($cd, onFinishLoop) {
                         w.cb(w.value);
                     }
                 }
-            }            if(cd.children.length) queue.push.apply(queue, cd.children);
-            cd = queue[index++];
-        }
+            }            next = cd.first || cd.next;
+            while(!next) {
+                if(cd === $cd) break top;
+                cd = cd.parent;
+                next = cd.next;
+            }
+        } while (cd = next);
         loop--;
         if(!changes) break;
     }
-    onFinishLoop();
-    let once = $cd.onceList;
-    $cd.onceList = [];
-    once.forEach(fn => {
-        try {
-            fn();
-        } catch (e) {
-            console.error(e);
-        }
-    });
     if(loop < 0) console.error('Infinity changes: ', w);
 }
 function $makeEmitter(option) {
@@ -362,33 +394,33 @@ function $$makeProp($component, $props, bound, name, getter, setter) {
 }
 
 function $$groupCall(emit) {
-    let timeout;
+    let id = `gc${$$uniqIndex++}`;
     const fn = function() {
-        if(timeout) return;
-        timeout = true;
-        setTimeout(() => {
-            timeout = false;
+        $tick(() => {
             fn.emit && fn.emit();
-        }, 0);
+        }, id);
     };
     fn.emit = emit;
     return fn;
 }
 function $$makeApply($cd) {
-    return function apply() {
+    let stop, id = `a${$$uniqIndex++}`;
+    return function apply(option) {
+        if(option === false) {
+            if(_tick_planned.apply) stop = true;
+            return;
+        }
         if(apply._p) return;
-        if(apply.planned) return;
-        apply.planned = true;
-        setTimeout(() => {
-            if(apply.planned == 'stop') return apply.planned = false;
-            apply.planned = false;
+
+        $tick(() => {
+            if(stop) return stop = false;
             try {
                 apply._p = true;
-                $digest($cd, () => apply._p = false);
+                $digest($cd);
             } finally {
                 apply._p = false;
             }
-        }, 0);
+        }, id);
     };
 }
 
@@ -475,7 +507,6 @@ function $$ifBlock($cd, $parentElement, fn, tpl, build, tplElse, buildElse) {
     }
     function destroy() {
         if(!childCD) return;
-        $$removeItem($cd.children, childCD);
         childCD.destroy();
         childCD = null;
         $$removeElements(first, last);
@@ -498,7 +529,6 @@ function $$awaitBlock($cd, label, fn, $$apply, build_main, build_then, build_cat
 
     function remove() {
         if(!childCD) return;
-        $$removeItem($cd.children, childCD);
         childCD.destroy();
         childCD = null;
         $$removeElements(first, last);
@@ -533,4 +563,4 @@ function $$awaitBlock($cd, label, fn, $$apply, build_main, build_then, build_cat
     });
 }
 
-export { $$addEvent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $watch, $watchReadOnly };
+export { $$addEvent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly };

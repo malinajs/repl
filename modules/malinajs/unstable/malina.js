@@ -636,7 +636,7 @@
                 for(let i=0; i<node.body.body.length; i++) {
                     let n = node.body.body[i];
                     if(!isStopOption(n)) continue;
-                    node.body.body[i] = parseExp('if($$apply.planned) $$apply.planned=\'stop\'');
+                    node.body.body[i] = parseExp('$$apply(false)');
                     return 'stop';
                 }
                 if(!isInLoop(node)) {
@@ -924,7 +924,6 @@
 
                     return {
                         destroy: () => {
-                            $$removeItem($cd.children, $childCD);
                             $childCD.destroy();
                         }
                         ${setters}
@@ -1107,7 +1106,7 @@
             if($component) {
                 if($component.destroy) $cd.d($component.destroy);
                 ${binds.join('\n')};
-                if($component.onMount) $cd.once($component.onMount);
+                if($component.onMount) $tick($component.onMount);
             }
     }`};
     }
@@ -1293,7 +1292,7 @@
                 assert(isSimpleName(arg), 'Wrong name: ' + arg);
                 this.checkRootName(arg);
                 let args = prop.value ? getExpression() : '';
-                let code = `$cd.once(() => {
+                let code = `$tick(() => {
                 let useObject = ${arg}(${makeEl()}${args ? ', ' + args : ''});\n if(useObject) {`;
                 if(args) code += `
                 if(useObject.update) {
@@ -1306,7 +1305,7 @@
             let exp = getExpression();
             return {bind: `{
             let $element=${makeEl()};
-            $cd.once(() => { $$apply(); ${exp}; });}`};
+            $tick(() => { $$apply(); ${exp}; });}`};
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
                 let exp = this.parseText(prop.value);
@@ -1458,8 +1457,7 @@
 
         let eachBlockName = 'eachBlock' + (this.uniqIndex++);
         source.push(`
-        function ${eachBlockName} ($parentCD, top) {
-            let $cd = $parentCD.new();
+        function ${eachBlockName} ($cd, top) {
 
             function bind($ctx, $template, ${itemName}, ${indexName}) {
                 ${itemData.source};
@@ -1492,8 +1490,7 @@
                 if(mapping.size) {
                     if(!array.length && lastNode) {
                         $$removeElements(prevNode.nextSibling, lastNode);
-                        $cd.children.forEach(cd => cd.destroy());
-                        $cd.children.length = 0;
+                        while($cd.first) $cd.first.destroy();
                         mapping.clear();
                     } else {
                         let ctx;
@@ -1509,7 +1506,6 @@
                             }
                             $$removeElements(ctx.first, ctx.last);
                             ctx.cd.destroy();
-                            $$removeItem($cd.children, ctx.cd);
                         });
                     }
                 }
@@ -1559,10 +1555,10 @@
                     prevNode = ctx.last;
                     newMapping.set(getKey(item, i), ctx);
                 };
-                lastNode = prevNode;
+                lastNode = prevNode !== top ? prevNode : null;
                 mapping.clear();
                 mapping = newMapping;
-            }, {cmp: $$compareArray});
+            }, {ro: true, cmp: $$compareArray});
         }
         ${eachBlockName}($cd, ${topElementName});
     `);
@@ -1861,11 +1857,11 @@
     `);
         if(script.onMount) runtime.push(`
         if($option.noMount) $component.onMount = onMount;
-        else $cd.once(onMount);
+        else $tick(onMount);
     `);
         if(script.onDestroy) runtime.push(`$cd.d(onDestroy);`);
         if(script.watchers.length) {
-            runtime.push('$cd.once(() => {\n' + script.watchers.join('\n') + '\n$$apply();\n});');
+            runtime.push(script.watchers.join('\n'));
         }
 
         if(css) runtime.push(`
@@ -4151,7 +4147,7 @@
             $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter,
             $$addEvent, $$deepComparator, $$makeSpreadObject, $$groupCall, $$makeProp, $$cloneDeep,
             $$makeSpreadObject2, $$makeApply, $$makeComponent, $$componentCompleteProps,
-            $$awaitBlock
+            $$awaitBlock, $tick
         } from 'malinajs/runtime.js';
     `;
         code += script.code.split('$$runtime()').join(runtime);
