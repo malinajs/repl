@@ -57,6 +57,7 @@ function $ChangeDetector(parent) {
     this.children = [];
     this.watchers = [];
     this.destroyList = [];
+    this.prefix = [];
 }
 Object.assign($ChangeDetector.prototype, {
     new: function() {
@@ -75,6 +76,7 @@ Object.assign($ChangeDetector.prototype, {
     },
     destroy: function() {
         this.watchers.length = 0;
+        this.prefix.length = 0;
         this.destroyList.forEach(fn => {
             try {
                 fn();
@@ -182,6 +184,7 @@ function $digest($cd, onFinishLoop) {
         let queue = [];
         let i, value, cd = $cd;
         while(cd) {
+            for(i=0;i<cd.prefix.length;i++) cd.prefix[i]();
             for(i=0;i<cd.watchers.length;i++) {
                 w = cd.watchers[i];
                 value = w.fn();

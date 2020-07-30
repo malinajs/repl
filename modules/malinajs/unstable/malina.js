@@ -725,7 +725,7 @@
                 } else throw 'Error';
                 assertExpression(ex.right);
                 const exp = code.substring(ex.right.start, ex.right.end);
-                result.watchers.push(`$watch($cd, () => (${exp}), ($value) => {${target}=$value;}, {cmp: $$compareArray});`);
+                result.watchers.push(`$cd.prefix.push(() => {${target} = ${exp};});`);
             } else if(n.body.expression.type == 'SequenceExpression') {
                 const ex = n.body.expression.expressions;
                 const handler = ex[ex.length - 1];
@@ -1204,6 +1204,8 @@
                     if(preventInserted) return;
                     mod += '$event.preventDefault();';
                     preventInserted = true;
+                } else if(opt == 'stopPropagation') {
+                    mod += '$event.stopPropagation();';
                 } else if(opt == 'enter') {
                     mod += 'if($event.keyCode != 13) return;';
                     needPrevent = true;
@@ -1695,20 +1697,23 @@
         let rx = node.value.match(/#fragment\:(\S+)(.*)$/);
         assert(rx);
         let name = rx[1];
-        let args = rx[2].trim().split(/\s*,\s*/);
+        let args = rx[2] ? rx[2].trim() : null;
         let head = [];
         assert(isSimpleName(name));
-        args.forEach(name => {
-            assert(isSimpleName(name));
-            head.push(`
-            let ${name};
-            if($$args.${name} != null) {
-                if(typeof $$args.${name} == 'function') {
-                    $watchReadOnly($cd, $$args.${name}, _${name} => ${name} = _${name});
-                } else ${name} = $$args.${name};
-            }
-        `);
-        });
+        if(args) {
+            args = args.split(/\s*,\s*/);
+            args.forEach(name => {
+                assert(isSimpleName(name));
+                head.push(`
+                let ${name};
+                if($$args.${name} != null) {
+                    if(typeof $$args.${name} == 'function') {
+                        $cd.prefix.push(() => {${name} = $$args.${name}()});
+                    } else ${name} = $$args.${name};
+                }
+            `);
+            });
+        }
 
         let block;
         if(node.body && node.body.length) block = this.buildBlock(node);
