@@ -1,4 +1,4 @@
 
-import widget from './App.ma';
+import widget from './App.xht';
 
 widget(document.body);
