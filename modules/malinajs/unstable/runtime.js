@@ -1,44 +1,3 @@
-let templatecache = {false: {}, true: {}};
-
-let $$uniqIndex = 1;
-
-function $$htmlToFragment(html, lastNotTag) {
-    lastNotTag = !!lastNotTag;
-    if(templatecache[lastNotTag][html]) return templatecache[lastNotTag][html].cloneNode(true);
-
-    let t = document.createElement('template');
-    t.innerHTML = html;
-    let result = t.content;
-    if(lastNotTag && result.lastChild.nodeType == 8) result.appendChild(document.createTextNode(''));
-    templatecache[lastNotTag][html] = result.cloneNode(true);
-    return result;
-}
-function $$htmlToFragmentClean(html, lastNotTag) {
-    lastNotTag = !!lastNotTag;
-    if(templatecache[lastNotTag][html]) return templatecache[lastNotTag][html].cloneNode(true);
-    let result = $$htmlToFragment(html, lastNotTag);
-    let it = document.createNodeIterator(result, 128);
-    let n;
-    while(n = it.nextNode()) {
-        if(!n.nodeValue) n.parentNode.replaceChild(document.createTextNode(''), n);
-    }    templatecache[lastNotTag][html] = result.cloneNode(true);
-    return result;
-}
-function $$removeItem(array, item) {
-    let i = array.indexOf(item);
-    if(i>=0) array.splice(i, 1);
-}
-const $$childNodes = 'childNodes';
-
-function $$removeElements(el, last) {
-    let next;
-    while(el) {
-        next = el.nextSibling;
-        el.remove();
-        if(el == last) break;
-        el = next;
-    }
-}
 function $watch(cd, fn, callback, w) {
     if(!w) w = {};
     w.fn = fn;
@@ -50,66 +9,49 @@ function $watch(cd, fn, callback, w) {
 function $watchReadOnly(cd, fn, callback) {
     return $watch(cd, fn, callback, {ro: true});
 }
+function addEvent(cd, el, event, callback) {
+    el.addEventListener(event, callback);
+    cd_onDestroy(cd, () => {
+        el.removeEventListener(event, callback);
+    });
+}
+function cd_onDestroy(cd, fn) {
+    cd.destroyList.push(fn);
+}
+function $$removeItem(array, item) {
+    let i = array.indexOf(item);
+    if(i>=0) array.splice(i, 1);
+}
 function $ChangeDetector(parent) {
-    if(parent) this.root = parent.root;
-    else {
-        this.root = this;
-    }
+    this.parent = parent;
+    this.children = [];
     this.watchers = [];
     this.destroyList = [];
     this.prefix = [];
-
-    this.parent = null;
-    this.first = null;
-    this.last = null;
-    this.prev = null;
-    this.next = null;
 }
-Object.assign($ChangeDetector.prototype, {
-    new: function() {
-        var cd = new $ChangeDetector(this);
-        let prev = this.last;
-        if(prev) prev.next = cd;
-        cd.prev = prev;
-        cd.parent = this;
-        this.last = cd;
-        if(!this.first) this.first = cd;
-        return cd;
-    },
-    ev: function(el, event, callback) {
-        el.addEventListener(event, callback);
-        this.d(() => {
-            el.removeEventListener(event, callback);
-        });
-    },
-    d: function(fn) {
-        this.destroyList.push(fn);
-    },
-    destroy: function() {
-        this.watchers.length = 0;
-        this.prefix.length = 0;
-        this.destroyList.forEach(fn => {
-            try {
-                fn();
-            } catch (e) {
-                console.error(e);
-            }
-        });
-        this.destroyList.length = 0;
-        if(this.prev) this.prev.next = this.next;
-        if(this.next) this.next.prev = this.prev;
-        if(this.parent) {
-            if(this.parent.first === this) this.parent.first = this.next;
-            if(this.parent.last === this) this.parent.last = this.prev;
+$ChangeDetector.prototype.new = function() {
+    var cd = new $ChangeDetector(this);
+    this.children.push(cd);
+    return cd;
+};
+
+$ChangeDetector.prototype.destroy = function(option) {
+    if(option !== false && this.parent) $$removeItem(this.parent.children, this);
+    this.watchers.length = 0;
+    this.prefix.length = 0;
+    this.destroyList.forEach(fn => {
+        try {
+            fn();
+        } catch (e) {
+            console.error(e);
         }
-        let cd = this.first;
-        while(cd) {
-            cd.destroy();
-            cd = cd.next;
-        }
-        this.first = this.last = this.prev = this.next = this.parent = null;
-    }
-});
+    });
+    this.destroyList.length = 0;
+    this.children.forEach(cd => {
+        cd.destroy(false);
+    });
+    this.children.length = 0;
+};
 
 
 const compareArray = (a, b) => {
@@ -191,6 +133,75 @@ function $$deepComparator(depth) {
 }
 const $$compareDeep = $$deepComparator(10);
 
+function $digest($cd) {
+    let loop = 10;
+    let w;
+    while(loop >= 0) {
+        let changes = 0;
+        let index = 0;
+        let queue = [];
+        let i, value, cd = $cd;
+        while(cd) {
+            for(i=0;i<cd.prefix.length;i++) cd.prefix[i]();
+            for(i=0;i<cd.watchers.length;i++) {
+                w = cd.watchers[i];
+                value = w.fn();
+                if(w.value !== value) {
+                    if(w.cmp) {
+                        changes += w.cmp(w, value);
+                    } else {
+                        w.value = value;
+                        if(!w.ro) changes++;
+                        w.cb(w.value);
+                    }
+                }
+            }            if(cd.children.length) queue.push.apply(queue, cd.children);
+            cd = queue[index++];
+        }
+        loop--;
+        if(!changes) break;
+    }
+    if(loop < 0) console.error('Infinity changes: ', w);
+}
+
+let templatecache = {false: {}, true: {}};
+
+let $$uniqIndex = 1;
+
+const $$childNodes = 'childNodes';
+
+function $$htmlToFragment(html, lastNotTag) {
+    lastNotTag = !!lastNotTag;
+    if(templatecache[lastNotTag][html]) return templatecache[lastNotTag][html].cloneNode(true);
+
+    let t = document.createElement('template');
+    t.innerHTML = html;
+    let result = t.content;
+    if(lastNotTag && result.lastChild.nodeType == 8) result.appendChild(document.createTextNode(''));
+    templatecache[lastNotTag][html] = result.cloneNode(true);
+    return result;
+}
+function $$htmlToFragmentClean(html, lastNotTag) {
+    lastNotTag = !!lastNotTag;
+    if(templatecache[lastNotTag][html]) return templatecache[lastNotTag][html].cloneNode(true);
+    let result = $$htmlToFragment(html, lastNotTag);
+    let it = document.createNodeIterator(result, 128);
+    let n;
+    while(n = it.nextNode()) {
+        if(!n.nodeValue) n.parentNode.replaceChild(document.createTextNode(''), n);
+    }    templatecache[lastNotTag][html] = result.cloneNode(true);
+    return result;
+}
+function $$removeElements(el, last) {
+    let next;
+    while(el) {
+        next = el.nextSibling;
+        el.remove();
+        if(el == last) break;
+        el = next;
+    }
+}
+
 let _tick_list = [];
 let _tick_planned = {};
 function $tick(fn, uniq) {
@@ -214,39 +225,7 @@ function $tick(fn, uniq) {
         });
     }, 0);
 }
-function $digest($cd) {
-    let loop = 10;
-    let w, next;
-    while(loop >= 0) {
-        let changes = 0;
-        let i, value, cd = $cd;
-        top:
-        do {
-            for(i=0;i<cd.prefix.length;i++) cd.prefix[i]();
-            for(i=0;i<cd.watchers.length;i++) {
-                w = cd.watchers[i];
-                value = w.fn();
-                if(w.value !== value) {
-                    if(w.cmp) {
-                        changes += w.cmp(w, value);
-                    } else {
-                        w.value = value;
-                        if(!w.ro) changes++;
-                        w.cb(w.value);
-                    }
-                }
-            }            next = cd.first || cd.next;
-            while(!next) {
-                if(cd === $cd) break top;
-                cd = cd.parent;
-                next = cd.next;
-            }
-        } while (cd = next);
-        loop--;
-        if(!changes) break;
-    }
-    if(loop < 0) console.error('Infinity changes: ', w);
-}
+
 function $makeEmitter(option) {
     return (name, detail) => {
         let fn = option.events[name];
@@ -256,7 +235,7 @@ function $makeEmitter(option) {
         fn(e);
     };
 }
-function $$addEvent(list, event, fn) {
+function $$addEventForComponent(list, event, fn) {
     let prev = list[event];
     if(prev) {
         if(prev._list) prev._list.push(fn);
@@ -468,6 +447,14 @@ function $$componentCompleteProps($component, $$apply, $props) {
     return $attributes;
 }
 
+const addStyles = (id, content) => {
+    if(document.head.querySelector('style#' + id)) return;
+    let style = document.createElement('style');
+    style.id = id;
+    style.innerHTML = content;
+    document.head.appendChild(style);
+};
+
 function $$htmlBlock($cd, tag, fn) {
     let lastElement;
     let create = (html) => {
@@ -563,4 +550,111 @@ function $$awaitBlock($cd, label, fn, $$apply, build_main, build_then, build_cat
     });
 }
 
-export { $$addEvent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly };
+function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind) {
+    let $cd = $parentCD.new();
+
+    let mapping = new Map();
+    let lineArray = [];
+    let lastNode;
+    let tplLength = itemTemplate.childNodes.length;
+    if(onlyChild) while(label.firstChild) label.firstChild.remove(); // FIXME
+
+    $watch($cd, fn, (array) => {
+        if(!array) array = [];
+        if(typeof(array) == 'number') {
+            lineArray.length = array;
+            array--;
+            while(array >= 0 && !lineArray[array]) lineArray[array] = array-- + 1;
+            array = lineArray;
+        } else if(!Array.isArray(array)) array = [];
+
+        let newMapping = new Map();
+        let prevNode, parentNode;
+        if(onlyChild) {
+            prevNode = null;
+            parentNode = label;
+        } else {
+            prevNode = label;
+            parentNode = label.parentNode;
+        }
+
+        if(mapping.size) {
+            let ctx, count = 0;
+            for(let i=0;i<array.length;i++) {
+                ctx = mapping.get(getKey(array[i], i));
+                if(ctx) {
+                    ctx.a = true;
+                    count++;
+                }
+            }
+
+            if(!count && lastNode) {
+                if(onlyChild) label.textContent = '';
+                else $$removeElements(label.nextSibling, lastNode);
+                $cd.children.forEach(cd => cd.destroy(false));
+                $cd.children.length = 0;
+                mapping.clear();
+            } else {
+                $cd.children = [];
+                mapping.forEach(ctx => {
+                    if(ctx.a) {
+                        ctx.a = false;
+                        $cd.children.push(ctx.cd);
+                        return;
+                    }
+                    $$removeElements(ctx.first, ctx.last);
+                    ctx.cd.destroy(false);
+                });
+            }
+        }
+
+        let i, item, next_ctx, ctx, nextEl;
+        for(i=0;i<array.length;i++) {
+            item = array[i];
+            if(next_ctx) {
+                ctx = next_ctx;
+                next_ctx = null;
+            } else ctx = mapping.get(getKey(item, i));
+            if(ctx) {
+                nextEl = i == 0 && onlyChild ? parentNode.firstChild : prevNode.nextSibling;
+                if(nextEl != ctx.first) {
+                    let insert = true;
+
+                    if(tplLength == 1 && (i + 1 < array.length) && prevNode.nextSibling) {
+                        next_ctx = mapping.get(getKey(array[i + 1], i + 1));
+                        if(prevNode.nextSibling.nextSibling === next_ctx.first) {
+                            parentNode.replaceChild(ctx.first, prevNode.nextSibling);
+                            insert = false;
+                        }
+                    }
+
+                    if(insert) {
+                        let insertBefore = prevNode.nextSibling;
+                        let next, el = ctx.first;
+                        while(el) {
+                            next = el.nextSibling;
+                            parentNode.insertBefore(el, insertBefore);
+                            if(el == ctx.last) break;
+                            el = next;
+                        }
+                    }
+                }
+                ctx.rebind(i, item);
+            } else {
+                let tpl = itemTemplate.cloneNode(true);
+                let childCD = $cd.new();
+                ctx = {cd: childCD};
+                bind(ctx, tpl, item, i);
+                ctx.first = tpl.firstChild;
+                ctx.last = tpl.lastChild;
+                parentNode.insertBefore(tpl, prevNode && prevNode.nextSibling);
+            }
+            prevNode = ctx.last;
+            newMapping.set(getKey(item, i), ctx);
+        }        lastNode = prevNode;
+        mapping.clear();
+        mapping = newMapping;
+    }, {ro: true, cmp: $$compareArray});
+}
+
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, cd_onDestroy };

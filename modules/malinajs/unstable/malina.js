@@ -739,7 +739,7 @@
                 } else if(ex.length > 2) {
                     for(let i = 0;i<ex.length-1;i++) assertExpression(ex[i]);
                     let exp = code.substring(ex[0].start, ex[ex.length-2].end);
-                    result.watchers.push(`$watch($cd, () => [${exp}], ($args) => { (${callback}).apply(null, $args); }, {cmp: $$compareArray});`);
+                    result.watchers.push(`$watch($cd, () => [${exp}], ($args) => { (${callback}).apply(null, $args); }, {cmp: $runtime.$$compareArray});`);
                 } else throw 'Error';
             } else throw 'Error';
         }
@@ -767,7 +767,7 @@
                 });
                 resultBody.push(n.declaration);
                 forInit.forEach(n => {
-                    resultBody.push(parseExp(`$$makeProp($component, $props, $option.boundProps || {}, '${n}', () => ${n}, _${n} => {${n} = _${n}; $$apply();})`));
+                    resultBody.push(parseExp(`$runtime.$$makeProp($component, $props, $option.boundProps || {}, '${n}', () => ${n}, _${n} => {${n} = _${n}; $$apply();})`));
                     lastPropIndex = resultBody.length;
                 });
                 return;
@@ -799,18 +799,18 @@
         header.push(parseExp('if(!$option) $option = {}'));
         header.push(parseExp('if(!$option.events) $option.events = {}'));
         header.push(parseExp('const $props = $option.props || {}'));
-        header.push(parseExp('const $component = $$makeComponent($element, $option);'));
-        header.push(parseExp('const $$apply = $$makeApply($component.$cd)'));
+        header.push(parseExp('const $component = $runtime.$$makeComponent($element, $option);'));
+        header.push(parseExp('const $$apply = $runtime.$$makeApply($component.$cd)'));
 
         if(lastPropIndex != null) {
-            resultBody.splice(lastPropIndex, 0, parseExp('let $attributes = $$componentCompleteProps($component, $$apply, $props)'));
+            resultBody.splice(lastPropIndex, 0, parseExp('let $attributes = $runtime.$$componentCompleteProps($component, $$apply, $props)'));
         } else {
             header.push(parseExp('$component.push = $$apply'));
             header.push(parseExp('const $attributes = $props'));
         }
 
-        if(!rootFunctions.$emit) header.push(makeEmitter());
-        if(insertOnDestroy) header.push(parseExp('function $onDestroy(fn) {$component.$cd.d(fn);}'));
+        if(!rootFunctions.$emit) header.push(parseExp('const $emit = $runtime.$makeEmitter($option)'));
+        if(insertOnDestroy) header.push(parseExp('function $onDestroy(fn) {$runtime.cd_onDestroy($component.$cd, fn);}'));
         while(header.length) {
             resultBody.unshift(header.pop());
         }
@@ -847,21 +847,6 @@
         return result;
     }
 
-    function makeEmitter() {
-        return {
-            type: 'VariableDeclaration',
-            declarations: [{
-                type: 'VariableDeclarator',
-                id: {type: 'Identifier', name: '$emit'},
-                init: {
-                    type: 'CallExpression',
-                    callee: {type: 'Identifier', name: '$makeEmitter'},
-                    arguments: [{type: 'Identifier', name: '$option'}]
-                }
-            }],
-            kind: 'const'
-        };
-    }
 
     function parseExp(exp) {
         let ast = acorn.parse(exp);
@@ -957,18 +942,18 @@
                 head.push(`boundProps.${inner} = 2;`);
                 binds.push(`
                 if('${inner}' in $component) {
-                    let value = $$cloneDeep(props.${inner});
+                    let value = $runtime.$$cloneDeep(props.${inner});
                     let $$_w0 = $watch($cd, () => (${outer}), (value) => {
                         props.${inner} = value;
                         $$_w1.value = $$_w0.value;
                         $component.${inner} = value;
-                    }, {ro: true, cmp: $$compareDeep, value});
+                    }, {ro: true, cmp: $runtime.$$compareDeep, value});
                     let $$_w1 = $watch($component.$cd, () => ($component.${inner}), (${valueName}) => {
                         props.${inner} = ${valueName};
                         $$_w0.value = $$_w1.value;
                         ${outer} = ${valueName};
                         $$apply();
-                    }, {cmp: $$compareDeep, value});
+                    }, {cmp: $runtime.$$compareDeep, value});
                 } else console.error("Component ${node.name} doesn't have prop ${inner}");
             `);
                 return false;
@@ -977,7 +962,7 @@
         });
 
         if(spreading) {
-            head.push('let spreadObject = $$makeSpreadObject2($cd, props);');
+            head.push('let spreadObject = $runtime.$$makeSpreadObject2($cd, props);');
             head.push('boundProps.$$spreading = true;');
             binds.push('spreadObject.emit = $component.push;');
             if(twoBinds.length) {
@@ -1015,7 +1000,7 @@
                 else {
                     if(!arg.length) {
                         // forwarding
-                        if(forwardAllEvents || boundEvents[event]) head.push(`$$addEvent(events, '${event}', $option.events.${event});`);
+                        if(forwardAllEvents || boundEvents[event]) head.push(`$runtime.$$addEventForComponent(events, '${event}', $option.events.${event});`);
                         else head.push(`events.${event} = $option.events.${event};`);
                         boundEvents[event] = true;
                         return;
@@ -1043,7 +1028,7 @@
                     callback = `($event) => {${this.Q(exp)}}`;
                 }
 
-                if(forwardAllEvents || boundEvents[event]) head.push(`$$addEvent(events, '${event}', ${callback});`);
+                if(forwardAllEvents || boundEvents[event]) head.push(`$runtime.$$addEventForComponent(events, '${event}', ${callback});`);
                 else head.push(`events.${event} = ${callback};`);
                 boundEvents[event] = true;
                 return;
@@ -1069,7 +1054,7 @@
                 $watch($cd, ${fname}, _${name} => {
                     props.${name} = _${name};
                     groupCall();
-                }, {ro: true, cmp: $$compareDeep, value: $$cloneDeep(${valueName})});
+                }, {ro: true, cmp: $runtime.$$compareDeep, value: $runtime.$$cloneDeep(${valueName})});
             `);
             } else {
                 if(spreading) {
@@ -1089,7 +1074,7 @@
                 head.push('let groupCall;');
                 binds.push('groupCall = $component.push;');
             } else {
-                head.push('let groupCall = $$groupCall();');
+                head.push('let groupCall = $runtime.$$groupCall();');
                 binds.push('groupCall.emit = $component.push;');
             }
         }
@@ -1104,7 +1089,7 @@
             ${head.join('\n')};
             let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, boundProps, events, slots});
             if($component) {
-                if($component.destroy) $cd.d($component.destroy);
+                if($component.destroy) $runtime.cd_onDestroy($cd, $component.destroy);
                 ${binds.join('\n')};
                 if($component.onMount) $tick($component.onMount);
             }
@@ -1173,7 +1158,7 @@
                 return {bind: `
                 {
                     for(let event in $option.events) {
-                        $cd.ev(${makeEl()}, event, $option.events[event]);
+                        $runtime.addEvent($cd, ${makeEl()}, event, $option.events[event]);
                     }
                 }
             `};
@@ -1187,7 +1172,7 @@
                 if(!opts.length) {
                     // forwarding
                     return {bind: `
-                    $cd.ev(${makeEl()}, "${event}", ($event) => {
+                    $runtime.addEvent($cd, ${makeEl()}, "${event}", ($event) => {
                         const fn = $option.events.${event};
                         if(fn) fn($event);
                     });\n`
@@ -1229,7 +1214,7 @@
                 {
                     let $element=${makeEl()};
                     const ${funcName} = ${exp};
-                    $cd.ev($element, "${event}", ($event) => { ${mod} $$apply(); ${funcName}($event);});
+                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} $$apply(); ${funcName}($event);});
                 }`
                 };
             } else if(handler) {
@@ -1237,14 +1222,14 @@
                 return {bind: `
                 {
                     let $element=${makeEl()};
-                    $cd.ev($element, "${event}", ($event) => { ${mod} $$apply(); ${handler}($event);});
+                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} $$apply(); ${handler}($event);});
                 }`
                 };
             } else {
                 return {bind: `
                 {
                     let $element=${makeEl()};
-                    $cd.ev($element, "${event}", ($event) => { ${mod} $$apply(); ${this.Q(exp)}});
+                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} $$apply(); ${this.Q(exp)}});
                 }`
                 };
             }
@@ -1270,7 +1255,7 @@
             return {bind: `{
             ${spreading}
             let $element=${makeEl()};
-            $cd.ev($element, 'input', () => { ${exp}=$element.${attr}; $$apply(); });
+            $runtime.addEvent($cd, $element, 'input', () => { ${exp}=$element.${attr}; $$apply(); });
             $watchReadOnly($cd, () => (${watchExp}), (value) => { if(value != $element.${attr}) $element.${attr} = value; });
         }`};
         } else if(name == 'class' && arg) {
@@ -1296,10 +1281,10 @@
                 let useObject = ${arg}(${makeEl()}${args ? ', ' + args : ''});\n if(useObject) {`;
                 if(args) code += `
                 if(useObject.update) {
-                    let w = $watch($cd, () => [${args}], (args) => {useObject.update.apply(useObject, args);}, {cmp: $$compareArray});
+                    let w = $watch($cd, () => [${args}], (args) => {useObject.update.apply(useObject, args);}, {cmp: $runtime.$$compareArray});
                     w.value = w.fn();
                 }`;
-                code += `if(useObject.destroy) $cd.d(useObject.destroy);}});`;
+                code += `if(useObject.destroy) $runtime.cd_onDestroy($cd, useObject.destroy);}});`;
                 return {bind: code};
             }
             let exp = getExpression();
@@ -1396,11 +1381,11 @@
 
         if(elseBlock) {
             source.push(`
-            $$ifBlock($cd, $parentElement, () => !!(${exp}), mainfr, ${mainBlock.name}, elsefr, ${elseBlock.name});
+            $runtime.$$ifBlock($cd, $parentElement, () => !!(${exp}), mainfr, ${mainBlock.name}, elsefr, ${elseBlock.name});
         `);
         } else {
             source.push(`
-            $$ifBlock($cd, $parentElement, () => !!(${exp}), mainfr, ${mainBlock.name});
+            $runtime.$$ifBlock($cd, $parentElement, () => !!(${exp}), mainfr, ${mainBlock.name});
         `);
         }
         source.push(`};\n ${ifBlockName}($cd, ${topElementName});`);
@@ -1410,7 +1395,7 @@
         }
     }
 
-    function makeEachBlock(data, topElementName) {
+    function makeEachBlock(data, option) {
         let source = [];
 
         let nodeItems = data.body;
@@ -1456,9 +1441,9 @@
         else keyFunction = `function getKey(${itemName}) {return ${keyName};}`;
 
         let eachBlockName = 'eachBlock' + (this.uniqIndex++);
-        source.push(`
-        function ${eachBlockName} ($cd, top) {
 
+        source.push(`
+        {
             function bind($ctx, $template, ${itemName}, ${indexName}) {
                 ${itemData.source};
                 ${itemData.name}($ctx.cd, $template);
@@ -1472,104 +1457,17 @@
 
             let itemTemplate = $$htmlToFragment(\`${this.Q(itemData.tpl)}\`, true);
 
-            let mapping = new Map();
-            let lineArray = [];
-            let lastNode;
-            $watch($cd, () => (${arrayName}), (array) => {
-                if(!array) array = [];
-                if(typeof(array) == 'number') {
-                    lineArray.length = array;
-                    array--;
-                    while(array >= 0 && !lineArray[array]) lineArray[array] = array-- + 1;
-                    array = lineArray;
-                } else if(!Array.isArray(array)) array = [];
-
-                let prevNode = top;
-                let newMapping = new Map();
-
-                if(mapping.size) {
-                    if(!array.length && lastNode) {
-                        $$removeElements(prevNode.nextSibling, lastNode);
-                        while($cd.first) $cd.first.destroy();
-                        mapping.clear();
-                    } else {
-                        let ctx;
-                        for(let i=0;i<array.length;i++) {
-                            ctx = mapping.get(getKey(array[i], i));
-                            if(ctx) ctx.a = true;
-                        }
-
-                        mapping.forEach((ctx, key) => {
-                            if(ctx.a) {
-                                ctx.a = false;
-                                return;
-                            }
-                            $$removeElements(ctx.first, ctx.last);
-                            ctx.cd.destroy();
-                        });
-                    }
-                }
-
-                let parentNode = top.parentNode;
-                let i, item, next_ctx, el, ctx;
-                for(i=0;i<array.length;i++) {
-                    item = array[i];
-                    if(next_ctx) {
-                        ctx = next_ctx;
-                        next_ctx = null;
-                    } else ctx = mapping.get(getKey(item, i));
-                    if(ctx) {
-                        if(prevNode.nextSibling != ctx.first) {
-                            let insert = true;
-
-                ` + (nodeItems.length==1?`
-                            if(i + 1 < array.length && prevNode.nextSibling) {
-                                next_ctx = mapping.get(getKey(array[i + 1], i + 1));
-                                if(prevNode.nextSibling.nextSibling === next_ctx.first) {
-                                    parentNode.replaceChild(ctx.first, prevNode.nextSibling);
-                                    insert = false;
-                                }
-                            }
-                `:``) + `
-                            if(insert) {
-                                let insertBefore = prevNode.nextSibling;
-                                let next, el = ctx.first;
-                                while(el) {
-                                    next = el.nextSibling;
-                                    parentNode.insertBefore(el, insertBefore);
-                                    if(el == ctx.last) break;
-                                    el = next;
-                                }
-                            }
-                        }
-                        ctx.rebind(i, item);
-                    } else {
-                        let tpl = itemTemplate.cloneNode(true);
-                        let childCD = $cd.new();
-                        ctx = {cd: childCD};
-                        bind(ctx, tpl, item, i);
-                        ctx.first = tpl.firstChild;
-                        ctx.last = tpl.lastChild;
-                        parentNode.insertBefore(tpl, prevNode.nextSibling);
-                    }
-                    prevNode = ctx.last;
-                    newMapping.set(getKey(item, i), ctx);
-                };
-                lastNode = prevNode !== top ? prevNode : null;
-                mapping.clear();
-                mapping = newMapping;
-            }, {ro: true, cmp: $$compareArray});
+            $runtime.$$eachBlock($cd, ${option.elName}, ${option.onlyChild?1:0}, () => (${arrayName}), getKey, itemTemplate, bind);
         }
-        ${eachBlockName}($cd, ${topElementName});
     `);
 
         return {
             source: source.join('\n')
-        }
+        };
     }
 
     function makeHtmlBlock(exp, topElementName) {
-        return `$$htmlBlock($cd, ${topElementName}, () => (${exp}));\n`;
+        return `$runtime.$$htmlBlock($cd, ${topElementName}, () => (${exp}));\n`;
     }
 
     function makeAwaitBlock(node, elementName) {
@@ -1633,7 +1531,7 @@
         } else tpl_catch = 'null';
 
         source.push(`
-        $$awaitBlock($cd, ${elementName}, () => ${exp}, $$apply, ${build_main}, ${build_then}, ${build_catch}, ${tpl_main}, ${tpl_then}, ${tpl_catch});
+        $runtime.$$awaitBlock($cd, ${elementName}, () => ${exp}, $$apply, ${build_main}, ${build_then}, ${build_catch}, ${tpl_main}, ${tpl_then}, ${tpl_catch});
     `);
 
         return {source: `{
@@ -1659,7 +1557,7 @@
                     value = unwrapExp(value);
                     bind.push(`
                     if('set_${name}' in s) {
-                        $watch($cd, () => (${value}), s.set_${name}, {ro: true, cmp: $$compareDeep});
+                        $watch($cd, () => (${value}), s.set_${name}, {ro: true, cmp: $runtime.$$compareDeep});
                     }
                 `);
                 } else {
@@ -1683,7 +1581,7 @@
         let $slot = $option.slots && $option.slots.${slotName};
         if($slot) {
             let s = $slot(${label});
-            $cd.d(s.destroy);
+            $runtime.cd_onDestroy($cd, s.destroy);
             ${bind.join('\n')}
         } ${placeholder};
     }`};
@@ -1859,18 +1757,13 @@
         if($option.noMount) $component.onMount = onMount;
         else $tick(onMount);
     `);
-        if(script.onDestroy) runtime.push(`$cd.d(onDestroy);`);
+        if(script.onDestroy) runtime.push(`$runtime.cd_onDestroy($cd, onDestroy);`);
         if(script.watchers.length) {
             runtime.push(script.watchers.join('\n'));
         }
 
         if(css) runtime.push(`
-        if(!document.head.querySelector('style#${css.id}')) {
-            let style = document.createElement('style');
-            style.id = '${css.id}';
-            style.innerHTML = \`${Q$1(css.getContent())}\`;
-            document.head.appendChild(style);
-        }
+        $runtime.addStyles('${css.id}', \`${Q$1(css.getContent())}\`);
     `);
 
         runtime.push(`
@@ -1891,9 +1784,13 @@
             let index = 0;
             const setLvl = () => {lvl[level] = index++;};
 
-            const getElementName = () => {
+            const getElementName = (shift) => {
+                let cl;
+                if(shift) cl = lvl.slice(0, lvl.length + shift);
+                else cl = lvl.slice();
+
                 let d = DN;
-                lvl.forEach(n => {
+                cl.forEach(n => {
                     if(d[n] == null) d[n] = {};
                     d = d[n];
                 });
@@ -1986,7 +1883,7 @@
                         n.spreadObject = 'spread' + (this.uniqIndex++);
                         n.scopedClass = !!this.css;
                         binds.push(`
-                        let ${n.spreadObject} = $$makeSpreadObject($cd, ${getElementName()}, '${this.css && this.css.id}');
+                        let ${n.spreadObject} = $runtime.$$makeSpreadObject($cd, ${getElementName()}, '${this.css && this.css.id}');
                     `);
                     }
                     n.attributes.forEach(p => {
@@ -2008,12 +1905,28 @@
                         tpl.push(`</${n.name}>`);
                     }
                 } else if(n.type === 'each') {
-                    setLvl();
-                    if(this.config.hideLabel) tpl.push(`<!---->`);
-                    else tpl.push(`<!-- ${n.value} -->`);
                     n.parent = data;
-                    let eachBlock = this.makeEachBlock(n, getElementName());
-                    binds.push(eachBlock.source);
+                    let onlyChild = data.type == 'node' && !body.some(sibling => {
+                        if(sibling.type == 'text' && !sibling.value.trim()) return false;
+                        if(sibling === n) return false;
+                        return true;
+                    });
+
+                    setLvl();
+                    if(onlyChild) {
+                        let eachBlock = this.makeEachBlock(n, {
+                            elName: getElementName(-1),
+                            onlyChild: true
+                        });
+                        binds.push(eachBlock.source);
+                        return 'stop';
+                    } else {
+                        if(this.config.hideLabel) tpl.push(`<!---->`);
+                        else tpl.push(`<!-- ${n.value} -->`);
+                        n.parent = data;
+                        let eachBlock = this.makeEachBlock(n, {elName: getElementName()});
+                        binds.push(eachBlock.source);
+                    }
                 } else if(n.type === 'if') {
                     setLvl();
                     if(this.config.hideLabel) tpl.push(`<!---->`);
@@ -2042,9 +1955,9 @@
                     tpl.push(n.content);
                 }
             };
-            body.forEach(node => {
+            body.some(node => {
                 try {
-                    bindNode(node);
+                    return bindNode(node) == 'stop';
                 } catch (e) {
                     wrapException(e, node);
                 }
@@ -2073,7 +1986,7 @@
             }
 
             keys.forEach(k => {
-                buildNodes(d[k], lvl.concat([`[$$childNodes][${k}]`]));
+                buildNodes(d[k], lvl.concat([`[$runtime.$$childNodes][${k}]`]));
             });
         };
         buildNodes(DN, ['$parentElement']);
@@ -4140,16 +4053,17 @@
         if(config.compact) compactDOM(data);
         const runtime = buildRuntime(data, script, css, config);
 
-        let htmlFragment = config.hideLabel ? '$$htmlToFragmentClean as $$htmlToFragment' : '$$htmlToFragment';
         let code = `
-        import {
-            ${htmlFragment}, $$removeItem, $$childNodes, $watch, $ChangeDetector, $$removeElements,
-            $digest, $$htmlBlock, $$compareDeep, $$compareArray, $watchReadOnly, $$ifBlock, $makeEmitter,
-            $$addEvent, $$deepComparator, $$makeSpreadObject, $$groupCall, $$makeProp, $$cloneDeep,
-            $$makeSpreadObject2, $$makeApply, $$makeComponent, $$componentCompleteProps,
-            $$awaitBlock, $tick
-        } from 'malinajs/runtime.js';
+        import * as $runtime from 'malinajs/runtime.js';
+        import { $watch, $watchReadOnly, $tick } from 'malinajs/runtime.js';
     `;
+
+        if(config.hideLabel) {
+            code += `import { $$htmlToFragmentClean as $$htmlToFragment } from 'malinajs/runtime.js';\n`;
+        } else {
+            code += `import { $$htmlToFragment } from 'malinajs/runtime.js';\n`;
+        }
+
         code += script.code.split('$$runtime()').join(runtime);
         return code;
     }
