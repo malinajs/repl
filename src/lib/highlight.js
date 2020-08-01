@@ -52,23 +52,22 @@ function langDefinitionMalina(Prism) {
                 },
                 'expression':!validonly && expression,
                 'attr-value':{
-                    pattern:/="[\S\s]*?(?<!\\)"|="[^"]*|[^"]*"(?=(>|\s))|='[\S\s]*?(?<!\\)'|='[^']*|[^']*'(?=(>|\s))/,
+                    pattern:/(?<=\=)"[\S\s]*?(?<!\\)"|(?<=\=)"[^"]*|[^"]*"(?=(>|\s))|(?<=\=)'[\S\s]*?(?<!\\)'|(?<=\=)'[^']*|[^']*'(?=(>|\s))/,
                     inside:{
-                        'punctuation': /="|='|"$|'$/
+                        'punctuation': /^"|^'|"$|'$/
                     }
                 },
-                'expression':!validonly && expression,
                 'ref':!validonly && {
                     pattern:/\s#([A-Za-z0-9_$]+)?/,
                     inside:{
-                        'keyword':/#/,
+                        'keyword':/(?<=\s)#/,
                         'javascript': /[A-Za-z0-9_$]+/
                     }
                 },
                 'action':!validonly && {
                     pattern:/\s(\*|use:|use)([A-Za-z0-9_$]+)?=?/,
                     inside:{
-                        'keyword':/\*|use:|use/,
+                        'keyword':/(?<=\s)(\*|use:|use)/,
                         'punctuation':/=$/,
                         'javascript': /[A-Za-z0-9_$]+/
                     }
@@ -76,29 +75,29 @@ function langDefinitionMalina(Prism) {
                 'event':!validonly && {
                     pattern:/\s(@@|@|on:@?)([A-Za-z0-9_$:|]+)?/,
                     inside:{
-                        'keyword':/@@|on:@?|@/,
+                        'keyword':/(?<=\s)(@@|on:@?|@)/,
                         'javascript': /:[A-Za-z0-9_$]+/,
                         'attr-name': {
                             pattern: /[A-Za-z0-9|]+/,
                             inside: {
-                                'italic':/\|[A-Za-z0-9]+/
+                                'italic':/(?<=\|)[A-Za-z0-9]+/
                             }
                         }
                     }
                 },
-                'bind':!validonly && {
+                'bind':!validonly && [{
                     pattern:/\s(:|bind:)([A-Za-z0-9_$]+)?=?/,
                     inside:{
-                        'keyword':/:|bind:/,
+                        'keyword':/(?<=\s)(:|bind:)/,
                         'attr-name':/[a-z]+(?=\=)/,
                         'punctuation':/=$/,
                         'javascript': /[A-Za-z0-9_$]+/
                     }
-                },
+                }],
                 'style':!validonly && {
                     pattern:/\s(class:|style:)([A-Za-z0-9_$]+)?=?/,
                     inside:{
-                        'keyword':/class:|style:/,
+                        'keyword':/(?<=\s)(class:|style:)/,
                         'attr-name':/[a-z]+(?=\=)/,
                         'punctuation':/=$/,
                         'javascript': /[A-Za-z0-9_$]+/
