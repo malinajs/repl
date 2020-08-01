@@ -22,7 +22,7 @@
 </script>
 
 <div>
-    {#each list as tab}
+    {#each list as tab(tab)}
     <Filetab file={tab}/>
     {/each}
     <button class="add" title="Add component" @click:addFile><Icon name="plus" size="20"/></button>

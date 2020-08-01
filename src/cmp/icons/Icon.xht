@@ -8,20 +8,22 @@
 </script>
 
 
-    <svg 
-        style:width={size + 'px'} 
-        style:height={size + 'px'} 
-        style:transition={`${speed}ms`} 
-        style:transform={`rotate(${rotate}deg)`} 
-        viewBox="0 0 24 24"
-    >
-        <path fill="currentColor" d={ icons[name] || '' }></path>
-    </svg>
+<svg 
+    style:width={size + 'px'} 
+    style:height={size + 'px'} 
+    style:transition={`${speed}ms`} 
+    style:transform={`rotate(${rotate}deg)`} 
+    viewBox="0 0 24 24"
+>
+    <path fill="currentColor" d={ icons[name] || '' }/></path>
+</svg>
 
 
 <style>
     svg{
         margin-top: -3px;
         vertical-align: middle;
+        width: 18px;
+        height: 18px;
     }
 </style>
