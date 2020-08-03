@@ -8,7 +8,7 @@ export async function bundle(files){
         checkDependency('rollup');
 
         let bundle = await rollup.rollup({
-            input: "./App.ma",
+            input: "./App.xht",
             external: false,
             inlineDynamicImports: true,
             treeshake: false,
@@ -98,7 +98,7 @@ function malina_plugin() {
         name: 'rollup_plugin_malina',
 
         async transform(code, id) {
-            const name = id.match(/([^/]+).(html|ma)$/);
+            const name = id.match(/([^/]+).(html|ma|xht)$/);
             return name ? {code: await compile(code,name[1])} : null;
         }
     }

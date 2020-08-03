@@ -32,8 +32,8 @@ function generateExamples(){
     for(let filename of list){
         const exPath = path.join(DIR,filename);
         if(fs.lstatSync(exPath).isDirectory()){
-            if(!fs.existsSync(path.join(exPath,'App.ma'))) {
-                console.log(`[${NAME}] Skipping example ${filename}: No App.ma file`);
+            if(!fs.existsSync(path.join(exPath,'App.xht'))) {
+                console.log(`[${NAME}] Skipping example ${filename}: No App.xht file`);
                 continue;
             }
 
@@ -46,7 +46,7 @@ function generateExamples(){
             
             const files = fs.readdirSync(exPath);
             for(let file of files){
-                if(!['.ma','.html','.js'].includes(path.extname(file))) continue;
+                if(!['.ma','.html','.js','.xht','.json'].includes(path.extname(file))) continue;
                 let body = fs.readFileSync(path.join(exPath,file),'utf-8');
                 body = body.replace(/^<!--(.+)-->\s*\r*\n/,'');
                 result.files.push({name:file, body});
@@ -61,7 +61,7 @@ function generateExamples(){
 }
 
 function getExampleName(filename){
-    const appFile = path.join(DIR,filename,'App.ma');
+    const appFile = path.join(DIR,filename,'App.xht');
     const appCode = fs.readFileSync(appFile,'utf-8');
 
     appCode.replace(/^<!--(.+)-->\s*\r*\n/, (_,name) => filename = name.trim());

@@ -5,10 +5,10 @@
     import {files} from './../../stores/files.js';
 
 
-    let ext = 'html';
+    let ext = 'xht';
     files.current.subscribe(f => {
         ext = f.name.split('.').pop();
-        if(!['html','js','json'].includes(ext)) ext = 'html';
+        if(!['js','json'].includes(ext)) ext = 'xht';
     });
 
     function codeJarAction(node){

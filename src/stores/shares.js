@@ -77,8 +77,8 @@ async function fetchShare(id){
                 const answer = await result.json();
                 if(answer.length === 0) throw new Error(`Shared code not found.`);
                 answer.files = answer.files.map(file => {
-                    if(file.name === 'App.html') {
-                        file.name = 'App.ma';
+                    if(file.name === 'App.html' || file.name === 'App.ma') {
+                        file.name = 'App.xht';
                     }
                     return file;
                 });

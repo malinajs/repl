@@ -52,7 +52,7 @@ function bundleStore(){
                 clear();
             
                 let filenameParts = file.name.split('.');                
-                if(!/^(?:html|ma)$/.test(filenameParts.pop())){
+                if(!/^(?:html|ma|xht)$/.test(filenameParts.pop())){
                     setOutput({component:'/* Choose component to see its compiled version */'});
                     resolve(true);
                 }else{

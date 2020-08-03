@@ -12,10 +12,10 @@
     function addFile(){
         let name = 'Comp';
         let num = ''
-        while(list.includes(`${name}${num}.html`)){
+        while(list.includes(`${name}${num}.xht`)){
             num = num ? ++num : 2;
         }
-        name = `${name}${num}.html`;
+        name = `${name}${num}.xht`;
         files.add(name);
         files.current.set(name);
     }

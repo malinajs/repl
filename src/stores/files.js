@@ -1,6 +1,6 @@
 import storik from 'storik';
 
-const DEFAULT = 'App.ma';
+const DEFAULT = 'App.xht';
 
 export let files = filesStore();
 
