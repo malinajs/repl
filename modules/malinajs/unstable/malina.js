@@ -241,10 +241,7 @@
                     const voidTags = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
                     let voidTag = voidTags.indexOf(name) >= 0;
                     if(name.match(/^fragment($| |\:)/)) voidTag = true;
-                    let closedTag = voidTag;
-                    if(!closedTag && source[index-2] == '/') {
-                        closedTag = !!(name.match(/^[A-Z]/) || name.match(/^slot($| |\:)/));
-                    }
+                    let closedTag = voidTag || source[index-2] == '/';
                     return {
                         type: 'node',
                         name: name,
@@ -896,10 +893,11 @@
                 }
 
                 let block = this.buildBlock(slot);
+                const convert = block.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
                 head.push(`
                 slots.${slot.name} = function($label) {
                     let $childCD = $cd.new();
-                    let $tpl = $$htmlToFragment(\`${this.Q(block.tpl)}\`);
+                    let $tpl = ${convert}(\`${this.Q(block.tpl)}\`);
 
                     ${args}
 
@@ -1365,15 +1363,18 @@
         if(data.bodyMain) {
             mainBlock = this.buildBlock({body: data.bodyMain});
             elseBlock = this.buildBlock(data);
+
+            const convert = elseBlock.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
             source.push(`
-            let elsefr = $$htmlToFragment(\`${this.Q(elseBlock.tpl)}\`, true);
+            let elsefr = ${convert}(\`${this.Q(elseBlock.tpl)}\`, true);
             ${elseBlock.source}
         `);
         } else {
             mainBlock = this.buildBlock(data);
         }
+        const convert = mainBlock.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
         source.push(`
-        let mainfr = $$htmlToFragment(\`${this.Q(mainBlock.tpl)}\`, true);
+        let mainfr = ${convert}(\`${this.Q(mainBlock.tpl)}\`, true);
         ${mainBlock.source}
     `);
 
@@ -1438,7 +1439,7 @@
         else if(keyName == indexName) keyFunction = 'function getKey(_, i) {return i;}';
         else keyFunction = `function getKey(${itemName}) {return ${keyName};}`;
 
-        let eachBlockName = 'eachBlock' + (this.uniqIndex++);
+        const convert = itemData.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
 
         source.push(`
         {
@@ -1453,7 +1454,7 @@
 
             ${keyFunction};
 
-            let itemTemplate = $$htmlToFragment(\`${this.Q(itemData.tpl)}\`, true);
+            let itemTemplate = ${convert}(\`${this.Q(itemData.tpl)}\`, true);
 
             $runtime.$$eachBlock($cd, ${option.elName}, ${option.onlyChild?1:0}, () => (${arrayName}), getKey, itemTemplate, bind);
         }
@@ -1491,7 +1492,8 @@
             block_main = this.buildBlock({body: node.parts.main});
             source.push(block_main.source);
             build_main = block_main.name;
-            source.push(`const tpl_main = $$htmlToFragment(\`${this.Q(block_main.tpl)}\`, true);`);
+            const convert = block_main.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
+            source.push(`const tpl_main = ${convert}(\`${this.Q(block_main.tpl)}\`, true);`);
             tpl_main = 'tpl_main';
         } else tpl_main = 'null';
         if(node.parts.then && node.parts.then.length) {
@@ -1510,7 +1512,8 @@
             block_then = this.buildBlock({body: node.parts.then, args});
             source.push(block_then.source);
             build_then = block_then.name;
-            source.push(`const tpl_then = $$htmlToFragment(\`${this.Q(block_then.tpl)}\`, true);`);
+            const convert = block_then.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
+            source.push(`const tpl_then = ${convert}(\`${this.Q(block_then.tpl)}\`, true);`);
             tpl_then = 'tpl_then';
         } else tpl_then = 'null';
         if(node.parts.catch && node.parts.catch.length) {
@@ -1524,7 +1527,8 @@
             block_catch = this.buildBlock({body: node.parts.catch, args});
             source.push(block_catch.source);
             build_catch = block_catch.name;
-            source.push(`const tpl_catch = $$htmlToFragment(\`${this.Q(block_catch.tpl)}\`, true);`);
+            const convert = block_catch.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
+            source.push(`const tpl_catch = ${convert}(\`${this.Q(block_catch.tpl)}\`, true);`);
             tpl_catch = 'tpl_catch';
         } else tpl_catch = 'null';
 
@@ -1567,9 +1571,10 @@
         }
         if(node.body && node.body.length) {
             let block = this.buildBlock(node);
+            const convert = block.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
             placeholder = ` else {
             ${block.source};
-            let $tpl = $$htmlToFragment(\`${this.Q(block.tpl)}\`);
+            let $tpl = ${convert}(\`${this.Q(block.tpl)}\`);
             ${block.name}($cd, $tpl);
             ${label}.parentNode.insertBefore($tpl, ${label}.nextSibling);
         }`;
@@ -1614,13 +1619,15 @@
             return {source: `function $fragment_${name}() {};`};
         }
 
+        const convert = block.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
+
         return {source: `
         function $fragment_${name}($cd, label, $option) {
             let $$args = $option.args;
             ${head.join('\n')}
 
             ${block.source};
-            let $tpl = $$htmlToFragment(\`${this.Q(block.tpl)}\`);
+            let $tpl = ${convert}(\`${this.Q(block.tpl)}\`);
             ${block.name}($cd, $tpl);
             label.parentNode.insertBefore($tpl, label.nextSibling);
         };
@@ -1746,8 +1753,13 @@
 
         let rootTemplate = bb.tpl;
         runtime.push(bb.source);
+
+        if(bb.svg) {
+            runtime.push(`const rootTemplate = $runtime.svgToFragment(\`${Q$1(rootTemplate)}\`);`);
+        } else {
+            runtime.push(`const rootTemplate = $$htmlToFragment(\`${Q$1(rootTemplate)}\`);`);
+        }
         runtime.push(`
-        const rootTemplate = $$htmlToFragment(\`${Q$1(rootTemplate)}\`);
         ${bb.name}($cd, rootTemplate);
         $component.$$render(rootTemplate);
     `);
@@ -1777,8 +1789,9 @@
         let lvl = [];
         let binds = [];
         let DN = {};
+        let result = {};
 
-        const go = (level, data) => {
+        const go = (level, data, isRoot) => {
             let index = 0;
             const setLvl = () => {lvl[level] = index++;};
 
@@ -1810,6 +1823,16 @@
                 }
                 return true;
             });
+
+            if(isRoot) {
+                let svg = false, other = false;
+                body.some(node => {
+                    if(node.type != 'node') return;
+                    if(node.name == 'g') svg = true;
+                    else return other = true;
+                });
+                if(svg && !other) result.svg = true;
+            }
 
             {
                 let i = 0;
@@ -1961,15 +1984,15 @@
 
             lvl.length = level;
         };
-        go(0, data);
+        go(0, data, true);
 
         let source = [];
-        let buildName = '$$build' + (this.uniqIndex++);
-        tpl = this.Q(tpl.join(''));
+        result.name = '$$build' + (this.uniqIndex++);
+        result.tpl = this.Q(tpl.join(''));
         
         let args = ['$cd', '$parentElement'];
         if(data.args) args.push.apply(args, data.args);
-        source.push(`function ${buildName}(${args.join(', ')}) {\n`);
+        source.push(`function ${result.name}(${args.join(', ')}) {\n`);
 
         const buildNodes = (d, lvl) => {
             let keys = Object.keys(d).filter(k => k != 'name');
@@ -1989,13 +2012,8 @@
 
         source.push(binds.join('\n'));
         source.push(`};`);
-
-        return {
-            name: buildName,
-            tpl: tpl,
-            source: source.join('')
-        }
-
+        result.source = source.join('');
+        return result;
     }
     function wrapException(e, n) {
         if(typeof e === 'string') e = new Error(e);

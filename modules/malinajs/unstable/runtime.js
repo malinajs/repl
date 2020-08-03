@@ -166,7 +166,7 @@ function $digest($cd) {
     if(loop < 0) console.error('Infinity changes: ', w);
 }
 
-let templatecache = {false: {}, true: {}};
+let templatecache = {false: {}, true: {}, svg: {}};
 
 let $$uniqIndex = 1;
 
@@ -192,6 +192,17 @@ function $$htmlToFragmentClean(html, lastNotTag) {
     while(n = it.nextNode()) {
         if(!n.nodeValue) n.parentNode.replaceChild(document.createTextNode(''), n);
     }    templatecache[lastNotTag][html] = result.cloneNode(true);
+    return result;
+}
+function svgToFragment(content) {
+    if(templatecache.svg[content]) return templatecache.svg[content].cloneNode(true);
+    let t = document.createElement('template');
+    t.innerHTML = '<svg>' + content + '</svg>';
+
+    let result = document.createDocumentFragment();
+    let svg = t.content.firstChild;
+    while(svg.firstChild) result.appendChild(svg.firstChild);
+    templatecache.svg[content] = result.cloneNode(true);
     return result;
 }
 function $$removeElements(el, last) {
@@ -668,4 +679,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, bindClass, bindText, cd_onDestroy, isArray };
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, bindClass, bindText, cd_onDestroy, isArray, svgToFragment };
