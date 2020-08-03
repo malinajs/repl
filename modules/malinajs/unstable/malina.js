@@ -31,7 +31,7 @@
     function detectExpressionType(name) {
         if(isSimpleName(name)) return 'identifier';
 
-        let ast = acorn.parse(name);
+        let ast = acorn.parse(name, {allowReturnOutsideFunction: true});
 
         function checkIdentificator(body) {
             if(body.length != 1) return;
@@ -575,8 +575,8 @@
                 let rx = line.match(/^(\s*)\/\/(.*)$/);
                 if(!rx) return line;
                 let code = rx[2].trim();
-                if(code != '!check-stop') return line;
-                return rx[1] + '$$_checkStop;';
+                if(code != '!no-check') return line;
+                return rx[1] + '$$_noCheck;';
             }).join('\n');
             ast = acorn.parse(code, {sourceType: 'module'});
         } else {
@@ -627,16 +627,16 @@
             return method == 'forEach' || method == 'map' || method == 'filter';
         }
 
-        function isStopOption(node) {
-            return node.type == 'ExpressionStatement' && node.expression.type == 'Identifier' && node.expression.name == '$$_checkStop';
+        function isNoCheck(node) {
+            return node.type == 'ExpressionStatement' && node.expression.type == 'Identifier' && node.expression.name == '$$_noCheck';
         }
         function transformNode(node) {
             if(funcTypes[node.type] && node.body.body && node.body.body.length) {
                 if(insertOnDestroy && node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
                 for(let i=0; i<node.body.body.length; i++) {
                     let n = node.body.body[i];
-                    if(!isStopOption(n)) continue;
-                    node.body.body[i] = parseExp('$$apply(false)');
+                    if(!isNoCheck(n)) continue;
+                    node.body.body.splice(i, 1);
                     return 'stop';
                 }
                 if(!isInLoop(node)) {
@@ -1214,7 +1214,7 @@
                 {
                     let $element=${makeEl()};
                     const ${funcName} = ${exp};
-                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} $$apply(); ${funcName}($event);});
+                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} ${funcName}($event); $$apply();});
                 }`
                 };
             } else if(handler) {
@@ -1222,14 +1222,14 @@
                 return {bind: `
                 {
                     let $element=${makeEl()};
-                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} $$apply(); ${handler}($event);});
+                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} ${handler}($event); $$apply();});
                 }`
                 };
             } else {
                 return {bind: `
                 {
                     let $element=${makeEl()};
-                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} $$apply(); ${this.Q(exp)}});
+                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} ${this.Q(exp)}; $$apply(); });
                 }`
                 };
             }
@@ -1261,10 +1261,8 @@
         } else if(name == 'class' && arg) {
             let className = arg;
             let exp = prop.value ? getExpression() : className;
-            return {bind: `{
-                let $element = ${makeEl()};
-                $watchReadOnly($cd, () => !!(${exp}), (value) => { if(value) $element.classList.add("${className}"); else $element.classList.remove("${className}"); });
-            }`};
+
+            return {bind: `$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`};
         } else if(name == 'style' && arg) {
             let styleName = arg;
             let exp = prop.value ? getExpression() : styleName;
@@ -1290,7 +1288,7 @@
             let exp = getExpression();
             return {bind: `{
             let $element=${makeEl()};
-            $tick(() => { $$apply(); ${exp}; });}`};
+            $tick(() => { ${exp}; $$apply(); });}`};
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
                 let exp = this.parseText(prop.value);
@@ -1835,9 +1833,7 @@
                     if(n.value.indexOf('{') >= 0) {
                         tpl.push(' ');
                         let exp = this.parseText(n.value);
-                        binds.push(`{
-                        let $element=${getElementName()};
-                        $watchReadOnly($cd, () => ${exp}, (value) => {$element.textContent=value;});}`);
+                        binds.push(`$runtime.bindText($cd, ${getElementName()}, () => ${exp});`);
                     } else tpl.push(n.value);
                     lastText = tpl.length;
                 } else if(n.type === 'template') {
