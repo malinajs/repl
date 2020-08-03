@@ -8,6 +8,10 @@
     astring = astring && Object.prototype.hasOwnProperty.call(astring, 'default') ? astring['default'] : astring;
     csstree = csstree && Object.prototype.hasOwnProperty.call(csstree, 'default') ? csstree['default'] : csstree;
 
+    let _svgElements = 'animate,animateMotion,animateTransform,circle,clipPath,color-profile,defs,desc,discard,ellipse,feBlend,feColorMatrix,feComponentTransfer,feComposite,feConvolveMatrix,feDiffuseLighting,feDisplacementMap,feDistantLight,feDropShadow,feFlood,feFuncA,feFuncB,feFuncG,feFuncR,feGaussianBlur,feImage,feMerge,feMergeNode,feMorphology,feOffset,fePointLight,feSpecularLighting,feSpotLight,feTile,feTurbulence,filter,g,hatch,hatchpath,image,line,linearGradient,marker,mask,mesh,meshgradient,meshpatch,meshrow,metadata,mpath,path,pattern,polygon,polyline,radialGradient,rect,set,solidcolor,stop,switch,symbol,text,textPath,tspan,unknown,use,view';
+    let svgElements = {};
+    _svgElements.split(',').forEach(k => svgElements[k] = true);
+
     function assert(x, info) {
         if(!x) throw info || (new Error('AssertError'));
     }
@@ -1828,7 +1832,7 @@
                 let svg = false, other = false;
                 body.some(node => {
                     if(node.type != 'node') return;
-                    if(node.name == 'g') svg = true;
+                    if(svgElements[node.name]) svg = true;
                     else return other = true;
                 });
                 if(svg && !other) result.svg = true;
