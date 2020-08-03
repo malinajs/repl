@@ -3,7 +3,8 @@
     "version": "0.2.0",
     "scripts": {
         "dev": "rollup -c -w",
-        "build": "rollup -c"
+        "build": "rollup -c",
+        "update": "npm install -D https://github.com/malinajs/malinajs.git"
     },
     "devDependencies": {
         "@rollup/plugin-commonjs": "^13.0.0",
@@ -13,7 +14,7 @@
         "cjs2es": "^1.1.0",
         "codejar": "^3.1.0",
         "fs-extra": "^9.0.1",
-        "malinajs": "github:malinajs/malinajs",
+        "malinajs": "git+https://github.com/malinajs/malinajs.git",
         "node-watch": "^0.6.4",
         "prismjs": "^1.20.0",
         "rollup": "^2.18.1",
