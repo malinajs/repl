@@ -7,6 +7,7 @@ export async function compile(code,name,treeshaked){
     let opts = {
         exportDefault: true,
         inlineTemplate: true,
+        autoSubscribe: true,
         name
     }
     
