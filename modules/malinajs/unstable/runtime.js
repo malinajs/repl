@@ -432,7 +432,7 @@ function $$makeComponent($element, $option) {
 const autoSubscribe = (cd, apply, obj) => {
     if(obj && 'value' in obj && obj.subscribe) {
         let unsub = obj.subscribe(apply);
-        if(typeof unsub == 'function') cd_onDestroy(cd);
+        if(typeof unsub == 'function') cd_onDestroy(unsub);
     }
 };
 
@@ -482,6 +482,12 @@ const bindText = (cd, element, fn) => {
     $watchReadOnly(cd, fn, value => {
         element.textContent = value;
     });
+};
+
+
+const bindParentClass = (el, option) => {
+    if(!option.classPrefix) return;
+    el.classList.add(option.classPrefix);
 };
 
 function $$htmlBlock($cd, tag, fn) {
@@ -686,4 +692,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindText, cd_onDestroy, isArray, svgToFragment };
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindParentClass, bindText, cd_onDestroy, isArray, svgToFragment };

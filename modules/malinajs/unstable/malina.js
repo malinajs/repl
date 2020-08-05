@@ -175,6 +175,11 @@
 
         go(data.body);
     }
+    const genId = () => {
+        let id = Math.floor(Date.now() * Math.random()).toString(36);
+        if(id.length > 6) id = id.substring(id.length - 6);
+        return 'm' + id;
+    };
 
     function parse(source) {
         let index = 0;
@@ -870,6 +875,7 @@
         let forwardAllEvents = false;
         let injectGroupCall = 0;
         let spreading = false;
+        let classId;
 
         if(node.body && node.body.length) {
             let slots = {};
@@ -1042,6 +1048,23 @@
                 else head.push(`events.${event} = ${callback};`);
                 boundEvents[event] = true;
                 return;
+            } else if(name == 'class' || name.startsWith('class:')) {
+                if(!classId) {
+                    classId = genId();
+                    head.push(`classPrefix = '${classId}';`);
+                }
+                assert(this.css, 'No styles');
+                let args = name.split(':');
+                args.shift();
+                assert(args.length <= 1, 'Wrong class syntax');
+                let child = args[0];
+                let parentClasses = value.split(/\s+/);
+                assert(parentClasses.length);
+                parentClasses.forEach(parent => {
+                    assert(this.css.simpleClasses[parent], 'No class to pass');
+                    this.css.passed.push({id: classId, child: child || parent, parent});
+                });
+                return;
             }
             assert(value, 'Empty property');
             assert(isSimpleName(name), `Wrong property: '${name}'`);
@@ -1096,8 +1119,9 @@
             let props = {};
             let boundProps = {};
             let slots = {};
+            let classPrefix;
             ${head.join('\n')};
-            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, boundProps, events, slots});
+            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, boundProps, events, slots, classPrefix});
             if($component) {
                 if($component.destroy) $runtime.cd_onDestroy($cd, $component.destroy);
                 ${binds.join('\n')};
@@ -1916,6 +1940,9 @@
                         binds.push(`
                         let ${n.spreadObject} = $runtime.$$makeSpreadObject($cd, ${getElementName()}, '${this.css && this.css.id}');
                     `);
+                    }
+                    if(n.scopedClassParent) {
+                        binds.push(`$runtime.bindParentClass(${getElementName()}, $option);`);
                     }
                     n.attributes.forEach(p => {
                         let b = this.bindProp(p, getElementName, n);
@@ -3865,15 +3892,29 @@
 
     function processCSS(styleNode, config) {
         // TODO: make hash
-        let id = Math.floor(Date.now() * Math.random()).toString(36);
-        if(id.length > 6) id = id.substring(id.length - 6);
-        id = 'm' + id;
+        let id = genId();
 
-        let self = {element: {}, cls: {}, id};
+        let simpleClasses = {};
+        let self = {element: {}, cls: {}, id, passed: [], simpleClasses};
         let selectors = [];
 
         function transform() {
-            self.ast = csstree.parse(styleNode.content);
+            let content = styleNode.content;
+
+            let exportBlocks = Array.from(content.matchAll(/\:export\(([^\(\)]+)\)/g));
+            for(let i = exportBlocks.length - 1; i>=0; i--) {
+                let rx = exportBlocks[i];
+                content = content.substring(0, rx.index) + content.substring(rx.index + rx[0].length);
+                rx[1].split(/\s*,\s*/).forEach(sel => {
+                    assert(sel.match(/^\.[\w\-]+$/), 'Wrong exported class');
+                    selectors.push({
+                        name: sel,
+                        exported: true
+                    });
+                });
+            }
+
+            self.ast = csstree.parse(content);
 
             csstree.walk(self.ast, function(node) {
                 if (node.type === 'Rule') {
@@ -3892,7 +3933,9 @@
                                 a.children.forEach(sel => {
                                     selector.push(Object.assign({__global: true}, sel));
                                 });
-                            } else selector.push(sel);
+                            } else {
+                                selector.push(sel);
+                            }
                         });
 
                         let result = [];
@@ -3915,11 +3958,15 @@
                         if(!inserted) result.push({type: "ClassSelector", loc: null, name: id});
 
                         fullSelector.children = result;
-                        proc = csstree.generate({
+                        let selectorName = csstree.generate({
                             type: 'Selector',
                             children: proc
                         });
-                        selectors.push(proc);
+                        selectors.push({
+                            name: selectorName
+                        });
+                        let rx = selectorName.match(/^\.([\w\-]+)$/);
+                        if(rx) simpleClasses[rx[1]] = node;
                     });
                 }
             });
@@ -3932,25 +3979,49 @@
                 DOMException: function() {}
             });
 
-            selectors.forEach(s => {
+            selectors.forEach(sel => {
                 let selected;
                 try {
-                    selected = nw.select([s]);
+                    selected = nw.select([sel.name]);
                 } catch (_) {
-                    let e = new Error(`CSS error: '${s}'`);
-                    e.details = `selector: '${s}'`;
+                    let e = new Error(`CSS error: '${sel.name}'`);
+                    e.details = `selector: '${sel.name}'`;
                     throw e;
                 }
                 if(selected.length) {
                     selected.forEach(s => {
-                        s.node.__node.scopedClass = true;
-                        s.lvl.forEach(l => l.__node.scopedClass = true);
+                        if(sel.exported) {
+                            s.node.__node.scopedClassParent = true;
+                            assert(s.lvl.length == 1);
+                        } else {
+                            s.node.__node.scopedClass = true;
+                            s.lvl.forEach(l => l.__node.scopedClass = true);
+                        }
                     });
-                } else config.warning({message: 'No used css-class: ' + s});
+                } else config.warning({message: 'No used css-class: ' + sel.name});
             });
         };
 
         self.getContent = function() {
+            if(self.passed.length) {
+                self.passed.forEach(item => {
+                    let node = simpleClasses[item.parent];
+                    assert(node, 'No clas to pass ' + item.parent);
+
+                    let children = node.prelude.children.toArray ? node.prelude.children.toArray() : node.prelude.children;
+                    children.push({
+                        type: 'Selector',
+                        children: [{
+                            type: 'ClassSelector',
+                            name: item.child
+                        }, {
+                            type: 'ClassSelector',
+                            name: item.id
+                        }]
+                    });
+                    node.prelude.children = children;
+                });
+            }
             return csstree.generate(self.ast);
         };
 
