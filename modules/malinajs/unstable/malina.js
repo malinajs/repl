@@ -16,6 +16,12 @@
         if(!x) throw info || (new Error('AssertError'));
     }
 
+    function replace(s, from, to, count) {
+        let d = s.split(from);
+        if(count) assert(d.length === count + 1, 'Replace multi-entry');
+        return d.join(to);
+    }
+
     function Q(s) {
         return s.replace(/`/g, '\\`');
     }
@@ -806,6 +812,7 @@
         let header = [];
         header.push(parseExp('if(!$option) $option = {}'));
         header.push(parseExp('if(!$option.events) $option.events = {}'));
+        header.push(parseExp('$$runtimeHeader()'));
         header.push(parseExp('const $props = $option.props || {}'));
         header.push(parseExp('const $component = $runtime.$$makeComponent($element, $option);'));
         header.push(parseExp('const $$apply = $runtime.$$makeApply($component.$cd)'));
@@ -1761,6 +1768,12 @@
         return (function() {
             let $cd = $component.$cd;
     `];
+        let runtimeHeader = [];
+
+        if(!config.$context.rootUsed) {
+            config.$context.rootUsed = true;
+            runtimeHeader.push(`$runtime.appConfigure($option);`);
+        }
 
         const Q$1 = config.inlineTemplate ? Q2 : Q;
         const ctx = {
@@ -1816,7 +1829,10 @@
             $$apply();
             return $component;
         })();`);
-        return runtime.join('');
+        return {
+            header: runtimeHeader.join('\n'),
+            body: runtime.join('\n')
+        };
     }
 
 
@@ -4161,8 +4177,9 @@
             code += `import { $$htmlToFragment } from 'malinajs/runtime.js';\n`;
         }
 
-        code += script.code.split('$$runtime()').join(runtime);
-        return code;
+        let scriptCode = replace(script.code, '$$runtimeHeader()', runtime.header, 1);
+        scriptCode = replace(scriptCode, '$$runtime()', runtime.body, 1);
+        return code + scriptCode;
     }
 
     exports.compile = compile;

@@ -1,3 +1,9 @@
+let __app_onerror;
+
+const appConfigure = (option) => {
+    __app_onerror = option.onerror || console.error;
+};
+
 function $watch(cd, fn, callback, w) {
     if(!w) w = {};
     w.fn = fn;
@@ -43,7 +49,7 @@ $ChangeDetector.prototype.destroy = function(option) {
         try {
             fn();
         } catch (e) {
-            console.error(e);
+            __app_onerror(e);
         }
     });
     this.destroyList.length = 0;
@@ -233,7 +239,7 @@ function $tick(fn, uniq) {
             try {
                 fn();
             } catch (e) {
-                console.error(e);
+                __app_onerror(e);
             }
         });
     }, 0);
@@ -692,4 +698,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindParentClass, bindText, cd_onDestroy, isArray, svgToFragment };
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, appConfigure, autoSubscribe, bindClass, bindParentClass, bindText, cd_onDestroy, isArray, svgToFragment };
