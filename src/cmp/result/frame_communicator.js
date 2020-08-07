@@ -83,9 +83,11 @@ function frame_inner(){
         }
     });
 
-    window.addEventListener('error', (e) => {
+    const emitError = (e) => {
         emit('error',`[Application] ${e.message.replace(/^[a-z0-9 ]+?: /i,'')}`);
-    });
+    };
+
+    window.addEventListener('error', emitError);
 
     window.addEventListener('click', (e) => {
         emit('click');
@@ -105,6 +107,11 @@ function frame_inner(){
         const App = new Function(bundle+'; return Component.default;')();
         for(let style of document.querySelectorAll('style[id]')) style.parentNode.removeChild(style);
         if(window.app) window.app.destroy();
-        window.app = new App(document.body);
+        window.app = new App(document.body, {
+            onerror: (e) => {
+                console.error(e);
+                emitError(e);
+            }
+        });
     });
 }

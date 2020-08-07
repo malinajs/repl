@@ -1,6 +1,6 @@
 import {checkDependency} from './deps';
 
-export async function compile(code,name,treeshaked){
+export async function compile(code,name,treeshaked,context){
 
     checkDependency('malina');
 
@@ -8,7 +8,8 @@ export async function compile(code,name,treeshaked){
         exportDefault: true,
         inlineTemplate: true,
         autoSubscribe: true,
-        name
+        name,
+        $context: context || {}
     }
     
     try {

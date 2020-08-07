@@ -94,12 +94,13 @@ function download_plugin() {
 
 // Compiling Malina's components
 function malina_plugin() {
+    let context = {};
     return {
         name: 'rollup_plugin_malina',
 
         async transform(code, id) {
             const name = id.match(/([^/]+).(html|ma|xht)$/);
-            return name ? {code: await compile(code,name[1])} : null;
+            return name ? {code: await compile(code,name[1],false,context)} : null;
         }
     }
 }

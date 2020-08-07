@@ -2,6 +2,7 @@
 const malinajs = require('malinajs/malina.js')
 
 export default function malina(option = {}) {
+    option.$context = {};
     return {
         name: 'malina',
         transform(code, id) {
