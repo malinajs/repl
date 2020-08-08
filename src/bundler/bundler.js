@@ -7,8 +7,22 @@ export async function bundle(files){
     try {
         checkDependency('rollup');
 
+        files = [{
+            name: '_entry.js',
+            body: "import App from './App.xht';"
+        }, ...files];
+
+        if(!(malina.version.startsWith('0.5.') && malina.version < '0.5.15')) {
+            files[0].body += `
+                import { configure } from 'malinajs/runtime.js';
+                configure({
+                    onerror: e => {window.malina_onerror && malina_onerror(e);}
+                });
+            `;
+        }
+
         let bundle = await rollup.rollup({
-            input: "./App.xht",
+            input: "./_entry.js",
             external: false,
             inlineDynamicImports: true,
             treeshake: false,
@@ -21,7 +35,7 @@ export async function bundle(files){
         });
 
         return (await bundle.generate({
-            format: "iife",
+            format: "cjs",
             name: "Component",
             exports: "named",
             sourcemap: false

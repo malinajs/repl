@@ -83,9 +83,16 @@ function frame_inner(){
         }
     });
 
-    window.addEventListener('error', (e) => {
+    const emitError = (e) => {
         emit('error',`[Application] ${e.message.replace(/^[a-z0-9 ]+?: /i,'')}`);
-    });
+    };
+
+    window.addEventListener('error', emitError);
+
+    window.malina_onerror = (e) => {
+        console.error(e);
+        emitError(e);
+    }
 
     window.addEventListener('click', (e) => {
         emit('click');
@@ -102,9 +109,9 @@ function frame_inner(){
 
     on('bundle',bundle => {
         if(!bundle) return;
-        const App = new Function(bundle+'; return Component.default;')();
+        const App = new Function(bundle + '; return App;')();
         for(let style of document.querySelectorAll('style[id]')) style.parentNode.removeChild(style);
         if(window.app) window.app.destroy();
-        window.app = new App(document.body);
+        window.app = App(document.body);
     });
 }
