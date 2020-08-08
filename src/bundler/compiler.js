@@ -8,7 +8,8 @@ export async function compile(code,name,treeshaked){
         exportDefault: true,
         inlineTemplate: true,
         autoSubscribe: true,
-        name
+        name,
+        injectRuntime: treeshaked ? null : '$runtime.configure({onerror: (e) => {window.malina_onerror && malina_onerror(e)}})'
     }
     
     try {

@@ -83,9 +83,16 @@ function frame_inner(){
         }
     });
 
-    window.addEventListener('error', (e) => {
+    const emitError = (e) => {
         emit('error',`[Application] ${e.message.replace(/^[a-z0-9 ]+?: /i,'')}`);
-    });
+    };
+
+    window.addEventListener('error', emitError);
+
+    window.malina_onerror = (e) => {
+        console.error(e);
+        emitError(e);
+    }
 
     window.addEventListener('click', (e) => {
         emit('click');
