@@ -1770,11 +1770,6 @@
     `];
         let runtimeHeader = [];
 
-        if(!config.$context.rootUsed) {
-            config.$context.rootUsed = true;
-            runtimeHeader.push(`$runtime.appConfigure($option);`);
-        }
-
         const Q$1 = config.inlineTemplate ? Q2 : Q;
         const ctx = {
             uniqIndex: 0,
