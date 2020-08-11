@@ -22,6 +22,12 @@
         return d.join(to);
     }
 
+    function toCamelCase(name) {
+        assert(name[name.length - 1] !== '-', 'Wrong name');
+        return name.replace(/(\-\w)/g, function(part) {
+            return part[1].toUpperCase();
+        });
+    }
     function Q(s) {
         return s.replace(/`/g, '\\`');
     }
@@ -816,6 +822,7 @@
         header.push(parseExp('const $props = $option.props || {}'));
         header.push(parseExp('const $component = $runtime.$$makeComponent($element, $option);'));
         header.push(parseExp('const $$apply = $runtime.$$makeApply($component.$cd)'));
+        header.push(parseExp('let $class = $option.$class'));
 
         if(lastPropIndex != null) {
             resultBody.splice(lastPropIndex, 0, parseExp('let $attributes = $runtime.$$componentCompleteProps($component, $$apply, $props)'));
@@ -879,10 +886,13 @@
         let propList = node.attributes;
         let binds = [];
         let head = [];
+        let head2 = [];
         let forwardAllEvents = false;
         let injectGroupCall = 0;
         let spreading = false;
-        let classId;
+        let classId, boundClasses = {}, defaultClassTransferHash = false;
+        let defaultClass = false, defaultClassNeedHash = false, namedClass = false, namedClassIndex = 1;
+        let options = [];
 
         if(node.body && node.body.length) {
             let slots = {};
@@ -980,6 +990,25 @@
                 } else console.error("Component ${node.name} doesn't have prop ${inner}");
             `);
                 return false;
+            } else if(name == 'bind-class' || name.startsWith('bind-class:')) {
+                if(!classId) {
+                    classId = genId();
+                    head.push(`let classPrefix = '${classId}';`);
+                    options.push('classPrefix');
+                }
+                assert(this.css, 'No styles');
+                let args = name.split(':');
+                args.shift();
+                assert(args.length <= 1, 'Wrong class syntax');
+                let child = args[0];
+                let parentClasses = value.split(/\s+/);
+                assert(parentClasses.length);
+                parentClasses.forEach(parent => {
+                    assert(this.css.simpleClasses[parent], 'No class to pass');
+                    this.css.passed.push({id: classId, child: child || parent, parent});
+                    boundClasses[child || parent] = true;
+                });
+                return false;
             }
             return true;
         });
@@ -1055,22 +1084,111 @@
                 else head.push(`events.${event} = ${callback};`);
                 boundEvents[event] = true;
                 return;
-            } else if(name == 'class' || name.startsWith('class:')) {
-                if(!classId) {
-                    classId = genId();
-                    head.push(`classPrefix = '${classId}';`);
+            } else if(name == 'class') {
+                namedClass = true;
+                let index = namedClassIndex++;
+                assert(!defaultClass, 'Double class');
+                defaultClass = true;
+                assert(value, 'Empty class');
+                if(value.indexOf('{') >= 0) {
+                    defaultClassNeedHash = true;
+                    let exp = this.parseText(value);
+                    injectGroupCall++;
+                    head2.push(`
+                    $class.$default[${index}] = $runtime.watchInit($cd, () => (${exp}), (value) => {
+                        $class.$default[${index}] = value;
+                        groupCall();
+                    });
+                `);
+                } else {
+                    value.split(/\s+/).forEach(name => {
+                        if(this.css && this.css.simpleClasses[name]) defaultClassNeedHash = true;
+                        if(boundClasses[name]) defaultClassTransferHash = true;
+                    });
+                    head2.push(`$class.$default[${index}] = \`${this.Q(value)}\`;`);
                 }
-                assert(this.css, 'No styles');
+                return;
+            } else if(name.startsWith('class:')) {
+                namedClass = true;
+                let index = namedClassIndex++;
                 let args = name.split(':');
-                args.shift();
-                assert(args.length <= 1, 'Wrong class syntax');
-                let child = args[0];
-                let parentClasses = value.split(/\s+/);
-                assert(parentClasses.length);
-                parentClasses.forEach(parent => {
-                    assert(this.css.simpleClasses[parent], 'No class to pass');
-                    this.css.passed.push({id: classId, child: child || parent, parent});
-                });
+                assert(args.length == 2);
+                let className = args[1];
+                assert(className);
+                let exp;
+
+                if(value) exp = unwrapExp(value);
+                else exp = className;
+
+                if(!defaultClassNeedHash && this.css) defaultClassNeedHash = !!this.css.simpleClasses[className];
+                if(boundClasses[className]) defaultClassTransferHash = true;
+
+                let funcName = `pf${this.uniqIndex++}`;
+                let valueName = `v${this.uniqIndex++}`;
+                injectGroupCall++;
+                head2.push(`
+                const ${funcName} = () => !!(${this.Q(exp)});
+                let ${valueName} = ${funcName}();
+                $class.$default[${index}] = ${valueName} ? '${className}' : ''
+                $watch($cd, ${funcName}, (value) => {
+                    $class.$default[${index}] = value ? '${className}' : '';
+                    groupCall();
+                }, {ro: true, value: ${valueName}});
+            `);
+                return;
+            } else if(name[0] == '.') {
+                namedClass = true;
+                let args = name.substring(1).split(':');
+                let exp, localClass, childClass = args.shift();
+                assert(childClass);
+                let keyName = toCamelCase(childClass);
+                assert(args.length <= 1);
+                if(args[0] || !value) {
+                    if(args[0]) {
+                        localClass = args[0];
+                        if(value) exp = unwrapExp(value);
+                        else exp = localClass;
+                    } else {
+                        exp = localClass = childClass;
+                    }
+                    let funcName = `pf${this.uniqIndex++}`;
+                    let valueName = `v${this.uniqIndex++}`;
+                    injectGroupCall++;
+                    let hash = '';
+                    if(this.css && this.css.simpleClasses[localClass]) hash = this.css.id + ' ';
+                    if(boundClasses[localClass]) hash += classId + ' ';
+                    head2.push(`
+                    const ${funcName} = () => !!(${this.Q(exp)});
+                    let ${valueName} = ${funcName}();
+                    $class.${keyName} = ${valueName} ? \`${hash}${localClass}\` : '';
+                    $watch($cd, ${funcName}, (value) => {
+                        $class.${keyName} = value ? \`${hash}${localClass}\` : '';
+                        groupCall();
+                    }, {ro: true, value: ${valueName}});
+                `);
+                } else {
+                    if(value.indexOf('{') >= 0) {
+                        let hash = this.css ? this.css.id + ' ' : '';
+                        let exp = unwrapExp(value);
+                        injectGroupCall++;
+                        head2.push(`
+                        $class.${keyName} = $runtime.watchInit($cd, () => '${hash}' + (${this.Q(exp)}), (value) => {
+                            $class.${keyName} = value;
+                            groupCall();
+                        });
+                    `);
+                    } else {
+                        let hash1, hash2;
+                        value.split(/\s+/).forEach(name => {
+                            if(this.css && this.css.simpleClasses[name]) hash1 = true;
+                            if(boundClasses[name]) hash2 = true;
+                        });
+                        let hash = '';
+                        if(hash1) hash = this.css.id + ' ';
+                        if(hash2) hash += classId + ' ';
+                        head2.push(`$class.${keyName} = \`${hash}${this.Q(value)}\`;`);
+                    }
+                }
                 return;
             }
             assert(value, 'Empty property');
@@ -1120,15 +1238,25 @@
         }
         if(spreading) head.push('spreadObject.build();');
 
+        if(namedClass) {
+            let hash = '';
+            if(defaultClassNeedHash && this.css) hash = this.css.id;
+            if(defaultClassTransferHash) hash = (hash ? hash + ' ' : '') + classId;
+            head.push(`let $class = $runtime.makeNamedClass('${hash}');`);
+            options.push('$class');
+        }
+
+        options.unshift('afterElement: true, noMount: true, props, boundProps, events, slots');
         return {
             bind:`
         {
             let props = {};
             let boundProps = {};
             let slots = {};
-            let classPrefix;
             ${head.join('\n')};
-            let $component = ${node.name}(${makeEl()}, {afterElement: true, noMount: true, props, boundProps, events, slots, classPrefix});
+            let componentOption = {${options.join(', ')}};
+            ${head2.join('\n')};
+            let $component = ${node.name}(${makeEl()}, componentOption);
             if($component) {
                 if($component.destroy) $runtime.cd_onDestroy($cd, $component.destroy);
                 ${binds.join('\n')};
@@ -1356,8 +1484,11 @@
                     $watchReadOnly($cd, () => (${exp}), (value) => {$element.${name} = value;});
                 }`};
                 } else {
-                    let scopedClass = name == 'class' && this.css;  // scope any dynamic class
-                    let suffix = scopedClass ? `+' ${this.css.id}'` : '';
+                    let suffix = '', scopedClass = name == 'class' && this.css;  // scope any dynamic class
+                    if(scopedClass) {
+                        let passed = prop.value.match(/^\{\s*\$class\s*\}$/) || prop.value.match(/^\{\s*\$class\.\w+\s*\}$/);
+                        if(!passed) suffix = `+' ${this.css.id}'`;
+                    }
                     return {
                         bind: `{
                         let $element=${makeEl()};
@@ -3912,15 +4043,15 @@
         function transform() {
             let content = styleNode.content;
 
-            let exportBlocks = Array.from(content.matchAll(/\:export\(([^\(\)]+)\)/g));
-            for(let i = exportBlocks.length - 1; i>=0; i--) {
-                let rx = exportBlocks[i];
+            let boundBlocks = Array.from(content.matchAll(/\:bind\(([^\(\)]+)\)/g));
+            for(let i = boundBlocks.length - 1; i>=0; i--) {
+                let rx = boundBlocks[i];
                 content = content.substring(0, rx.index) + content.substring(rx.index + rx[0].length);
                 rx[1].split(/\s*,\s*/).forEach(sel => {
-                    assert(sel.match(/^\.[\w\-]+$/), 'Wrong exported class');
+                    assert(sel.match(/^\.[\w\-]+$/), 'Wrong bound class');
                     selectors.push({
                         name: sel,
-                        exported: true
+                        bound: true
                     });
                 });
             }
@@ -4001,7 +4132,7 @@
                 }
                 if(selected.length) {
                     selected.forEach(s => {
-                        if(sel.exported) {
+                        if(sel.bound) {
                             s.node.__node.scopedClassParent = true;
                             assert(s.lvl.length == 1);
                         } else {
@@ -4059,10 +4190,19 @@
                 } else if(e.type != 'node') return;
                 let n = new Node(e.name, {__node: e});
                 e.attributes.forEach(a => {
-                    if(a.name == 'class') n.className += ' ' + a.value;
+                    if(a.name == 'class' || a.name == 'bind-class') n.className += ' ' + a.value;
                     else if(a.name == 'id') n.id = a.value;
                     else if(a.name.startsWith('class:')) {
                         n.className += ' ' + a.name.substring(6);
+                    } else if(a.name.startsWith('bind-class:')) {
+                        n.className += ' ' + a.value;
+                    } else if(a.name[0] == '.') {
+                        let args = a.name.substring(1).split(':');
+                        if(args.length == 2) n.className += ' ' + args[1];
+                        else if(args.length == 1) {
+                            if(a.value) n.className += ' ' + a.value;
+                            else n.className += ' ' + args[0];
+                        }
                     } else n.attributes[a.name] = a.value;
                 });
                 n.className = n.className.trim();

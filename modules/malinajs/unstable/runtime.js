@@ -15,6 +15,12 @@ function $watch(cd, fn, callback, w) {
 function $watchReadOnly(cd, fn, callback) {
     return $watch(cd, fn, callback, {ro: true});
 }
+const watchInit = (cd, fn, callback) => {
+    let w = $watchReadOnly(cd, fn, callback);
+    w.value = fn();
+    return w.value;
+};
+
 function addEvent(cd, el, event, callback) {
     el.addEventListener(event, callback);
     cd_onDestroy(cd, () => {
@@ -496,6 +502,22 @@ const bindParentClass = (el, option) => {
     el.classList.add(option.classPrefix);
 };
 
+
+const makeNamedClass = (id) => {
+    return {
+        $default: [id],
+        toString: function() {
+            let $default = this.$default;
+            let result = '';
+            for(let i = 1; i < $default.length; i++) {
+                if($default[i]) result += $default[i] + ' ';
+            }
+            if(result) result += $default[0];
+            return result;
+        }
+    };
+};
+
 function $$htmlBlock($cd, tag, fn) {
     let lastElement;
     let create = (html) => {
@@ -698,4 +720,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindParentClass, bindText, cd_onDestroy, configure, isArray, svgToFragment };
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindParentClass, bindText, cd_onDestroy, configure, isArray, makeNamedClass, svgToFragment, watchInit };
