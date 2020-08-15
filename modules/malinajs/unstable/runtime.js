@@ -497,9 +497,22 @@ const bindText = (cd, element, fn) => {
 };
 
 
-const bindParentClass = (el, option) => {
-    if(!option.classPrefix) return;
-    el.classList.add(option.classPrefix);
+const bindParentClass = (cd, el, className, hash, option) => {
+    if(option.passedClassDyn && className in option.passedClassDyn) {
+        let prev;
+        $watchReadOnly(cd, () => option.passedClassDyn[className], parentHash => {
+            if(prev) el.classList.remove(prev);
+            if(parentHash) {
+                el.classList.add(parentHash);
+                prev = parentHash;
+            } else {
+                el.classList.add(hash);
+                prev = hash;
+            }
+        });
+    } else {
+        el.classList.add(option.passedClass && option.passedClass[className] || hash);
+    }
 };
 
 

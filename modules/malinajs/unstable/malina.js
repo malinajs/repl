@@ -890,9 +890,20 @@
         let forwardAllEvents = false;
         let injectGroupCall = 0;
         let spreading = false;
-        let classId, boundClasses = {}, defaultClassTransferHash = false;
-        let defaultClass = false, defaultClassNeedHash = false, namedClass = false, namedClassIndex = 1;
         let options = [];
+
+        let __classId;
+        let defaultClass = false;
+        let namedClass = false, namedClassIndex = 1;
+        let defaultClassNeedHash = false, defaultClassNeedLocalHash = false;
+        let passedClasses = [];
+        let passedClassDyn = false;
+
+        const getClassId = () => {
+            if(__classId) return __classId;
+            __classId = this.config.cssGenId ? this.config.cssGenId() : genId();
+            return __classId;
+        };
 
         if(node.body && node.body.length) {
             let slots = {};
@@ -990,25 +1001,6 @@
                 } else console.error("Component ${node.name} doesn't have prop ${inner}");
             `);
                 return false;
-            } else if(name == 'bind-class' || name.startsWith('bind-class:')) {
-                if(!classId) {
-                    classId = genId();
-                    head.push(`let classPrefix = '${classId}';`);
-                    options.push('classPrefix');
-                }
-                assert(this.css, 'No styles');
-                let args = name.split(':');
-                args.shift();
-                assert(args.length <= 1, 'Wrong class syntax');
-                let child = args[0];
-                let parentClasses = value.split(/\s+/);
-                assert(parentClasses.length);
-                parentClasses.forEach(parent => {
-                    assert(this.css.simpleClasses[parent], 'No class to pass');
-                    this.css.passed.push({id: classId, child: child || parent, parent});
-                    boundClasses[child || parent] = true;
-                });
-                return false;
             }
             return true;
         });
@@ -1091,7 +1083,7 @@
                 defaultClass = true;
                 assert(value, 'Empty class');
                 if(value.indexOf('{') >= 0) {
-                    defaultClassNeedHash = true;
+                    defaultClassNeedLocalHash = true;
                     let exp = this.parseText(value);
                     injectGroupCall++;
                     head2.push(`
@@ -1101,10 +1093,15 @@
                     });
                 `);
                 } else {
-                    value.split(/\s+/).forEach(name => {
-                        if(this.css && this.css.simpleClasses[name]) defaultClassNeedHash = true;
-                        if(boundClasses[name]) defaultClassTransferHash = true;
-                    });
+                    if(this.css) {
+                        value.split(/\s+/).forEach(name => {
+                            let c = this.css.simpleClasses[name];
+                            if(!c) return;
+                            c.useAsPassed(name, getClassId());
+                            passedClasses.push({name, hash: getClassId()});
+                            defaultClassNeedHash = true;
+                        });
+                    }
                     head2.push(`$class.$default[${index}] = \`${this.Q(value)}\`;`);
                 }
                 return;
@@ -1120,18 +1117,30 @@
                 if(value) exp = unwrapExp(value);
                 else exp = className;
 
-                if(!defaultClassNeedHash && this.css) defaultClassNeedHash = !!this.css.simpleClasses[className];
-                if(boundClasses[className]) defaultClassTransferHash = true;
-
                 let funcName = `pf${this.uniqIndex++}`;
                 let valueName = `v${this.uniqIndex++}`;
+
+                let classObject = this.css && this.css.simpleClasses[className];
+                let hashLine1 = '';
+                let hashLine2 = '';
+                if(classObject) {
+                    defaultClassNeedHash = true;
+                    passedClassDyn = true;
+                    let hash = getClassId();
+                    classObject.useAsPassed(className, hash);
+                    hashLine1 = `passedClassDyn['${className}'] = ${valueName} ? '${hash}' : '';`;
+                    hashLine2 = `passedClassDyn['${className}'] = value ? '${hash}' : '';`;
+                }
+
                 injectGroupCall++;
                 head2.push(`
                 const ${funcName} = () => !!(${this.Q(exp)});
                 let ${valueName} = ${funcName}();
-                $class.$default[${index}] = ${valueName} ? '${className}' : ''
+                $class.$default[${index}] = ${valueName} ? '${className}' : '';
+                ${hashLine1}
                 $watch($cd, ${funcName}, (value) => {
                     $class.$default[${index}] = value ? '${className}' : '';
+                    ${hashLine2}
                     groupCall();
                 }, {ro: true, value: ${valueName}});
             `);
@@ -1144,6 +1153,9 @@
                 let keyName = toCamelCase(childClass);
                 assert(args.length <= 1);
                 if(args[0] || !value) {
+                    // .header
+                    // .header:local
+                    // .header:local={cond}
                     if(args[0]) {
                         localClass = args[0];
                         if(value) exp = unwrapExp(value);
@@ -1155,19 +1167,34 @@
                     let valueName = `v${this.uniqIndex++}`;
                     injectGroupCall++;
                     let hash = '';
-                    if(this.css && this.css.simpleClasses[localClass]) hash = this.css.id + ' ';
-                    if(boundClasses[localClass]) hash += classId + ' ';
+
+
+                    let classObject = this.css && this.css.simpleClasses[localClass];
+                    let hashLine1 = '';
+                    let hashLine2 = '';
+                    if(classObject) {
+                        passedClassDyn = true;
+                        let h = getClassId();
+                        classObject.useAsPassed(childClass, h);
+                        hashLine1 = `passedClassDyn['${childClass}'] = ${valueName} ? '${h}' : '';`;
+                        hashLine2 = `passedClassDyn['${childClass}'] = value ? '${h}' : '';`;
+                        hash = h + ' ';
+                    }
+
                     head2.push(`
                     const ${funcName} = () => !!(${this.Q(exp)});
                     let ${valueName} = ${funcName}();
                     $class.${keyName} = ${valueName} ? \`${hash}${localClass}\` : '';
+                    ${hashLine1}
                     $watch($cd, ${funcName}, (value) => {
                         $class.${keyName} = value ? \`${hash}${localClass}\` : '';
+                        ${hashLine2}
                         groupCall();
                     }, {ro: true, value: ${valueName}});
                 `);
                 } else {
                     if(value.indexOf('{') >= 0) {
+                        // .header="{'local global'}"
                         let hash = this.css ? this.css.id + ' ' : '';
                         let exp = unwrapExp(value);
                         injectGroupCall++;
@@ -1178,14 +1205,20 @@
                         });
                     `);
                     } else {
-                        let hash1, hash2;
-                        value.split(/\s+/).forEach(name => {
-                            if(this.css && this.css.simpleClasses[name]) hash1 = true;
-                            if(boundClasses[name]) hash2 = true;
-                        });
+                        // .header="local global"
                         let hash = '';
-                        if(hash1) hash = this.css.id + ' ';
-                        if(hash2) hash += classId + ' ';
+                        if(this.css) {
+                            let result = {};
+                            value.split(/\s+/).forEach(name => {
+                                let c = this.css.simpleClasses[name];
+                                if(!c) return;
+                                let h = getClassId();
+                                result[h] = true;
+                                c.useAsPassed(childClass, h);
+                                passedClasses.push({name: childClass, hash: h});
+                            });
+                            if(Object.keys(result).length) hash = Object.keys(result).join(' ') + ' ';
+                        }
                         head2.push(`$class.${keyName} = \`${hash}${this.Q(value)}\`;`);
                     }
                 }
@@ -1240,10 +1273,21 @@
 
         if(namedClass) {
             let hash = '';
-            if(defaultClassNeedHash && this.css) hash = this.css.id;
-            if(defaultClassTransferHash) hash = (hash ? hash + ' ' : '') + classId;
+            if(defaultClassNeedHash && this.css) hash = getClassId();
+            if(defaultClassNeedLocalHash && this.css) hash = (hash ? hash + ' ' : '') + this.css.id;
             head.push(`let $class = $runtime.makeNamedClass('${hash}');`);
             options.push('$class');
+        }
+        if(passedClasses.length) {
+            let pclass = passedClasses.map(i => {
+                return `'${i.name}': '${i.hash}'`;
+            }).join(',');
+            head.push(`let passedClass = \{${pclass}\};`);
+            options.push('passedClass');
+        }
+        if(passedClassDyn) {
+            head.push('let passedClassDyn = {};');
+            options.push('passedClassDyn');
         }
 
         options.unshift('afterElement: true, noMount: true, props, boundProps, events, slots');
@@ -1431,7 +1475,26 @@
             let className = arg;
             let exp = prop.value ? getExpression() : className;
 
-            return {bind: `$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`};
+            let bind = [];
+            let returnProp;
+            let c = this.css && this.css.simpleClasses[className];
+            if(c) {
+                let result = {};
+                if(node.injectCssHash) result[this.css.id] = true;
+                node.injectCssHash = false;
+
+                if(c.bound) {
+                    let hash = c.useAsBound();
+                    bind.push(`$runtime.bindParentClass($cd, ${makeEl()}, '${className}', '${hash}', $option)`);
+                }
+                if(c.notBound) result[c.useAsLocal()] = true;
+
+                let propClassName = Object.keys(result).join(' ');
+                returnProp = `class="${propClassName}"`;
+            }
+
+            bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
+            return {bind: bind.join('\n'), prop: returnProp};
         } else if(name == 'style' && arg) {
             let styleName = arg;
             let exp = prop.value ? getExpression() : styleName;
@@ -1508,14 +1571,29 @@
             `};
             }
 
-            if(name == 'class' && node.scopedClass) {
+            if(name == 'class' && this.css) {
                 let classList = prop.value.trim();
-                if(classList) classList += ' ';
-                classList += this.css.id;
+                if(!classList) return {};
+
+                let result = {};
+                let bind = [];
+                if(node.injectCssHash) result[this.css.id] = true;
+                node.injectCssHash = false;
+                classList.split(/\s+/).forEach(name => {
+                    result[name] = true;
+                    let c = this.css.simpleClasses[name];
+                    if(!c) return;
+                    if(c.bound) {
+                        let hash = c.useAsBound();
+                        bind.push(`$runtime.bindParentClass($cd, ${makeEl()}, '${name}', '${hash}', $option)`);
+                    }
+                    if(c.notBound) result[c.useAsLocal()] = true;
+                });
+                classList = Object.keys(result).join(' ');
 
                 return {
                     prop: `class="${classList}"`,
-                    scopedClass: true
+                    bind: bind.join('\n')
                 }
             }
             return {
@@ -2074,25 +2152,20 @@
                         return;
                     }
 
-                    let hasClass = false;
                     let el = ['<' + n.name];
                     if(n.attributes.some(a => a.name.startsWith('{...'))) {
                         n.spreadObject = 'spread' + (this.uniqIndex++);
-                        n.scopedClass = !!this.css;
+                        n.injectCssHash = !!this.css;
                         binds.push(`
                         let ${n.spreadObject} = $runtime.$$makeSpreadObject($cd, ${getElementName()}, '${this.css && this.css.id}');
                     `);
-                    }
-                    if(n.scopedClassParent) {
-                        binds.push(`$runtime.bindParentClass(${getElementName()}, $option);`);
                     }
                     n.attributes.forEach(p => {
                         let b = this.bindProp(p, getElementName, n);
                         if(b.prop) el.push(b.prop);
                         if(b.bind) binds.push(b.bind);
-                        if(b.scopedClass) hasClass = true;
                     });
-                    if(n.scopedClass && !hasClass) el.push(`class="${this.css.id}"`);
+                    if(n.injectCssHash) el.push(`class="${this.css.id}"`);
 
                     el = el.join(' ');
                     if(n.closedTag) {
@@ -4032,29 +4105,48 @@
     });
     });
 
-    function processCSS(styleNode, config) {
-        // TODO: make hash
-        let id = genId();
+    class SelectorObject {
+        constructor(fullSelector, config) {
+            this._id = config.id;
+            this._genId = config.genId;
 
-        let simpleClasses = {};
-        let self = {element: {}, cls: {}, id, passed: [], simpleClasses};
-        let selectors = [];
+            this.fullSelector = fullSelector;
+            this.clearSelector = null;
+            this.nodes = [];
+            this.simpleClass = null;
+            this.bound = false;
+            this.notBound = false;
+            this.used = false;
+
+            this.localHash = null;
+            this.boundHash = null;
+            this.passedHashes = [];
+        }
+        useAsLocal() {
+            this.used = true;
+            this.localHash = this._id;
+            return this.localHash;
+        }
+        useAsBound() {
+            this.used = true;
+            if(!this.boundHash) this.boundHash = this._genId();
+            return this.boundHash;
+        }
+        useAsPassed(childName, hash) {
+            this.used = true;
+            this.passedHashes.push({childName, hash});
+        }
+    }
+
+
+    function processCSS(styleNode, config) {
+        const genId$1 = () => config.cssGenId ? config.cssGenId() : genId();
+
+        let self = {element: {}, cls: {}, passed: [], simpleClasses: {}, id: genId$1()};
+        let selectors = {};
 
         function transform() {
             let content = styleNode.content;
-
-            let boundBlocks = Array.from(content.matchAll(/\:bind\(([^\(\)]+)\)/g));
-            for(let i = boundBlocks.length - 1; i>=0; i--) {
-                let rx = boundBlocks[i];
-                content = content.substring(0, rx.index) + content.substring(rx.index + rx[0].length);
-                rx[1].split(/\s*,\s*/).forEach(sel => {
-                    assert(sel.match(/^\.[\w\-]+$/), 'Wrong bound class');
-                    selectors.push({
-                        name: sel,
-                        bound: true
-                    });
-                });
-            }
 
             self.ast = csstree.parse(content);
 
@@ -4062,55 +4154,112 @@
                 if (node.type === 'Rule') {
                     assert(node.prelude.type=='SelectorList');
 
-                    node.prelude.children.forEach(fullSelector => {
+                    let selectorList = node.prelude.children.toArray();
+                    node.prelude.children = selectorList;
+                    for(let i=0; i < selectorList.length; i++) {
+                        processSelector(selectorList[i]);
+                    }
+
+                    function processSelector(fullSelector) {
                         assert(fullSelector.type == 'Selector');
-                        let proc = [];
                         let selector = [];
-                        fullSelector.children.toArray().forEach(sel => {
-                            if(sel.type == 'PseudoClassSelector' && sel.name == 'global') {
+                        let fullSelectorChildren = fullSelector.children.toArray();
+                        fullSelectorChildren.forEach(sel => {
+                            if(sel.type == 'PseudoClassSelector' && sel.name == 'export') {
+                                assert(fullSelectorChildren.length == 1);
+                                sel = sel.children.first();
+                                assert(sel.type == 'Raw');
+                                let sl = csstree.parse(sel.value, {context: 'selectorList'});
+                                assert(sl.type == 'SelectorList');
+                                sl.children.forEach(selNode => {
+                                    let sel = selNode.children.toArray();
+                                    if(sel.length != 1 || sel[0].type != 'ClassSelector') {
+                                        let selName = csstree.generate(selNode);
+                                        throw Error(`Wrong class for export '${selName}'`);
+                                    }
+                                    selNode.bound = true;
+                                    selectorList.push(selNode);
+                                });
+                            } else if(sel.type == 'PseudoClassSelector' && sel.name == 'global') {
                                 sel = sel.children.first();
                                 assert(sel.type == 'Raw');
                                 let a = csstree.parse(sel.value, {context: 'selector'});
                                 assert(a.type == 'Selector');
                                 a.children.forEach(sel => {
-                                    selector.push(Object.assign({__global: true}, sel));
+                                    sel.global = true;
+                                    selector.push(sel);
                                 });
                             } else {
                                 selector.push(sel);
                             }
                         });
 
+                        if(!selector.length) {
+                            fullSelector.removed = true;
+                            fullSelector.children = [];
+                            return;
+                        }
+
+                        let fullSelectorName = csstree.generate({
+                            type: 'Selector',
+                            children: selector
+                        });
+
+                        let selectorObject = selectors[fullSelectorName];
+                        
+                        if(!selectorObject) {
+                            selectorObject = new SelectorObject(fullSelectorName, {id: self.id, genId: genId$1});
+                            selectors[fullSelectorName] = selectorObject;
+                            if(selector.length == 1 && selector[0].type == 'ClassSelector' && !selector[0].global) {
+                                selectorObject.simpleClass = selector[0].name;
+                                self.simpleClasses[selectorObject.simpleClass] = selectorObject;
+                            }
+                        }
+
+                        if(fullSelector.bound && !selectorObject.bound) {
+                            selectorObject.bound = true;
+                        } else if(!selectorObject.notBound) {
+                            selectorObject.notBound = true;
+                        }
+
+                        selectorObject.nodes.push({
+                            rule: node,
+                            selector: fullSelector,
+                            bound: fullSelector.bound
+                        });
+
+                        let proc = [];
                         let result = [];
                         let inserted = false;
                         for(let i=0;i<selector.length;i++) {
                             let sel = selector[i];
-                            if(sel.__global) inserted = true;
+                            if(sel.global) inserted = true;
                             if(sel.type == 'PseudoClassSelector' || sel.type == 'PseudoElementSelector') {
-                                if(!inserted) result.push({type: "ClassSelector", loc: null, name: id});
+                                if(!inserted) result.push({type: "ClassSelector", loc: null, name: '', __hash: true});
                                 inserted = true;
                             } else {
-                                proc.push(Object.assign({}, sel));
+                                proc.push(sel);
                             }
                             if(sel.type == 'Combinator' || sel.type == 'WhiteSpace') {
-                                if(!inserted) result.push({type: "ClassSelector", loc: null, name: id});
+                                if(!inserted) result.push({type: "ClassSelector", loc: null, name: '', __hash: true});
                                 inserted = false;
                             }
                             result.push(sel);
                         }
-                        if(!inserted) result.push({type: "ClassSelector", loc: null, name: id});
-
+                        if(!inserted) {
+                            result.push({type: "ClassSelector", loc: null, name: '', __hash: true});
+                        }
                         fullSelector.children = result;
-                        let selectorName = csstree.generate({
-                            type: 'Selector',
-                            children: proc
-                        });
-                        selectors.push({
-                            name: selectorName
-                        });
-                        let rx = selectorName.match(/^\.([\w\-]+)$/);
-                        if(rx) simpleClasses[rx[1]] = node;
-                    });
-                }
+
+                        if(!selectorObject.clearSelector) {
+                            selectorObject.clearSelector = csstree.generate({
+                                type: 'Selector',
+                                children: proc,
+                                selectorNodes: result
+                            });
+                        }
+
+                    }            }
             });
         }
 
@@ -4121,49 +4270,84 @@
                 DOMException: function() {}
             });
 
-            selectors.forEach(sel => {
+            Object.values(selectors).forEach(sel => {
+                if(sel.simpleClass) return;
                 let selected;
                 try {
-                    selected = nw.select([sel.name]);
+                    selected = nw.select([sel.clearSelector]);
                 } catch (_) {
-                    let e = new Error(`CSS error: '${sel.name}'`);
-                    e.details = `selector: '${sel.name}'`;
+                    let e = new Error(`CSS error: '${sel.fullSelector}'`);
+                    e.details = `selector: '${sel.fullSelector}'`;
                     throw e;
                 }
                 if(selected.length) {
+                    sel.useAsLocal();
                     selected.forEach(s => {
-                        if(sel.bound) {
-                            s.node.__node.scopedClassParent = true;
-                            assert(s.lvl.length == 1);
-                        } else {
-                            s.node.__node.scopedClass = true;
-                            s.lvl.forEach(l => l.__node.scopedClass = true);
-                        }
+                        assert(!sel.bound);
+                        s.node.__node.injectCssHash = true;
+                        s.lvl.forEach(l => l.__node.injectCssHash = true);
                     });
-                } else config.warning({message: 'No used css-class: ' + sel.name});
+                }
             });
         };
 
         self.getContent = function() {
-            if(self.passed.length) {
-                self.passed.forEach(item => {
-                    let node = simpleClasses[item.parent];
-                    assert(node, 'No clas to pass ' + item.parent);
+            Object.values(selectors).forEach(sel => {
+                if(sel.used) {
+                    sel.nodes.forEach(node => {
+                        let selectorChildren = node.selector.children.map(i => Object.assign({}, i));
 
-                    let children = node.prelude.children.toArray ? node.prelude.children.toArray() : node.prelude.children;
-                    children.push({
-                        type: 'Selector',
-                        children: [{
-                            type: 'ClassSelector',
-                            name: item.child
-                        }, {
-                            type: 'ClassSelector',
-                            name: item.id
-                        }]
+                        let hash = [];
+                        if(sel.localHash && !node.bound) hash.push(sel.localHash);
+                        if(sel.boundHash && node.bound) hash.push(sel.boundHash);
+
+                        if(!hash.length) node.selector.removed = true;
+
+                        let id = hash.shift();
+                        if(id) {
+                            node.selector.children.forEach(i => {
+                                if(i.__hash) i.name = id;
+                            });
+                        }
+                        id = hash.shift();
+                        if(id) {
+                            selectorChildren.forEach(i => {
+                                if(i.__hash) i.name = id;
+                            });
+                            node.rule.prelude.children.push({
+                                type: 'Selector',
+                                children: selectorChildren
+                            });
+                        }
+
+                        sel.passedHashes.forEach(p => {
+                            node.rule.prelude.children.push({
+                                type: 'Selector',
+                                children: [{
+                                    type: 'ClassSelector',
+                                    name: p.childName
+                                }, {
+                                    type: 'ClassSelector',
+                                    name: p.hash
+                                }]
+                            });
+                        });
                     });
-                    node.prelude.children = children;
-                });
-            }
+                } else {
+                    sel.nodes.forEach(node => {
+                        let i = node.rule.prelude.children.indexOf(node.selector);
+                        assert(i >= 0);
+                        node.rule.prelude.children.splice(i, 1);
+                    });
+                    config.warning({message: 'No used css-class: ' + sel.fullSelector});
+                }
+            });
+
+            // removed selectors
+            self.ast.children.forEach(rule => {
+                rule.prelude.children = rule.prelude.children.filter(s => !s.removed);
+            });
+
             return csstree.generate(self.ast);
         };
 
@@ -4188,21 +4372,13 @@
                     if(e.parts.then && e.parts.then.length) build(parent, e.parts.then);
                     if(e.parts.catch && e.parts.catch.length) build(parent, e.parts.catch);
                 } else if(e.type != 'node') return;
+                if(e.name[0].match(/[A-Z]/)) return;
                 let n = new Node(e.name, {__node: e});
                 e.attributes.forEach(a => {
-                    if(a.name == 'class' || a.name == 'bind-class') n.className += ' ' + a.value;
+                    if(a.name == 'class') n.className += ' ' + a.value;
                     else if(a.name == 'id') n.id = a.value;
                     else if(a.name.startsWith('class:')) {
                         n.className += ' ' + a.name.substring(6);
-                    } else if(a.name.startsWith('bind-class:')) {
-                        n.className += ' ' + a.value;
-                    } else if(a.name[0] == '.') {
-                        let args = a.name.substring(1).split(':');
-                        if(args.length == 2) n.className += ' ' + args[1];
-                        else if(args.length == 1) {
-                            if(a.value) n.className += ' ' + a.value;
-                            else n.className += ' ' + args[0];
-                        }
                     } else n.attributes[a.name] = a.value;
                 });
                 n.className = n.className.trim();
