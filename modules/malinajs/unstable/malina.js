@@ -1175,6 +1175,7 @@
                     if(classObject) {
                         passedClassDyn = true;
                         let h = getClassId();
+                        classObject.useAsPassed(localClass, h);
                         classObject.useAsPassed(childClass, h);
                         hashLine1 = `passedClassDyn['${childClass}'] = ${valueName} ? '${h}' : '';`;
                         hashLine2 = `passedClassDyn['${childClass}'] = value ? '${h}' : '';`;
@@ -1214,6 +1215,7 @@
                                 if(!c) return;
                                 let h = getClassId();
                                 result[h] = true;
+                                c.useAsPassed(name, h);
                                 c.useAsPassed(childClass, h);
                                 passedClasses.push({name: childClass, hash: h});
                             });
