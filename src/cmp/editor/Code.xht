@@ -12,10 +12,18 @@
     });
 
     function codeJarAction(node){
-
-        function inputHandler(){
-            files.current.save(node.textContent);
-        }
+        let prevContent, save = (() => {
+            let t;
+            return (content) => {
+                if(t) clearTimeout(t);
+                t = setTimeout(() => {
+                    t = null;
+                    if(prevContent == content) return;
+                    prevContent = content;
+                    files.current.save(content);
+                }, 20);
+            };
+        })();
 
         const editor = new CodeJar(node,e => {
            e.innerHTML = highlight(
@@ -24,11 +32,14 @@
             );
         },{tab: ' '.repeat(4)});
 
-        node.addEventListener('input',inputHandler);
+        editor.onUpdate(save);
+
         node.style.resize = 'none';
 
         const unsbcr = files.current.subscribe(file => {
-            if(editor.toString() !== file.body) editor.updateCode(file.body);
+            if(editor.toString() === file.body) return;
+            prevContent = file.body;
+            editor.updateCode(file.body);
         });
 
         return{
