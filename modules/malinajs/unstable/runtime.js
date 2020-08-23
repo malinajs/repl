@@ -226,6 +226,23 @@ function $$removeElements(el, last) {
         el = next;
     }
 }
+function removeElementsBetween(el, stop) {
+    let next;
+    el = el.nextSibling;
+    while(el) {
+        next = el.nextSibling;
+        if(el == stop) break;
+        el.remove();
+        el = next;
+    }
+}
+const getFinalLabel = n => {
+    if(n.nextSibling) return n.nextSibling;
+    let e = document.createTextNode('');
+    n.parentNode.appendChild(e);
+    return e;
+};
+
 
 let _tick_list = [];
 let _tick_planned = {};
@@ -733,4 +750,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindParentClass, bindText, cd_onDestroy, configure, isArray, makeNamedClass, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindParentClass, bindText, cd_onDestroy, configure, getFinalLabel, isArray, makeNamedClass, removeElementsBetween, svgToFragment, watchInit };

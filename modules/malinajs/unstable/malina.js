@@ -385,7 +385,9 @@
                             if(a === '>') break;
                             name += a;
                         }
-                        assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
+                        if(!(name == 'slot' && parent.name.split(':')[0] == 'slot')) {
+                            assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
+                        }
                         return;
                     }
 
@@ -893,6 +895,7 @@
         let injectGroupCall = 0;
         let spreading = false;
         let options = [];
+        let dynamicComponent;
 
         let __classId;
         let defaultClass = false;
@@ -1002,6 +1005,9 @@
                     }, {cmp: $runtime.$$compareDeep, value});
                 } else console.error("Component ${node.name} doesn't have prop ${inner}");
             `);
+                return false;
+            } else if(name == 'this') {
+                dynamicComponent = unwrapExp(value);
                 return false;
             }
             return true;
@@ -1295,22 +1301,47 @@
         }
 
         options.unshift('afterElement: true, noMount: true, props, boundProps, events, slots');
-        return {
-            bind:`
-        {
+
+        const makeSrc = (componentName) => {
+            return `
             let props = {};
             let boundProps = {};
             let slots = {};
             ${head.join('\n')};
             let componentOption = {${options.join(', ')}};
             ${head2.join('\n')};
-            let $component = ${node.name}(${makeEl()}, componentOption);
+            let $component = ${componentName}(${makeEl()}, componentOption);
             if($component) {
                 if($component.destroy) $runtime.cd_onDestroy($cd, $component.destroy);
                 ${binds.join('\n')};
                 if($component.onMount) $tick($component.onMount);
             }
-    }`};
+        `;
+        };
+
+        if(!dynamicComponent) {
+            return {bind: `{ ${makeSrc(node.name)} }`};
+        } else {
+            let componentName = 'comp' + (this.uniqIndex++);
+            return {bind: `
+        {
+            const ${componentName} = ($cd, $ComponentConstructor) => {
+                ${makeSrc('$ComponentConstructor')}
+            };
+            let childCD, finalLabel = $runtime.getFinalLabel(${makeEl()});
+            $watch($cd, () => (${dynamicComponent}), ($ComponentConstructor) => {
+                if(childCD) {
+                    childCD.destroy();
+                    $runtime.removeElementsBetween(${makeEl()}, finalLabel);
+                }
+                childCD = null;
+                if($ComponentConstructor) {
+                    childCD = $cd.new();
+                    ${componentName}(childCD, $ComponentConstructor);
+                }
+            });
+        }`};
+        }
     }
 
     function bindProp(prop, makeEl, node) {
@@ -2126,7 +2157,7 @@
                     tpl.push('</template>');
                 } else if(n.type === 'node') {
                     setLvl();
-                    if(n.name.match(/^[A-Z]/) && this.script.imports.indexOf(n.name) >= 0) {
+                    if(n.name.match(/^[A-Z]/)) {
                         // component
                         if(this.config.hideLabel) tpl.push(`<!---->`);
                         else tpl.push(`<!-- ${n.name} -->`);
