@@ -601,7 +601,7 @@
                 if(code != '!no-check') return line;
                 return rx[1] + '$$_noCheck;';
             }).join('\n');
-            ast = acorn.parse(code, {sourceType: 'module'});
+            ast = acorn.parse(code, {sourceType: 'module', ecmaVersion: 12});
         } else {
             ast = {
                 body: [],
@@ -691,13 +691,13 @@
                 }
             }
         }
-        function walk(node, parent) {
+        function walk(node, parent, fn) {
             if(typeof node !== 'object') return;
 
             node._parent = parent;
             let forParent = parent;
             if(node.type) {
-                if(transformNode(node) == 'stop') return;
+                if(fn(node) == 'stop') return;
                 forParent = node;
             }
             for(let key in node) {
@@ -706,13 +706,24 @@
                 if(!child || typeof child !== 'object') continue;
 
                 if(Array.isArray(child)) {
-                    child.forEach(i => walk(i, forParent));
+                    child.forEach(i => walk(i, forParent, fn));
                 } else {
-                    walk(child, forParent);
+                    walk(child, forParent, fn);
                 }
             }
-        }    walk(ast, null);
+        }    walk(ast, null, transformNode);
 
+        // temporary fix for ImportExpression
+        function fixImportExpression(node) {
+            if(node.type != 'ImportExpression') return;
+            node.type = 'CallExpression';
+            node.callee = {
+                type: 'Identifier',
+                name: '$$fixImport'
+            };
+            node.arguments = [node.source];
+            delete node.source;
+        }    walk(ast, null, fixImportExpression);
 
         function makeVariable(name) {
             return {
@@ -876,6 +887,7 @@
         ast.body.unshift.apply(ast.body, imports);
 
         result.code = astring.generate(ast);
+        result.code = replace(result.code, '$$fixImport', 'import');
         return result;
     }
 
