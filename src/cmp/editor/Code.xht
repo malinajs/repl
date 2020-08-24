@@ -12,18 +12,12 @@
     });
 
     function codeJarAction(node){
-        let prevContent, save = (() => {
-            let t;
-            return (content) => {
-                if(t) clearTimeout(t);
-                t = setTimeout(() => {
-                    t = null;
-                    if(prevContent == content) return;
-                    prevContent = content;
-                    files.current.save(content);
-                }, 20);
-            };
-        })();
+        let prevContent = '';
+        function save(content){
+            if(prevContent == content) return;
+            prevContent = content;
+            files.current.save(content);
+        }
 
         const editor = new CodeJar(node,e => {
            e.innerHTML = highlight(
@@ -39,6 +33,7 @@
         const unsbcr = files.current.subscribe(file => {
             if(editor.toString() === file.body) return;
             prevContent = file.body;
+            console.log('update')
             editor.updateCode(file.body);
         });
 
