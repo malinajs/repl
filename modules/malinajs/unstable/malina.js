@@ -22,12 +22,6 @@
         return d.join(to);
     }
 
-    function toCamelCase(name) {
-        assert(name[name.length - 1] !== '-', 'Wrong name');
-        return name.replace(/(\-\w)/g, function(part) {
-            return part[1].toUpperCase();
-        });
-    }
     function Q(s) {
         return s.replace(/`/g, '\\`');
     }
@@ -210,20 +204,27 @@
             let name = '';
             let bind;
             let eq, attr_start;
+            let elArg = null;
 
             function flush(shift) {
                 if(!attr_start) return;
                 shift = shift || 0;
                 let end = index - 1 + shift;
+                if(elArg === true) {
+                    elArg = source.substring(attr_start, end);
+                    attr_start = null;
+                    eq = null;
+                    return;
+                }
                 let a = {
                     content: source.substring(attr_start, end)
                 };
                 if(eq) {
                     a.name = source.substring(attr_start, eq);
                     a.value = source.substring(eq + 1, end);
-                    if(a.value[0] == '"' || a.value[0] == '"') a.value = a.value.substring(1);
+                    if(a.value[0] == '"' || a.value[0] == '\'') a.value = a.value.substring(1);
                     let i = a.value.length - 1;
-                    if(a.value[i] == '"' || a.value[i] == '"') a.value = a.value.substring(0, i);
+                    if(a.value[i] == '"' || a.value[i] == '\'') a.value = a.value.substring(0, i);
                 } else a.name = a.content;
                 attributes.push(a);
                 attr_start = null;
@@ -259,13 +260,13 @@
                 }
                 if(a == '>') {
                     flush();
-                    const voidTags = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
+                    const voidTags = ['fragment', 'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
                     let voidTag = voidTags.indexOf(name) >= 0;
-                    if(name.match(/^fragment($| |\:)/)) voidTag = true;
                     let closedTag = voidTag || source[index-2] == '/';
                     return {
                         type: 'node',
-                        name: name,
+                        name,
+                        elArg,
                         openTag: source.substring(start, index),
                         start: start,
                         end: index,
@@ -275,10 +276,16 @@
                     }
                 }
                 if(begin) {
-                    if(a.match(/[\da-zA-Z\:]/)) {
+                    if(a.match(/[\da-zA-Z]/)) {
                         name += a;
                         continue;
-                    } else begin = false;
+                    } else {
+                        begin = false;
+                        if(a == ':') {
+                            elArg = true;
+                            attr_start = index;
+                        }
+                    }
                 } else if(attr_start) {
                     if(a == '=' && !eq) eq = index - 1;
                     else if(a.match(/\s/)) flush();
@@ -385,9 +392,7 @@
                             if(a === '>') break;
                             name += a;
                         }
-                        if(!(name == 'slot' && parent.name.split(':')[0] == 'slot')) {
-                            assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
-                        }
+                        assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
                         return;
                     }
 
@@ -910,17 +915,30 @@
         let dynamicComponent;
 
         let __classId;
-        let defaultClass = false;
-        let namedClass = false, namedClassIndex = 1;
-        let defaultClassNeedHash = false, defaultClassNeedLocalHash = false;
-        let passedClasses = [];
-        let passedClassDyn = false;
+        let classMap = {};
+
+        function addClassMap(name, fn, line) {
+            name = name || '$default';
+            if(!classMap[name]) classMap[name] = [];
+            classMap[name].push({fn, line});
+        }
+
+        function addClassMapExp(name, exp) {
+            name = name || '$default';
+            if(!classMap[name]) classMap[name] = [];
+            classMap[name].push({exp});
+        }
 
         const getClassId = () => {
             if(__classId) return __classId;
             __classId = this.config.cssGenId ? this.config.cssGenId() : genId();
             return __classId;
         };
+
+        if(node.name == 'component') {
+            assert(node.elArg);
+            dynamicComponent = node.elArg[0] == '{' ? unwrapExp(node.elArg) : node.elArg;
+        }
 
         if(node.body && node.body.length) {
             let slots = {};
@@ -1097,37 +1115,25 @@
                 boundEvents[event] = true;
                 return;
             } else if(name == 'class') {
-                namedClass = true;
-                let index = namedClassIndex++;
-                assert(!defaultClass, 'Double class');
-                defaultClass = true;
                 assert(value, 'Empty class');
                 if(value.indexOf('{') >= 0) {
-                    defaultClassNeedLocalHash = true;
                     let exp = this.parseText(value);
-                    injectGroupCall++;
-                    head2.push(`
-                    $class.$default[${index}] = $runtime.watchInit($cd, () => (${exp}), (value) => {
-                        $class.$default[${index}] = value;
-                        groupCall();
-                    });
-                `);
+                    addClassMapExp(null, exp);
                 } else {
-                    if(this.css) {
-                        value.split(/\s+/).forEach(name => {
-                            let c = this.css.simpleClasses[name];
-                            if(!c) return;
-                            c.useAsPassed(name, getClassId());
-                            passedClasses.push({name, hash: getClassId()});
-                            defaultClassNeedHash = true;
-                        });
-                    }
-                    head2.push(`$class.$default[${index}] = \`${this.Q(value)}\`;`);
+                    value.split(/\s+/).forEach(className => {
+                        let classObject = this.css && this.css.simpleClasses[className];
+                        if(classObject) {
+                            let hash = getClassId();
+                            classObject.useAsPassed(className, hash);
+                            addClassMap(null, null, className + ' ' + hash);
+                            addClassMap(className, null, className + ' ' + hash);
+                        } else {
+                            // global class
+                            addClassMap(null, null, className);
+                        }                });
                 }
                 return;
             } else if(name.startsWith('class:')) {
-                namedClass = true;
-                let index = namedClassIndex++;
                 let args = name.split(':');
                 assert(args.length == 2);
                 let className = args[1];
@@ -1138,39 +1144,26 @@
                 else exp = className;
 
                 let funcName = `pf${this.uniqIndex++}`;
-                let valueName = `v${this.uniqIndex++}`;
 
-                let classObject = this.css && this.css.simpleClasses[className];
-                let hashLine1 = '';
-                let hashLine2 = '';
-                if(classObject) {
-                    defaultClassNeedHash = true;
-                    passedClassDyn = true;
-                    let hash = getClassId();
-                    classObject.useAsPassed(className, hash);
-                    hashLine1 = `passedClassDyn['${className}'] = ${valueName} ? '${hash}' : '';`;
-                    hashLine2 = `passedClassDyn['${className}'] = value ? '${hash}' : '';`;
-                }
-
-                injectGroupCall++;
                 head2.push(`
                 const ${funcName} = () => !!(${this.Q(exp)});
-                let ${valueName} = ${funcName}();
-                $class.$default[${index}] = ${valueName} ? '${className}' : '';
-                ${hashLine1}
-                $watch($cd, ${funcName}, (value) => {
-                    $class.$default[${index}] = value ? '${className}' : '';
-                    ${hashLine2}
-                    groupCall();
-                }, {ro: true, value: ${valueName}});
             `);
+
+                let classObject = this.css && this.css.simpleClasses[className];
+                if(classObject) {
+                    let h = getClassId();
+                    classObject.useAsPassed(className, h);
+                    addClassMap(null, funcName, className + ' ' + h);
+                    addClassMap(className, funcName, className + ' ' + h);
+                } else {
+                    // global class
+                    addClassMap(null, funcName, className);
+                }
                 return;
             } else if(name[0] == '.') {
-                namedClass = true;
                 let args = name.substring(1).split(':');
                 let exp, localClass, childClass = args.shift();
                 assert(childClass);
-                let keyName = toCamelCase(childClass);
                 assert(args.length <= 1);
                 if(args[0] || !value) {
                     // .header
@@ -1184,64 +1177,38 @@
                         exp = localClass = childClass;
                     }
                     let funcName = `pf${this.uniqIndex++}`;
-                    let valueName = `v${this.uniqIndex++}`;
                     injectGroupCall++;
-                    let hash = '';
-
 
                     let classObject = this.css && this.css.simpleClasses[localClass];
-                    let hashLine1 = '';
-                    let hashLine2 = '';
                     if(classObject) {
-                        passedClassDyn = true;
                         let h = getClassId();
-                        classObject.useAsPassed(localClass, h);
                         classObject.useAsPassed(childClass, h);
-                        hashLine1 = `passedClassDyn['${childClass}'] = ${valueName} ? '${h}' : '';`;
-                        hashLine2 = `passedClassDyn['${childClass}'] = value ? '${h}' : '';`;
-                        hash = h + ' ';
+                        addClassMap(childClass, funcName, childClass + ' ' + h);
+                    } else {
+                        // global class
+                        addClassMap(childClass, funcName, localClass);
                     }
 
                     head2.push(`
                     const ${funcName} = () => !!(${this.Q(exp)});
-                    let ${valueName} = ${funcName}();
-                    $class.${keyName} = ${valueName} ? \`${hash}${localClass}\` : '';
-                    ${hashLine1}
-                    $watch($cd, ${funcName}, (value) => {
-                        $class.${keyName} = value ? \`${hash}${localClass}\` : '';
-                        ${hashLine2}
-                        groupCall();
-                    }, {ro: true, value: ${valueName}});
                 `);
                 } else {
                     if(value.indexOf('{') >= 0) {
                         // .header="{'local global'}"
-                        let hash = this.css ? this.css.id + ' ' : '';
                         let exp = unwrapExp(value);
-                        injectGroupCall++;
-                        head2.push(`
-                        $class.${keyName} = $runtime.watchInit($cd, () => '${hash}' + (${this.Q(exp)}), (value) => {
-                            $class.${keyName} = value;
-                            groupCall();
-                        });
-                    `);
+                        addClassMapExp(childClass, exp);
                     } else {
                         // .header="local global"
-                        let hash = '';
-                        if(this.css) {
-                            let result = {};
-                            value.split(/\s+/).forEach(name => {
-                                let c = this.css.simpleClasses[name];
-                                if(!c) return;
+                        value.split(/\s+/).forEach(name => {
+                            let classObject = this.css && this.css.simpleClasses[name];
+                            if(classObject) {
                                 let h = getClassId();
-                                result[h] = true;
-                                c.useAsPassed(name, h);
-                                c.useAsPassed(childClass, h);
-                                passedClasses.push({name: childClass, hash: h});
-                            });
-                            if(Object.keys(result).length) hash = Object.keys(result).join(' ') + ' ';
-                        }
-                        head2.push(`$class.${keyName} = \`${hash}${this.Q(value)}\`;`);
+                                classObject.useAsPassed(childClass, h);
+                                addClassMap(childClass, null, childClass + ' ' + h);
+                            } else {
+                                addClassMap(childClass, null, name);
+                            }
+                        });
                     }
                 }
                 return;
@@ -1280,6 +1247,52 @@
             }
         });
 
+        if(Object.keys(classMap).length) {
+            head.push(`let $class = $runtime.makeNamedClass();`);
+            options.push('$class');
+            let localHash = this.css ? ' ' + this.css.id : '';
+            Object.entries(classMap).forEach(i => {
+                let childClass = i[0];
+                let dyn = false;
+                let staticLine = '';
+                let line = i[1].map(i => {
+                    if(i.exp) {
+                        dyn = true;
+                        return `r += (${i.exp}) + '${localHash} ';`
+                    } else if(i.fn) {
+                        dyn = true;
+                        return `if(${i.fn}()) r += '${i.line} ';`
+                    }
+                    staticLine += i.line + ' ';
+                    return `r += '${i.line} ';`;
+                }).join('\n');
+
+                if(dyn) {
+                    let funcName = 'fn' + (this.uniqIndex++);
+                    let valueName = 'v' + (this.uniqIndex++);
+                    injectGroupCall++;
+                    head2.push(`
+                    let ${funcName} = () => {
+                        let r = '';
+                        ${line}
+                        return r.trim();
+                    };
+                    let ${valueName} = ${funcName}();
+                    $class['${childClass}'] = ${valueName};
+                    $class.$dyn['${childClass}'] = true;
+                    $watch($cd, ${funcName}, (result) => {
+                        $class['${childClass}'] = result;
+                        groupCall();
+                    }, {ro: true, value: ${valueName}});
+                `);
+                } else {
+                    head2.push(`
+                    $class['${childClass}'] = '${staticLine.trim()}';
+                `);
+                }
+            });
+        }
+
         if(forwardAllEvents) head.unshift('let events = Object.assign({}, $option.events);');
         else head.unshift('let events = {};');
         if(injectGroupCall) {
@@ -1292,25 +1305,6 @@
             }
         }
         if(spreading) head.push('spreadObject.build();');
-
-        if(namedClass) {
-            let hash = '';
-            if(defaultClassNeedHash && this.css) hash = getClassId();
-            if(defaultClassNeedLocalHash && this.css) hash = (hash ? hash + ' ' : '') + this.css.id;
-            head.push(`let $class = $runtime.makeNamedClass('${hash}');`);
-            options.push('$class');
-        }
-        if(passedClasses.length) {
-            let pclass = passedClasses.map(i => {
-                return `'${i.name}': '${i.hash}'`;
-            }).join(',');
-            head.push(`let passedClass = \{${pclass}\};`);
-            options.push('passedClass');
-        }
-        if(passedClassDyn) {
-            head.push('let passedClassDyn = {};');
-            options.push('passedClassDyn');
-        }
 
         options.unshift('afterElement: true, noMount: true, props, boundProps, events, slots');
 
@@ -1524,23 +1518,24 @@
 
             let bind = [];
             let returnProp;
-            let c = this.css && this.css.simpleClasses[className];
-            if(c) {
-                let result = {};
-                if(node.injectCssHash) result[this.css.id] = true;
+
+            let classObject = this.css && this.css.simpleClasses[className];
+            if(!classObject) {
+                bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
+            } else {
+                let localHash = null;
+                if(classObject.notBound) localHash = classObject.useAsLocal();
+                else if(node.injectCssHash) localHash = this.css.id;
                 node.injectCssHash = false;
-
-                if(c.bound) {
-                    let hash = c.useAsBound();
-                    bind.push(`$runtime.bindParentClass($cd, ${makeEl()}, '${className}', '${hash}', $option)`);
+                
+                if(classObject.bound) {
+                    let defaultHash = classObject.useAsBound();
+                    bind.push(`$runtime.bindBoundClass($cd, ${makeEl()}, () => !!(${exp}), '${className}', '${defaultHash}', $option);`);
+                } else {
+                    bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
                 }
-                if(c.notBound) result[c.useAsLocal()] = true;
-
-                let propClassName = Object.keys(result).join(' ');
-                returnProp = `class="${propClassName}"`;
+                if(localHash) returnProp = `class="${localHash}"`;
             }
-
-            bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
             return {bind: bind.join('\n'), prop: returnProp};
         } else if(name == 'style' && arg) {
             let styleName = arg;
@@ -1627,14 +1622,19 @@
                 if(node.injectCssHash) result[this.css.id] = true;
                 node.injectCssHash = false;
                 classList.split(/\s+/).forEach(name => {
-                    result[name] = true;
                     let c = this.css.simpleClasses[name];
-                    if(!c) return;
-                    if(c.bound) {
-                        let hash = c.useAsBound();
-                        bind.push(`$runtime.bindParentClass($cd, ${makeEl()}, '${name}', '${hash}', $option)`);
+                    if(c) {
+                        if(c.bound) {
+                            let hash = c.useAsBound();
+                            bind.push(`$runtime.bindParentClass($cd, ${makeEl()}, '${name}', '${hash}', $option)`);
+                        }
+                        if(c.notBound) {
+                            result[name] = true;
+                            result[c.useAsLocal()] = true;
+                        }
+                    } else {
+                        result[name] = true;
                     }
-                    if(c.notBound) result[c.useAsLocal()] = true;
                 });
                 classList = Object.keys(result).join(' ');
 
@@ -1935,11 +1935,8 @@
 
 
     function attachFragment(node, elementName) {
-
         let head = [];
-        let rx = node.name.match(/^fragment\:(\w+)$/);
-        assert(rx);
-        let name = rx[1];
+        let name = node.elArg;
         assert(isSimpleName(name));
 
         node.attributes.forEach(prop => {
@@ -2169,7 +2166,7 @@
                     tpl.push('</template>');
                 } else if(n.type === 'node') {
                     setLvl();
-                    if(n.name.match(/^[A-Z]/)) {
+                    if(n.name == 'component' || n.name.match(/^[A-Z]/)) {
                         // component
                         if(this.config.hideLabel) tpl.push(`<!---->`);
                         else tpl.push(`<!-- ${n.name} -->`);
@@ -2177,23 +2174,17 @@
                         binds.push(b.bind);
                         return;
                     }
-                    if(n.name.match(/^slot(\:|$| )/)) {
-                        let slotName;
-                        if(n.name == 'slot') slotName = 'default';
-                        else {
-                            let rx = n.name.match(/^slot\:(\S+)(.*)$/);
-                            assert$1(rx);
-                            slotName = rx[1];
-                        }
+                    if(n.name == 'slot') {
+                        let slotName = n.elArg || 'default';
                         if(this.config.hideLabel) tpl.push(`<!---->`);
                         else tpl.push(`<!-- Slot ${slotName} -->`);
                         let b = this.attachSlot(slotName, getElementName(), n);
                         binds.push(b.source);
                         return;
                     }
-                    if(n.name.match(/^fragment(\:|$| )/)) {
+                    if(n.name == 'fragment') {
                         if(this.config.hideLabel) tpl.push(`<!---->`);
-                        else tpl.push(`<!-- Slot ${n.name} -->`);
+                        else tpl.push(`<!-- Fragment ${n.name} -->`);
                         let b = this.attachFragment(n, getElementName());
                         binds.push(b.source);
                         return;
@@ -4391,8 +4382,9 @@
             });
 
             // removed selectors
-            self.ast.children.forEach(rule => {
+            self.ast.children = self.ast.children.filter(rule => {
                 rule.prelude.children = rule.prelude.children.filter(s => !s.removed);
+                return rule.prelude.children.length;
             });
 
             return csstree.generate(self.ast);

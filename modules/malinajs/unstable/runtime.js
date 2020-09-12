@@ -515,35 +515,59 @@ const bindText = (cd, element, fn) => {
 
 
 const bindParentClass = (cd, el, className, hash, option) => {
-    if(option.passedClassDyn && className in option.passedClassDyn) {
+    let $class = option.$class;
+    if(!($class && className in $class)) {
+        el.classList.add(className);
+        el.classList.add(hash);
+        return;
+    }
+
+    if($class.$dyn[className]) {
         let prev;
-        $watchReadOnly(cd, () => option.passedClassDyn[className], parentHash => {
-            if(prev) el.classList.remove(prev);
-            if(parentHash) {
-                el.classList.add(parentHash);
-                prev = parentHash;
-            } else {
-                el.classList.add(hash);
-                prev = hash;
-            }
+        $watchReadOnly(cd, () => $class[className], line => {
+            if(prev) prev.forEach(name => el.classList.remove(name));
+            if(line) prev = line.split(/\s+/);
+            else prev = [className, hash];
+            prev.forEach(name => el.classList.add(name));
         });
     } else {
-        el.classList.add(option.passedClass && option.passedClass[className] || hash);
+        $class[className].split(/\s+/).forEach(name => el.classList.add(name));
     }
 };
 
 
-const makeNamedClass = (id) => {
+const bindBoundClass = (cd, element, fn, className, defaultHash, $option) => {
+    let prev, getter, empty = {};
+    let $class = $option.$class;
+    if($class && className in $class) {
+        getter = () => $class[className];
+
+        if($class.$dyn[className]) {
+            let orig = fn;
+            fn = () => {
+                if(!orig()) return false;
+                return $class[className] || empty;
+            };
+        }
+    }
+
+    $watchReadOnly(cd, fn, value => {
+        if(prev) prev.forEach(name => element.classList.remove(name));
+        if(value) {
+            let parent = value === empty ? null : getter && getter();
+            if(parent) prev = parent.split(/\s+/);
+            else prev = [className, defaultHash];
+            prev.forEach(name => element.classList.add(name));
+        } else prev = null;
+    });
+};
+
+
+const makeNamedClass = () => {
     return {
-        $default: [id],
+        $dyn: {},
         toString: function() {
-            let $default = this.$default;
-            let result = '';
-            for(let i = 1; i < $default.length; i++) {
-                if($default[i]) result += $default[i] + ' ';
-            }
-            if(result) result += $default[0];
-            return result;
+            return this.$default || '';
         }
     };
 };
@@ -750,4 +774,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindParentClass, bindText, cd_onDestroy, configure, getFinalLabel, isArray, makeNamedClass, removeElementsBetween, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindBoundClass, bindClass, bindParentClass, bindText, cd_onDestroy, configure, getFinalLabel, isArray, makeNamedClass, removeElementsBetween, svgToFragment, watchInit };
