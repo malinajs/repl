@@ -39,7 +39,7 @@ function langDefinitionMalina(Prism) {
     function getTag(validonly){
 
         return {
-            pattern: /<\/?[^>\/]+\/?>/,
+            pattern: /<\/?[^>]+\/?>/,
             inside:{
                 'tagstart': {
                     pattern: /^<\/?[A-Za-z0-9-:]+/,
