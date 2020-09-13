@@ -45,7 +45,7 @@ function langDefinitionMalina(Prism) {
                     pattern: /^<\/?[A-Za-z0-9-:]+/,
                     inside: {
                         'punctuation': /^<\/?/,
-                        'keyword': /^(fragment|slot|[A-Z])[A-Za-z0-9-]*/,
+                        'keyword': /^(fragment|slot|component|element|[A-Z])[A-Za-z0-9-]*/,
                         'tag': /^[a-z][A-Za-z0-9-]*/, 
                         'selector': /^:[A-Za-z0-9]+/,
                     }
