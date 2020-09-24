@@ -202,15 +202,9 @@
             let attributes = [];
             let begin = true;
             let name = '';
-            let bind = 0;
+            let bind;
             let eq, attr_start;
             let elArg = null;
-
-            const error = (name) => {
-                let e = new Error(name);
-                e.details = source.substring(start, index);
-                throw e;
-            };
 
             function flush(shift) {
                 if(!attr_start) return;
@@ -243,20 +237,22 @@
                     while(a != readNext());
                     continue;
                 }
-                if(a == '{') {
-                    bind++;
-                    continue;
-                }
                 if(bind) {
                     if(a == '}') {
-                        bind--;
-                        if(bind > 0) continue;
+                        bind = false;
                         flush(1);
                     }
                     continue;
                 }
-                if(a == '}') error('Wrong attr');
-                if(a == '<') error('Wrong tag');
+                if(a == '{') {
+                    bind = true;
+                    continue;
+                }
+                if(a == '<') {
+                    let e = new Error('Wrong tag');
+                    e.details = source.substring(start, index);
+                    throw e;
+                }
                 if(a == '/') {
                     a = readNext();
                     assert(a == '>');
@@ -335,8 +331,6 @@
             let start = index;
             assert(readNext() === '{', 'Bind error');
             let q;
-            let bkt = 1;
-
             while(true) {
                 let a = readNext();
 
@@ -350,14 +344,8 @@
                     continue;
                 }
 
-                if(a == '{') {
-                    bkt++;
-                    continue;
-                }
-                if(a == '}') {
-                    bkt--;
-                    if(bkt > 0) continue;
-                } else continue;
+                if(a == '{') throw 'Error binding: ' + source.substring(start, index);
+                if(a != '}') continue;
 
                 return {
                     value: source.substring(start + 1, index - 1)
@@ -1739,31 +1727,10 @@
             right = rx[1];
             keyName = rx[2];
         }
-        right = right.trim();
-
-        let itemName, indexName, keywords, bind0 = '';
-        if(right[0] == '{') {
-            rx = right.match(/^\{([^}]+)\}(.*)$/);
-            assert(rx, `Wrong #each expression '${data.value}'`);
-            keywords = rx[1].trim().split(/\s*\,\s*/);
-            itemName = '$$item';
-            indexName = rx[2].trim();
-            if(indexName[0] == ',') indexName = indexName.substring(1).trim();
-            indexName = indexName || '$index';
-
-            let assignVars = keywords.map(k => `${k} = $$item.${k}`).join(', ');
-            bind0 = `
-            var ${assignVars};
-            $ctx.cd.prefix.push(() => {
-                ${assignVars};
-            });
-        `;
-        } else {
-            rx = right.trim().split(/\s*\,\s*/);
-            assert(rx.length != 2, `Wrong #each expression '${data.value}'`);
-            itemName = rx[0];
-            indexName = rx[1] || '$index';
-        }
+        rx = right.trim().split(/\s*\,\s*/);
+        assert(rx.length <= 2, `Wrong #each expression '${data.value}'`);
+        let itemName = rx[0];
+        let indexName = rx[1] || '$index';
         assert(isSimpleName(itemName), `Wrong name '${itemName}'`);
         assert(isSimpleName(indexName), `Wrong name '${indexName}'`);
 
@@ -1779,7 +1746,6 @@
         source.push(`
         {
             function bind($ctx, $template, ${itemName}, ${indexName}) {
-                ${bind0}
                 ${itemData.source};
                 ${itemData.name}($ctx.cd, $template);
                 $ctx.rebind = function(_${indexName}, _${itemName}) {
@@ -4225,42 +4191,12 @@
 
             self.ast = csstree.parse(content);
 
-            const convert = (node, parent) => {
-                if(!node) return node;
-                if(typeof node != 'object') return node;
-                if(Array.isArray(node)) return node.map(i => convert(i, parent));
-                if(node.toArray) return node.toArray().map(i => convert(i, parent));
-                let r = {parent};
-                let newParent = node.type ? r : parent;
-                for(let k in node) r[k] = convert(node[k], newParent);
-                return r;
-            };
-            self.ast = convert(self.ast, null);
-
             csstree.walk(self.ast, function(node) {
-                if(node.type == 'Declaration') {
-                    if(node.property == 'animation' || node.property == 'animation-name') {
-                        let c = node.value.children[0];
-                        if(!c) return;
-                        if(c.type == 'Identifier') {
-                            c.name += '-' + self.id;
-                        } else {
-                            c = node.value.children[node.value.children.length - 1];
-                            if(c.type == 'Identifier') c.name += '-' + self.id;
-                        }
-                    }
-                } else if(node.type === 'Atrule') {
-                    if(node.name == 'keyframes') {
-                        node.prelude.children[0].name += '-' + self.id;
-                    }
-                } else if(node.type === 'Rule') {
-                    if(node.parent.parent && node.parent.parent.type == 'Atrule') {
-                        if(node.parent.parent.name == 'keyframes') return;
-                    }
-
+                if (node.type === 'Rule') {
                     assert(node.prelude.type=='SelectorList');
 
-                    let selectorList = node.prelude.children;
+                    let selectorList = node.prelude.children.toArray();
+                    node.prelude.children = selectorList;
                     for(let i=0; i < selectorList.length; i++) {
                         processSelector(selectorList[i]);
                     }
@@ -4268,7 +4204,7 @@
                     function processSelector(fullSelector) {
                         assert(fullSelector.type == 'Selector');
                         let selector = [];
-                        let fullSelectorChildren = fullSelector.children;
+                        let fullSelectorChildren = fullSelector.children.toArray();
                         fullSelectorChildren.forEach(sel => {
                             if(sel.type == 'PseudoClassSelector' && sel.name == 'export') {
                                 assert(fullSelectorChildren.length == 1);
@@ -4277,7 +4213,7 @@
                                 let sl = csstree.parse(sel.value, {context: 'selectorList'});
                                 assert(sl.type == 'SelectorList');
                                 sl.children.forEach(selNode => {
-                                    let sel = selNode.children;
+                                    let sel = selNode.children.toArray();
                                     if(sel.length != 1 || sel[0].type != 'ClassSelector') {
                                         let selName = csstree.generate(selNode);
                                         throw Error(`Wrong class for export '${selName}'`);
@@ -4449,15 +4385,25 @@
             });
 
             // removed selectors
-            csstree.walk(self.ast, (node) => {
+            const walk = (node, parent) => {
+                if(node.children && node.children.forEach) {
+                    if(node.children.toArray) node.children = node.children.toArray();
+                    node.children.slice().forEach(n => walk(n, node));
+                } else if(node && typeof node == 'object') {
+                    Object.values(node).forEach(i => {
+                        if(i && typeof i == 'object') walk(i, null);
+                    });
+                }
+
                 if(node.type != 'Rule') return;
                 node.prelude.children = node.prelude.children.filter(s => !s.removed);
-                let parent = node.parent;
                 if(!node.prelude.children.length && parent) {
                     let i = parent.children.indexOf(node);
                     if(i >= 0) parent.children.splice(i, 1);
                 }
-            });
+            };
+
+            walk(self.ast, null);
 
             return csstree.generate(self.ast);
         };
@@ -4483,7 +4429,7 @@
                     if(e.parts.then && e.parts.then.length) build(parent, e.parts.then);
                     if(e.parts.catch && e.parts.catch.length) build(parent, e.parts.catch);
                 } else if(e.type != 'node') return;
-                //if(e.name[0].match(/[A-Z]/)) return;
+                if(e.name[0].match(/[A-Z]/)) return;
                 let n = new Node(e.name, {__node: e});
                 e.attributes.forEach(a => {
                     if(a.name == 'class') n.className += ' ' + a.value;
@@ -4567,7 +4513,7 @@
         return result;
     };
 
-    const version = '0.5.22';
+    const version = '0.5.20';
 
     function compile(src, config = {}) {
         if(!config.name) config.name = 'widget';
