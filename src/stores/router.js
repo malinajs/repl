@@ -33,6 +33,10 @@ function routerStore(){
             document
                 .querySelectorAll("meta[property='og:title'],meta[name='twitter:title']")
                 .forEach( el => el.setAttribute('content',window.document.title));
+        },
+        version(){
+            const r = window.location.hash.match(/[\?&]version=([\.\w]+)/);
+            return r && r[1];
         }
     }
 }

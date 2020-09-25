@@ -30,6 +30,16 @@ export const gist = {
 
             files.set(fileList, {title: data.description});
             router.title(data.description);
+
+            if(bundler.ready()) {
+                const version = router.version();
+                let activeVersion = bundler.versions.get();
+                activeVersion = activeVersion && activeVersion.malina;
+            
+                if(version && version !== activeVersion) {
+                    bundler.malina.load(version);
+                }
+            }
         } else {
             files.set([{name:"App.xht", body:"<!-- Write something cool! -->"}], {title: ''});
             router.title('Oops! Error to load gist!');

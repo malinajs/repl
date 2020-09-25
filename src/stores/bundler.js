@@ -6,6 +6,7 @@ import {initBundlerWorker} from './../bundler/client';
 
 import {files} from './files';
 import {errors} from './errors.js';
+import {router} from './router.js';
 import { asyncThrottle } from '../lib/optimization';
 
 export let bundler = bundleStore();
@@ -101,7 +102,7 @@ function bundleStore(){
             });
             
             setOutput({ready: false});
-            emit('init');
+            emit('init', {malinaVersion: router.version()});
         });
     }
     

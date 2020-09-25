@@ -18,14 +18,17 @@ function sharesStore(){
             const share = await fetchShare(id);
             if(share){
                 files.set(share.files,share.meta);
-                if(
-                    bundler.ready() && 
-                    share.meta.version && 
-                    share.meta.version !== bundler.malina.version.get()
-                ) {
-                    bundler.malina.load(share.meta.version);
-                }
                 router.title(share.meta.title);
+
+                if(bundler.ready()) {
+                    const version = share.meta.version || router.version();
+                    let activeVersion = bundler.versions.get();
+                    activeVersion = activeVersion && activeVersion.malina;
+
+                    if(version && version !== activeVersion) {
+                        bundler.malina.load(version);
+                    }
+                }
             }else{
                 const title = 'Oops! Shared code not found!';
                 files.set([{name:"App.html",body:"<!-- Write something cool! -->"}],{title});
