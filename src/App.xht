@@ -5,6 +5,7 @@
 
     import {examples} from './stores/examples.js';
     import {shares} from './stores/shares.js';
+    import {gist} from './stores/gist.js';
     import {router} from './stores/router.js';
 
     router.subscribe( slugs => {
@@ -12,6 +13,8 @@
             examples.load(slugs[1]);
         }else if(slugs[0]==='share' && slugs[1]){
             shares.load(slugs[1]);
+        }else if(slugs[0]==='gist' && slugs[1]){
+            gist.load(slugs[1]);
         }else{
             router.go('/example/1-hello-world'); 
         }
