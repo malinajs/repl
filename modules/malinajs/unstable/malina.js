@@ -1734,6 +1734,7 @@
         let keyName;
         let keyFunction;
 
+        // get keyName
         rx = right.match(/^(.*)\s*\(\s*([^\(\)]+)\s*\)\s*$/);
         if(rx) {
             right = rx[1];
@@ -1760,7 +1761,7 @@
         `;
         } else {
             rx = right.trim().split(/\s*\,\s*/);
-            assert(rx.length != 2, `Wrong #each expression '${data.value}'`);
+            assert(rx.length <= 2, `Wrong #each expression '${data.value}'`);
             itemName = rx[0];
             indexName = rx[1] || '$index';
         }
