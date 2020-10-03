@@ -35,7 +35,10 @@
         return rx[1];
     }
     function isSimpleName(name) {
-        return !!name.match(/^([\w\$_][\w\d\$_]*)$/);
+        if(!name) return false;
+        if(!name.match(/^([\w\$_][\w\d\$_\.]*)$/)) return false;
+        if(name[name.length - 1] == '.') return false;
+        return true;
     }
 
     function detectExpressionType(name) {
@@ -652,6 +655,7 @@
 
         function applyBlock() {
             return {
+                _apply: true,
                 type: 'ExpressionStatement',
                 expression: {
                     callee: {
@@ -660,6 +664,18 @@
                     },
                     type: 'CallExpression'
                 }
+            }
+        }
+
+        function returnApplyBlock(a) {
+            return {
+                _apply: true,
+                callee: {
+                    type: 'Identifier',
+                    name: '$$apply'
+                },
+                type: 'CallExpression',
+                arguments: [a]
             }
         }
 
@@ -698,22 +714,29 @@
                     transformNode(node);
                 }
             } else if(node.type == 'AwaitExpression') {
-                if(node._parent && node._parent._parent && node._parent._parent._parent) {
-                    if(node._parent.type == 'ExpressionStatement' &&
-                        node._parent._parent.type == 'BlockStatement' &&
-                        node._parent._parent._parent.type == 'FunctionDeclaration' &&
-                        node._parent._parent._parent.async) {
-                            let list = node._parent._parent.body;
-                            let i = list.indexOf(node._parent);
-                            assert(i >= 0);
-                            list.splice(i + 1, 0, applyBlock());
+                let n = node, p;
+                while(n._parent) {
+                    p = n._parent;
+                    if(p.type == 'BlockStatement') break;
+                    n = p;
+                    p = null;
+                }
+                if(p) {
+                    let i = p.body.indexOf(n);
+                    if(i >= 0 && !(p.body[i + 1] && p.body[i + 1]._apply)) {
+                        if(n.type == 'ReturnStatement') {
+                            n.argument = returnApplyBlock(n.argument);
+                        } else {
+                            p.body.splice(i + 1, 0, applyBlock());
                         }
+                    }
                 }
             }
         }
         function walk(node, parent, fn) {
             if(typeof node !== 'object') return;
 
+            if(node._apply) return;
             node._parent = parent;
             let forParent = parent;
             if(node.type) {
@@ -726,7 +749,9 @@
                 if(!child || typeof child !== 'object') continue;
 
                 if(Array.isArray(child)) {
-                    child.forEach(i => walk(i, forParent, fn));
+                    for(let i=0;i<child.length;i++) {
+                        walk(child[i], forParent, fn);
+                    }
                 } else {
                     walk(child, forParent, fn);
                 }
@@ -1228,9 +1253,8 @@
                 }
                 return;
             }
-            assert(value, 'Empty property');
             assert(isSimpleName(name), `Wrong property: '${name}'`);
-            if(value.indexOf('{') >= 0) {
+            if(value && value.indexOf('{') >= 0) {
                 let exp = this.parseText(value);
                 let fname = 'pf' + (this.uniqIndex++);
                 let valueName = 'v' + (this.uniqIndex++);
@@ -1252,12 +1276,12 @@
                 }, {ro: true, cmp: $runtime.$$compareDeep, value: $runtime.$$cloneDeep(${valueName})});
             `);
             } else {
+                if(value) value = '`' + this.Q(value) + '`';
+                else value = 'true';
                 if(spreading) {
-                    head.push(`
-                    spreadObject.attr('${name}', \`${this.Q(value)}\`);
-                `);
+                    head.push(`spreadObject.attr('${name}', ${value});`);
                 } else {
-                    head.push(`props.${name} = \`${this.Q(value)}\``);
+                    head.push(`props.${name} = ${value};`);
                 }
             }
         });

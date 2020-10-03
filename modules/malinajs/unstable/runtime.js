@@ -426,8 +426,8 @@ function $$groupCall(emit) {
 }
 function $$makeApply($cd) {
     let id = `a${$$uniqIndex++}`;
-    return function apply() {
-        if(apply._p) return;
+    return function apply(r) {
+        if(apply._p) return r;
         $tick(() => {
             try {
                 apply._p = true;
@@ -436,6 +436,7 @@ function $$makeApply($cd) {
                 apply._p = false;
             }
         }, id);
+        return r;
     };
 }
 
