@@ -425,6 +425,8 @@
                         tag.type = 'style';
                         tag.content = readStyle();
                         continue;
+                    } else {
+                        tag.classes = new Set();
                     }
                     if(tag.closedTag) continue;
 
@@ -559,9 +561,9 @@
         let step = 0;
         let text = '';
         let exp = '';
-        let result = [];
         let q;
         let len = source.length;
+        let parts = [];
         while(i < len) {
             let a = source[i++];
             if(step == 1) {
@@ -579,7 +581,7 @@
                     step = 0;
                     exp = exp.trim();
                     if(!exp) throw 'Wrong expression';
-                    result.push('(' + exp + ')');
+                    parts.push({value: exp, type: 'exp'});
                     exp = '';
                     continue;
                 }
@@ -588,7 +590,7 @@
             }
             if(a === '{') {
                 if(text) {
-                    result.push('`' + this.Q(text) + '`');
+                    parts.push({value: text, type: 'text'});
                     text = '';
                 }
                 step = 1;
@@ -596,11 +598,15 @@
             }
             text += a;
         }
-        if(text) result.push('`' + this.Q(text) + '`');
+        if(text) parts.push({value: text, type: 'text'});
         assert(step == 0, 'Wrong expression: ' + source);
-        result = result.join('+');
-        if(result == '($class)') result = "''+$class";
-        return result;
+        let result;
+        if(parts.length == 1 && parts[0].type == 'exp' && parts[0].value == '$class') {
+            result = "''+$class";
+        } else {
+            result = parts.map(p => p.type == 'text' ? '`' + this.Q(p.value) + '`' : '(' + p.value + ')').join('+');
+        }
+        return {result, parts};
     }
 
     function transformJS(code, config={}) {
@@ -1157,7 +1163,7 @@
             } else if(name == 'class') {
                 assert(value, 'Empty class');
                 if(value.indexOf('{') >= 0) {
-                    let exp = this.parseText(value);
+                    let exp = this.parseText(value).result;
                     addClassMapExp(null, exp);
                 } else {
                     value.split(/\s+/).forEach(className => {
@@ -1255,7 +1261,7 @@
             }
             assert(isSimpleName(name), `Wrong property: '${name}'`);
             if(value && value.indexOf('{') >= 0) {
-                let exp = this.parseText(value);
+                let exp = this.parseText(value).result;
                 let fname = 'pf' + (this.uniqIndex++);
                 let valueName = 'v' + (this.uniqIndex++);
                 if(spreading) {
@@ -1556,26 +1562,21 @@
             let exp = prop.value ? getExpression() : className;
 
             let bind = [];
-            let returnProp;
 
             let classObject = this.css && this.css.simpleClasses[className];
             if(!classObject) {
                 bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
             } else {
-                let localHash = null;
-                if(classObject.notBound) localHash = classObject.useAsLocal();
-                else if(node.injectCssHash) localHash = this.css.id;
-                node.injectCssHash = false;
-                
+                if(classObject.notBound) node.classes.add(classObject.useAsLocal());
+
                 if(classObject.bound) {
                     let defaultHash = classObject.useAsBound();
                     bind.push(`$runtime.bindBoundClass($cd, ${makeEl()}, () => !!(${exp}), '${className}', '${defaultHash}', $option);`);
                 } else {
                     bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
                 }
-                if(localHash) returnProp = `class="${localHash}"`;
             }
-            return {bind: bind.join('\n'), prop: returnProp};
+            return {bind: bind.join('\n')};
         } else if(name == 'style' && arg) {
             let styleName = arg;
             let exp = prop.value ? getExpression() : styleName;
@@ -1604,7 +1605,8 @@
             $tick(() => { ${exp}; $$apply(); });}`};
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
-                let exp = this.parseText(prop.value);
+                const parsed = this.parseText(prop.value);
+                let exp = parsed.result;
 
                 if(node.spreadObject) {
                     return {bind: `
@@ -1628,10 +1630,23 @@
                     $watchReadOnly($cd, () => (${exp}), (value) => {$element.${name} = value;});
                 }`};
                 } else {
-                    let suffix = '', scopedClass = name == 'class' && this.css;  // scope any dynamic class
-                    if(scopedClass) {
-                        let passed = prop.value.match(/^\{\s*\$class\s*\}$/) || prop.value.match(/^\{\s*\$class\.\w+\s*\}$/);
-                        if(!passed) suffix = `+' ${this.css.id}'`;
+                    let suffix = '';
+                    if(name == 'class' && this.css) {
+                        let needHash = false;
+                        parsed.parts.forEach(p => {
+                            if(p.type == 'text') {
+                                p.value.trim().split(/\s+/).forEach(name => {
+                                    let c = this.css.simpleClasses[name];
+                                    if(c) {
+                                        c.useAsLocal();
+                                        needHash = true;
+                                    }
+                                });
+                            } else {
+                                if(!p.value.startsWith('$class')) needHash = true;
+                            }
+                        });
+                        if(needHash) suffix = `+' ${this.css.id}'`;
                     }
                     return {
                         bind: `{
@@ -1640,8 +1655,7 @@
                             if(value != null) $element.setAttribute('${name}', value);
                             else $element.removeAttribute('${name}');
                         });
-                    }`,
-                        scopedClass: scopedClass
+                    }`
                     };
                 }
             }
@@ -1656,10 +1670,7 @@
                 let classList = prop.value.trim();
                 if(!classList) return {};
 
-                let result = {};
                 let bind = [];
-                if(node.injectCssHash) result[this.css.id] = true;
-                node.injectCssHash = false;
                 classList.split(/\s+/).forEach(name => {
                     let c = this.css.simpleClasses[name];
                     if(c) {
@@ -1668,17 +1679,15 @@
                             bind.push(`$runtime.bindParentClass($cd, ${makeEl()}, '${name}', '${hash}', $option)`);
                         }
                         if(c.notBound) {
-                            result[name] = true;
-                            result[c.useAsLocal()] = true;
+                            node.classes.add(name);
+                            node.classes.add(c.useAsLocal());
                         }
                     } else {
-                        result[name] = true;
+                        node.classes.add(name);
                     }
                 });
-                classList = Object.keys(result).join(' ');
 
                 return {
-                    prop: `class="${classList}"`,
                     bind: bind.join('\n')
                 }
             }
@@ -2217,7 +2226,7 @@
                     setLvl();
                     if(n.value.indexOf('{') >= 0) {
                         tpl.push(' ');
-                        let exp = this.parseText(n.value);
+                        let exp = this.parseText(n.value).result;
                         binds.push(`$runtime.bindText($cd, ${getElementName()}, () => ${exp});`);
                     } else tpl.push(n.value);
                     lastText = tpl.length;
@@ -2255,7 +2264,7 @@
                     let el = ['<' + n.name];
                     if(n.attributes.some(a => a.name.startsWith('{...'))) {
                         n.spreadObject = 'spread' + (this.uniqIndex++);
-                        n.injectCssHash = !!this.css;
+                        if(this.css) n.classes.add(this.css.id);
                         binds.push(`
                         let ${n.spreadObject} = $runtime.$$makeSpreadObject($cd, ${getElementName()}, '${this.css && this.css.id}');
                     `);
@@ -2265,7 +2274,8 @@
                         if(b.prop) el.push(b.prop);
                         if(b.bind) binds.push(b.bind);
                     });
-                    if(n.injectCssHash) el.push(`class="${this.css.id}"`);
+                    let className = Array.from(n.classes).join(' ');
+                    if(className) el.push(`class="${className}"`);
 
                     el = el.join(' ');
                     if(n.closedTag) {
@@ -4261,6 +4271,8 @@
             return convertAst(ast, null);
         };
 
+        const last = a => a[a.length - 1];
+
         const isKeyframes = (name) => name == 'keyframes' || name == '-webkit-keyframes' || name == '-moz-keyframes' || name == '-o-keyframes';
 
         function transform() {
@@ -4274,7 +4286,7 @@
                         if(c.type == 'Identifier') {
                             c.name += '-' + self.id;
                         } else {
-                            c = node.value.children[node.value.children.length - 1];
+                            c = last(node.value.children);
                             if(c.type == 'Identifier') c.name += '-' + self.id;
                         }
                     }
@@ -4340,7 +4352,7 @@
                         });
 
                         let selectorObject = selectors[fullSelectorName];
-                        
+
                         if(!selectorObject) {
                             selectorObject = new SelectorObject(fullSelectorName, {id: self.id, genId: genId$1});
                             selectors[fullSelectorName] = selectorObject;
@@ -4386,11 +4398,34 @@
                         fullSelector.children = result;
 
                         if(!selectorObject.clearSelector) {
-                            selectorObject.clearSelector = csstree.generate({
-                                type: 'Selector',
-                                children: proc,
-                                selectorNodes: result
+                            const onlyGlobal = proc.every(p => {
+                                if(p.type == 'Combinator' || p.type == 'WhiteSpace') return true;
+                                return p.global;
                             });
+
+                            if(onlyGlobal) {
+                                selectorObject.clearSelector = true;
+                                selectorObject.onlyGlobal = true;
+                                selectorObject.used = true;
+                            } else {
+                                let localSelector = [];
+                                for(let i=0; i<proc.length; i++) {
+                                    let p = proc[i];
+                                    if(p.type == 'Combinator' || p.type == 'WhiteSpace') {
+                                        localSelector.push(p);
+                                    } else {
+                                        if(p.global) break;
+                                        localSelector.push(p);
+                                    }
+                                }
+        
+                                if(last(localSelector).type == 'Combinator') localSelector.push({name: '*', type: 'TypeSelector'});
+                                selectorObject.clearSelector = csstree.generate({
+                                    type: 'Selector',
+                                    children: localSelector,
+                                    selectorNodes: result
+                                });
+                            }
                         }
 
                     }            }
@@ -4405,6 +4440,7 @@
             });
 
             Object.values(selectors).forEach(sel => {
+                if(sel.onlyGlobal) return true;
                 if(sel.simpleClass) return;
                 let selected;
                 try {
@@ -4415,11 +4451,11 @@
                     throw e;
                 }
                 if(selected.length) {
-                    sel.useAsLocal();
+                    const h = sel.useAsLocal();
                     selected.forEach(s => {
                         assert(!sel.bound);
-                        s.node.__node.injectCssHash = true;
-                        s.lvl.forEach(l => l.__node.injectCssHash = true);
+                        s.node.__node.classes.add(h);
+                        s.lvl.forEach(l => l.__node.classes.add(h));
                     });
                 }
             });
@@ -4428,6 +4464,7 @@
         self.getContent = function() {
             Object.values(selectors).forEach(sel => {
                 if(sel.used) {
+                    if(sel.onlyGlobal) return;
                     sel.nodes.forEach(node => {
                         let selectorChildren = node.selector.children.map(i => Object.assign({}, i));
 
