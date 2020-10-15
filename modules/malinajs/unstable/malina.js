@@ -1062,23 +1062,24 @@
                 assert(isSimpleName(inner), `Wrong property: '${inner}'`);
                 assert(detectExpressionType(outer) == 'identifier', 'Wrong bind name: ' + outer);
                 twoBinds.push(inner);
-                let valueName = 'v' + (this.uniqIndex++);
+                let valueName0 = '$$v' + (this.uniqIndex++);
+                let valueName = '$$v' + (this.uniqIndex++);
                 head.push(`props.${inner} = ${outer};`);
                 head.push(`boundProps.${inner} = 2;`);
                 binds.push(`
                 if('${inner}' in $component) {
-                    let value = $runtime.$$cloneDeep(props.${inner});
+                    let ${valueName0} = $runtime.$$cloneDeep(props.${inner});
                     let $$_w0 = $watch($cd, () => (${outer}), (value) => {
                         props.${inner} = value;
                         $$_w1.value = $$_w0.value;
                         $component.${inner} = value;
-                    }, {ro: true, cmp: $runtime.$$compareDeep, value});
+                    }, {ro: true, cmp: $runtime.$$compareDeep, value: ${valueName0}});
                     let $$_w1 = $watch($component.$cd, () => ($component.${inner}), (${valueName}) => {
                         props.${inner} = ${valueName};
                         $$_w0.value = $$_w1.value;
                         ${outer} = ${valueName};
                         $$apply();
-                    }, {cmp: $runtime.$$compareDeep, value});
+                    }, {cmp: $runtime.$$compareDeep, value: ${valueName0}});
                 } else console.error("Component ${node.name} doesn't have prop ${inner}");
             `);
                 return false;
@@ -1189,7 +1190,7 @@
                 if(value) exp = unwrapExp(value);
                 else exp = className;
 
-                let funcName = `pf${this.uniqIndex++}`;
+                let funcName = `$$pf${this.uniqIndex++}`;
 
                 head2.push(`
                 const ${funcName} = () => !!(${this.Q(exp)});
@@ -1222,7 +1223,7 @@
                     } else {
                         exp = localClass = childClass;
                     }
-                    let funcName = `pf${this.uniqIndex++}`;
+                    let funcName = `$$pf${this.uniqIndex++}`;
                     injectGroupCall++;
 
                     let classObject = this.css && this.css.simpleClasses[localClass];
@@ -1262,8 +1263,8 @@
             assert(isSimpleName(name), `Wrong property: '${name}'`);
             if(value && value.indexOf('{') >= 0) {
                 let exp = this.parseText(value).result;
-                let fname = 'pf' + (this.uniqIndex++);
-                let valueName = 'v' + (this.uniqIndex++);
+                let fname = '$$pf' + (this.uniqIndex++);
+                let valueName = '$$v' + (this.uniqIndex++);
                 if(spreading) {
                     return head.push(`
                     spreadObject.prop('${name}', () => ${exp});
@@ -1313,8 +1314,8 @@
                 }).join('\n');
 
                 if(dyn) {
-                    let funcName = 'fn' + (this.uniqIndex++);
-                    let valueName = 'v' + (this.uniqIndex++);
+                    let funcName = '$$fn' + (this.uniqIndex++);
+                    let valueName = '$$v' + (this.uniqIndex++);
                     injectGroupCall++;
                     head2.push(`
                     let ${funcName} = () => {
@@ -1373,7 +1374,7 @@
         if(!dynamicComponent) {
             return {bind: `{ ${makeSrc(node.name)} }`};
         } else {
-            let componentName = 'comp' + (this.uniqIndex++);
+            let componentName = '$$comp' + (this.uniqIndex++);
             return {bind: `
         {
             const ${componentName} = ($cd, $ComponentConstructor) => {
@@ -1543,10 +1544,21 @@
                 if(arg.length) exp = arg.pop();
                 else exp = attr;
             }
+            let inputType = null;
+            if(node.name == 'input') {
+                node.attributes.some(a => {
+                    if(a.name == 'type') {
+                        inputType = a.value;
+                        return true;
+                    }
+                });
+            }
+
             assert(['value', 'checked', 'valueAsNumber', 'valueAsDate', 'selectedIndex'].includes(attr), 'Not supported: ' + prop.content);
             assert(arg.length == 0);
             assert(detectExpressionType(exp) == 'identifier', 'Wrong bind name: ' + prop.content);
             let watchExp = attr == 'checked' ? '!!' + exp : exp;
+            if(attr == 'value' && inputType == 'number') attr = 'valueAsNumber';
 
             let spreading = '';
             if(node.spreadObject) spreading = `${node.spreadObject}.except(['${attr}']);`;
@@ -1554,8 +1566,8 @@
             return {bind: `{
             ${spreading}
             let $element=${makeEl()};
-            $runtime.addEvent($cd, $element, 'input', () => { ${exp}=$element.${attr}; $$apply(); });
-            $watchReadOnly($cd, () => (${watchExp}), (value) => { if(value != $element.${attr}) $element.${attr} = value; });
+            let $$w = $watchReadOnly($cd, () => (${watchExp}), (value) => { if(value != $element.${attr}) $element.${attr} = value; });
+            $runtime.addEvent($cd, $element, 'input', () => { $$w.value = ${exp} = $element.${attr}; $$apply(); });
         }`};
         } else if(name == 'class' && arg) {
             let className = arg;
@@ -4548,6 +4560,7 @@
                     if(e.parts.main && e.parts.main.length) build(parent, e.parts.main);
                     if(e.parts.then && e.parts.then.length) build(parent, e.parts.then);
                     if(e.parts.catch && e.parts.catch.length) build(parent, e.parts.catch);
+                    return;
                 } else if(e.type != 'node') return;
                 //if(e.name[0].match(/[A-Z]/)) return;
                 let n = new Node(e.name, {__node: e});
