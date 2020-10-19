@@ -90,8 +90,7 @@ function $$compareArray(w, value) {
 }
 
 const compareDeep = (a, b, lvl) => {
-    if(lvl < 0) return false;
-    if(!a || !b) return a !== b;
+    if(lvl < 0 || !a || !b) return a !== b;
     let o0 = typeof(a) == 'object';
     let o1 = typeof(b) == 'object';
     if(!(o0 && o1)) return a !== b;
@@ -108,7 +107,7 @@ const compareDeep = (a, b, lvl) => {
     } else {
         let set = {};
         for(let k in a) {
-            if(compareDeep(a[k], b[k])) return true;
+            if(compareDeep(a[k], b[k], lvl-1)) return true;
             set[k] = true;
         }
         for(let k in b) {
@@ -121,8 +120,7 @@ const compareDeep = (a, b, lvl) => {
 };
 
 function cloneDeep(d, lvl) {
-    if(lvl < 0) return;
-    if(!d) return d;
+    if(lvl < 0 || !d) return d;
 
     if(typeof(d) == 'object') {
         if(d instanceof Date) return d;
