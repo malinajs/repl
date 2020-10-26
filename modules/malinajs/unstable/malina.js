@@ -1562,7 +1562,7 @@
             assert(arg.length == 0);
             assert(detectExpressionType(exp) == 'identifier', 'Wrong bind name: ' + prop.content);
             let watchExp = attr == 'checked' ? '!!' + exp : exp;
-            if(attr == 'value' && inputType == 'number') attr = 'valueAsNumber';
+            if(attr == 'value' && ['number', 'range'].includes(inputType)) attr = 'valueAsNumber';
 
             let spreading = '';
             if(node.spreadObject) spreading = `${node.spreadObject}.except(['${attr}']);`;
@@ -4653,8 +4653,16 @@
     const version = 'unstable';
 
     function compile(src, config = {}) {
-        if(!config.name) config.name = 'widget';
-        if(!config.warning) config.warning = function() {};
+        config = Object.assign({
+            name: 'widget',
+            warning: (w) => console.warn('!', w.message),
+            exportDefault: true,
+            inlineTemplate: false,
+            hideLabel: false,
+            compact: true,
+            autoSubscribe: true,
+            cssGenId: null
+        }, config);
 
         const data = parse(src);
 

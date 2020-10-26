@@ -964,26 +964,7 @@
         let options = [];
         let dynamicComponent;
 
-        let __classId;
-        let classMap = {};
-
-        function addClassMap(name, fn, line) {
-            name = name || '$default';
-            if(!classMap[name]) classMap[name] = [];
-            classMap[name].push({fn, line});
-        }
-
-        function addClassMapExp(name, exp) {
-            name = name || '$default';
-            if(!classMap[name]) classMap[name] = [];
-            classMap[name].push({exp});
-        }
-
-        const getClassId = () => {
-            if(__classId) return __classId;
-            __classId = this.config.cssGenId ? this.config.cssGenId() : genId();
-            return __classId;
-        };
+        let injectClass = false;
 
         if(node.name == 'component') {
             assert(node.elArg);
@@ -1165,103 +1146,32 @@
                 else head.push(`events.${event} = ${callback};`);
                 boundEvents[event] = true;
                 return;
-            } else if(name == 'class') {
-                assert(value, 'Empty class');
-                if(value.indexOf('{') >= 0) {
-                    let exp = this.parseText(value).result;
-                    addClassMapExp(null, exp);
+            } else if(name == 'class' || name.startsWith('class:')) {
+                let metaClass, args = name.split(':');
+                if(args.length == 1) {
+                    metaClass = '$$class';
                 } else {
-                    value.split(/\s+/).forEach(className => {
-                        let classObject = this.css && this.css.simpleClasses[className];
-                        if(classObject) {
-                            let hash = getClassId();
-                            classObject.useAsPassed(className, hash);
-                            addClassMap(null, null, className + ' ' + hash);
-                            addClassMap(className, null, className + ' ' + hash);
-                        } else {
-                            // global class
-                            addClassMap(null, null, className);
-                        }                });
+                    assert(args.length == 2);
+                    metaClass = args[1];
+                    assert(metaClass);
                 }
-                return;
-            } else if(name.startsWith('class:')) {
-                let args = name.split(':');
-                assert(args.length == 2);
-                let className = args[1];
-                assert(className);
-                let exp;
+                assert(value);
 
-                if(value) exp = unwrapExp(value);
-                else exp = className;
-
+                const parsed = this.parseText(prop.value);
+                let exp = parsed.result;
                 let funcName = `$$pf${this.uniqIndex++}`;
-
                 head2.push(`
-                const ${funcName} = () => !!(${this.Q(exp)});
+                const ${funcName} = () => $$resolveClass(${exp});
+                $class['${metaClass}'] = ${funcName}();
+
+                $watch($cd, ${funcName}, (result) => {
+                    $class['${metaClass}'] = result;
+                    groupCall();
+                }, {ro: true, value: $class['${metaClass}']});
             `);
-
-                let classObject = this.css && this.css.simpleClasses[className];
-                if(classObject) {
-                    let h = getClassId();
-                    classObject.useAsPassed(className, h);
-                    addClassMap(null, funcName, className + ' ' + h);
-                    addClassMap(className, funcName, className + ' ' + h);
-                } else {
-                    // global class
-                    addClassMap(null, funcName, className);
-                }
-                return;
-            } else if(name[0] == '.') {
-                let args = name.substring(1).split(':');
-                let exp, localClass, childClass = args.shift();
-                assert(childClass);
-                assert(args.length <= 1);
-                if(args[0] || !value) {
-                    // .header
-                    // .header:local
-                    // .header:local={cond}
-                    if(args[0]) {
-                        localClass = args[0];
-                        if(value) exp = unwrapExp(value);
-                        else exp = localClass;
-                    } else {
-                        exp = localClass = childClass;
-                    }
-                    let funcName = `$$pf${this.uniqIndex++}`;
-                    injectGroupCall++;
-
-                    let classObject = this.css && this.css.simpleClasses[localClass];
-                    if(classObject) {
-                        let h = getClassId();
-                        classObject.useAsPassed(childClass, h);
-                        addClassMap(childClass, funcName, childClass + ' ' + h);
-                    } else {
-                        // global class
-                        addClassMap(childClass, funcName, localClass);
-                    }
-
-                    head2.push(`
-                    const ${funcName} = () => !!(${this.Q(exp)});
-                `);
-                } else {
-                    if(value.indexOf('{') >= 0) {
-                        // .header="{'local global'}"
-                        let exp = unwrapExp(value);
-                        addClassMapExp(childClass, exp);
-                    } else {
-                        // .header="local global"
-                        value.split(/\s+/).forEach(name => {
-                            let classObject = this.css && this.css.simpleClasses[name];
-                            if(classObject) {
-                                let h = getClassId();
-                                classObject.useAsPassed(childClass, h);
-                                addClassMap(childClass, null, childClass + ' ' + h);
-                            } else {
-                                addClassMap(childClass, null, name);
-                            }
-                        });
-                    }
-                }
+                injectClass = true;
+                this.use.resolveClass = true;
+                injectGroupCall++;
                 return;
             }
             assert(isSimpleName(name), `Wrong property: '${name}'`);
@@ -1297,50 +1207,9 @@
             }
         });
 
-        if(Object.keys(classMap).length) {
-            head.push(`let $class = $runtime.makeNamedClass();`);
+        if(injectClass) {
+            head.push(`let $class = {}`);
             options.push('$class');
-            let localHash = this.css ? ' ' + this.css.id : '';
-            Object.entries(classMap).forEach(i => {
-                let childClass = i[0];
-                let dyn = false;
-                let staticLine = '';
-                let line = i[1].map(i => {
-                    if(i.exp) {
-                        dyn = true;
-                        return `r += (${i.exp}) + '${localHash} ';`
-                    } else if(i.fn) {
-                        dyn = true;
-                        return `if(${i.fn}()) r += '${i.line} ';`
-                    }
-                    staticLine += i.line + ' ';
-                    return `r += '${i.line} ';`;
-                }).join('\n');
-
-                if(dyn) {
-                    let funcName = '$$fn' + (this.uniqIndex++);
-                    let valueName = '$$v' + (this.uniqIndex++);
-                    injectGroupCall++;
-                    head2.push(`
-                    let ${funcName} = () => {
-                        let r = '';
-                        ${line}
-                        return r.trim();
-                    };
-                    let ${valueName} = ${funcName}();
-                    $class['${childClass}'] = ${valueName};
-                    $class.$dyn['${childClass}'] = true;
-                    $watch($cd, ${funcName}, (result) => {
-                        $class['${childClass}'] = result;
-                        groupCall();
-                    }, {ro: true, value: ${valueName}});
-                `);
-                } else {
-                    head2.push(`
-                    $class['${childClass}'] = '${staticLine.trim()}';
-                `);
-                }
-            });
         }
 
         if(forwardAllEvents) head.unshift('let events = Object.assign({}, $option.events);');
@@ -1573,26 +1442,6 @@
             let $$w = $watchReadOnly($cd, () => (${watchExp}), (value) => { if(value != $element.${attr}) $element.${attr} = value; });
             $runtime.addEvent($cd, $element, 'input', () => { $$w.value = ${exp} = $element.${attr}; $$apply(); });
         }`};
-        } else if(name == 'class' && arg) {
-            let className = arg;
-            let exp = prop.value ? getExpression() : className;
-
-            let bind = [];
-
-            let classObject = this.css && this.css.simpleClasses[className];
-            if(!classObject) {
-                bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
-            } else {
-                if(classObject.notBound) node.classes.add(classObject.useAsLocal());
-
-                if(classObject.bound) {
-                    let defaultHash = classObject.useAsBound();
-                    bind.push(`$runtime.bindBoundClass($cd, ${makeEl()}, () => !!(${exp}), '${className}', '${defaultHash}', $option);`);
-                } else {
-                    bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
-                }
-            }
-            return {bind: bind.join('\n')};
         } else if(name == 'style' && arg) {
             let styleName = arg;
             let exp = prop.value ? getExpression() : styleName;
@@ -1619,6 +1468,48 @@
             return {bind: `{
             let $element=${makeEl()};
             $tick(() => { ${exp}; $$apply(); });}`};
+        } else if(name == 'class') {
+            if(!this.css) return {prop: prop.content};
+
+            if(arg) {
+                let className = arg;
+                let exp = prop.value ? getExpression() : className;
+        
+                let bind = [];
+
+                if(this.css.isImportedClass(className)) {
+                    this.use.resolveClass = true;
+                    bind.push(`
+                    $watch($cd, () => !!(${exp}) && $$resolveClass('${className}'), value => {
+                        ${makeEl()}.className = value || '';
+                    });
+                `);
+                    node.classes.clear();
+                } else {
+                    bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
+                }
+                return {bind: bind.join('\n')};
+            }
+            
+            let classList = prop.value.trim();
+            if(!classList) return {};
+
+            if(this.css.importMode || classList.indexOf('{') >= 0) {
+                this.use.resolveClass = true;
+                const e = this.parseText(classList);
+                return {
+                    bind: `
+                    $watchReadOnly($cd, () => $$resolveClass(${e.result}), value => {
+                        ${makeEl()}.className = value;
+                    });
+                `};
+            }
+
+            classList.split(/\s+/).forEach(name => {
+                node.classes.add(name);
+            });
+
+            return {};
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
                 const parsed = this.parseText(prop.value);
@@ -1682,31 +1573,6 @@
             `};
             }
 
-            if(name == 'class' && this.css) {
-                let classList = prop.value.trim();
-                if(!classList) return {};
-
-                let bind = [];
-                classList.split(/\s+/).forEach(name => {
-                    let c = this.css.simpleClasses[name];
-                    if(c) {
-                        if(c.bound) {
-                            let hash = c.useAsBound();
-                            bind.push(`$runtime.bindParentClass($cd, ${makeEl()}, '${name}', '${hash}', $option)`);
-                        }
-                        if(c.notBound) {
-                            node.classes.add(name);
-                            node.classes.add(c.useAsLocal());
-                        }
-                    } else {
-                        node.classes.add(name);
-                    }
-                });
-
-                return {
-                    bind: bind.join('\n')
-                }
-            }
             return {
                 prop: prop.content
             }
@@ -2108,7 +1974,7 @@
         return (function() {
             let $cd = $component.$cd;
     `];
-        let runtimeHeader = [];
+        let componentHeader = [];
 
         const Q$1 = config.inlineTemplate ? Q2 : Q;
         const ctx = {
@@ -2128,7 +1994,9 @@
             attachSlot,
             makeFragment,
             attachFragment,
-            checkRootName: checkRootName
+            checkRootName: checkRootName,
+            componentHeader,
+            use: {}
         };
 
         if(css) css.process(data);
@@ -2164,8 +2032,22 @@
             $$apply();
             return $component;
         })();`);
+
+        if(ctx.use.resolveClass) {
+            if(ctx.css) {
+                let {classMap, metaClass} = ctx.css.getClassMap();
+                classMap = Object.entries(classMap).map(i => `'${i[0]}': '${i[1]}'`).join(', ');
+                metaClass = Object.entries(metaClass).map(i => `'${i[0]}': '${i[1]}'`).join(', ');
+                componentHeader.push(`
+                const $$resolveClass = $runtime.makeClassResolver(
+                    $option, {${classMap}}, {${metaClass}}
+                );
+            `);
+            }
+        }
+
         return {
-            header: runtimeHeader.join('\n'),
+            header: componentHeader.join('\n'),
             body: runtime.join('\n')
         };
     }
@@ -4231,45 +4113,18 @@
     });
     });
 
-    class SelectorObject {
-        constructor(fullSelector, config) {
-            this._id = config.id;
-            this._genId = config.genId;
-
-            this.fullSelector = fullSelector;
-            this.clearSelector = null;
-            this.nodes = [];
-            this.simpleClass = null;
-            this.bound = false;
-            this.notBound = false;
-            this.used = false;
-
-            this.localHash = null;
-            this.boundHash = null;
-            this.passedHashes = [];
-        }
-        useAsLocal() {
-            this.used = true;
-            this.localHash = this._id;
-            return this.localHash;
-        }
-        useAsBound() {
-            this.used = true;
-            if(!this.boundHash) this.boundHash = this._genId();
-            return this.boundHash;
-        }
-        useAsPassed(childName, hash) {
-            this.used = true;
-            this.passedHashes.push({childName, hash});
-        }
-    }
-
-
-    function processCSS(styleNode, config) {
+    function processCSS(styleNodes, config) {
+        if(!styleNodes.length) return null;
         const genId$1 = () => config.cssGenId ? config.cssGenId() : genId();
 
-        let self = {element: {}, cls: {}, passed: [], simpleClasses: {}, id: genId$1()};
+        let self = {id: genId$1()};
+        let astList = [];
         let selectors = {};
+
+        const selector2str = (sel) => {
+            if(!sel.children) sel = {type: 'Selector', children: sel};
+            return csstree.generate(sel);
+        };
 
         const convertAst = (node, parent) => {
             if(!node) return node;
@@ -4291,10 +4146,16 @@
 
         const isKeyframes = (name) => name == 'keyframes' || name == '-webkit-keyframes' || name == '-moz-keyframes' || name == '-o-keyframes';
 
-        function transform() {
-            self.ast = parseCSS(styleNode.content);
+        styleNodes.forEach(transform);
 
-            csstree.walk(self.ast, function(node) {
+        function transform(styleNode) {
+            const forImport = styleNode.attributes.some(a => a.name == 'import');
+            if(forImport) self.importMode = true;
+
+            let ast = parseCSS(styleNode.content);
+            astList.push(ast);
+
+            csstree.walk(ast, function(node) {
                 if(node.type == 'Declaration') {
                     if(node.property == 'animation' || node.property == 'animation-name') {
                         let c = node.value.children[0];
@@ -4324,129 +4185,99 @@
 
                     function processSelector(fullSelector) {
                         assert(fullSelector.type == 'Selector');
-                        let selector = [];
-                        let fullSelectorChildren = fullSelector.children;
-                        fullSelectorChildren.forEach(sel => {
-                            if(sel.type == 'PseudoClassSelector' && sel.name == 'export') {
-                                assert(fullSelectorChildren.length == 1);
-                                sel = sel.children[0];
-                                assert(sel.type == 'Raw');
-                                let sl = parseCSS(sel.value, {context: 'selectorList'});
-                                assert(sl.type == 'SelectorList');
-                                sl.children.forEach(selNode => {
-                                    let sel = selNode.children;
-                                    if(sel.length != 1 || sel[0].type != 'ClassSelector') {
-                                        let selName = csstree.generate(selNode);
-                                        throw Error(`Wrong class for export '${selName}'`);
-                                    }
-                                    selNode.bound = true;
-                                    selectorList.push(selNode);
-                                });
-                            } else if(sel.type == 'PseudoClassSelector' && sel.name == 'global') {
+                        let origin = [];
+                        fullSelector.children.forEach(sel => {
+                            if(sel.type == 'PseudoClassSelector' && sel.name == 'global') {
                                 sel = sel.children[0];
                                 assert(sel.type == 'Raw');
                                 let a = parseCSS(sel.value, {context: 'selector'});
                                 assert(a.type == 'Selector');
                                 a.children.forEach(sel => {
                                     sel.global = true;
-                                    selector.push(sel);
+                                    origin.push(sel);
                                 });
                             } else {
-                                selector.push(sel);
+                                origin.push(sel);
                             }
                         });
 
-                        if(!selector.length) {
-                            fullSelector.removed = true;
-                            fullSelector.children = [];
-                            return;
-                        }
+                        assert(origin.length);
+                        
+                        let cleanSelectorItems = origin.filter(i => !i.global && i.type != 'PseudoClassSelector' && i.type != 'PseudoElementSelector');
+                        while(cleanSelectorItems.length && last(cleanSelectorItems).type == 'WhiteSpace') cleanSelectorItems.pop();
+                        if(!cleanSelectorItems.length) return;  // fully global?
+                        let cleanSelector = selector2str(cleanSelectorItems);
 
-                        let fullSelectorName = csstree.generate({
-                            type: 'Selector',
-                            children: selector
-                        });
-
-                        let selectorObject = selectors[fullSelectorName];
-
-                        if(!selectorObject) {
-                            selectorObject = new SelectorObject(fullSelectorName, {id: self.id, genId: genId$1});
-                            selectors[fullSelectorName] = selectorObject;
-                            if(selector.length == 1 && selector[0].type == 'ClassSelector' && !selector[0].global) {
-                                selectorObject.simpleClass = selector[0].name;
-                                self.simpleClasses[selectorObject.simpleClass] = selectorObject;
-                            }
-                        }
-
-                        if(fullSelector.bound && !selectorObject.bound) {
-                            selectorObject.bound = true;
-                        } else if(!selectorObject.notBound) {
-                            selectorObject.notBound = true;
-                        }
-
-                        selectorObject.nodes.push({
-                            rule: node,
-                            selector: fullSelector,
-                            bound: fullSelector.bound
-                        });
-
-                        let proc = [];
-                        let result = [];
-                        let inserted = false;
-                        for(let i=0;i<selector.length;i++) {
-                            let sel = selector[i];
-                            if(sel.global) inserted = true;
-                            if(sel.type == 'PseudoClassSelector' || sel.type == 'PseudoElementSelector') {
-                                if(!inserted) result.push({type: "ClassSelector", loc: null, name: '', __hash: true});
-                                inserted = true;
-                            } else {
-                                proc.push(sel);
-                            }
-                            if(sel.type == 'Combinator' || sel.type == 'WhiteSpace') {
-                                if(!inserted) result.push({type: "ClassSelector", loc: null, name: '', __hash: true});
-                                inserted = false;
-                            }
-                            result.push(sel);
-                        }
-                        if(!inserted) {
-                            result.push({type: "ClassSelector", loc: null, name: '', __hash: true});
-                        }
-                        fullSelector.children = result;
-
-                        if(!selectorObject.clearSelector) {
-                            const onlyGlobal = proc.every(p => {
-                                if(p.type == 'Combinator' || p.type == 'WhiteSpace') return true;
-                                return p.global;
-                            });
-
-                            if(onlyGlobal) {
-                                selectorObject.clearSelector = true;
-                                selectorObject.onlyGlobal = true;
-                                selectorObject.used = true;
-                            } else {
-                                let localSelector = [];
-                                for(let i=0; i<proc.length; i++) {
-                                    let p = proc[i];
-                                    if(p.type == 'Combinator' || p.type == 'WhiteSpace') {
-                                        localSelector.push(p);
-                                    } else {
-                                        if(p.global) break;
-                                        localSelector.push(p);
+                        let sobj = selectors[cleanSelector];
+                        if(!sobj) {
+                            let isSimple = false;
+                            if(cleanSelectorItems[0].type == 'ClassSelector') {
+                                isSimple = true;
+                                for(let i=1; i<cleanSelectorItems.length; i++) {
+                                    if(cleanSelectorItems[i].type != 'AttributeSelector') {
+                                        isSimple = false;
+                                        break;
                                     }
                                 }
-        
-                                if(last(localSelector).type == 'Combinator') localSelector.push({name: '*', type: 'TypeSelector'});
-                                selectorObject.clearSelector = csstree.generate({
-                                    type: 'Selector',
-                                    children: localSelector,
-                                    selectorNodes: result
-                                });
                             }
+        
+                            selectors[cleanSelector] = sobj = {
+                                cleanSelector,
+                                isSimple,
+                                hash: (isSimple || forImport) ? genId$1() : self.id,
+                                source: [],
+                                fullyGlobal: origin.every(i => i.global)
+                            };
                         }
 
+                        if(forImport) sobj.forImport = true;
+
+                        sobj.source.push(fullSelector);
+
+                        let hashed = origin.slice();
+                        const insert = (i) => {
+                            hashed.splice(i, 0, {type: "ClassSelector", loc: null, name: sobj.hash, __hash: true});
+                        };
+
+                        for(let i=hashed.length-1;i>=0;i--) {
+                            let sel = hashed[i];
+                            let left = hashed[i - 1];
+                            let right = hashed[i + 1];
+                            if(sel.global) continue;
+                            if(sel.type == 'PseudoClassSelector' || sel.type == 'PseudoElementSelector') {
+                                if(!left || left.type == 'Combinator' || left.type == 'WhiteSpace') insert(i);
+                                continue;
+                            } else if(sel.type == 'Combinator' || sel.type == 'WhiteSpace') continue;
+                            if(!right || ['PseudoClassSelector', 'PseudoElementSelector', 'Combinator', 'WhiteSpace'].includes(right.type)) insert(i + 1);
+                        }
+
+                        console.log(selector2str(origin), '-->', selector2str(hashed));  // DEBUG
+
+                        fullSelector.children = hashed;
                     }            }
             });
         }
+
+        self.isImportedClass = (name) => {
+            let sobj = selectors['.' + name];
+            return sobj && sobj.forImport;
+        };
+
+        self.getClassMap = () => {
+            let classMap = {};
+            let metaClass = {};
+            Object.values(selectors).forEach(sel => {
+                if(!sel.isSimple) return;
+
+                let className = sel.source[0].children[0].name;
+                if(sel.forImport) {
+                    metaClass[className] = sel.hash;
+                } else {
+                    classMap[className] = sel.hash;
+                }
+            });
+            return {classMap, metaClass};
+        };
 
         self.process = function(data) {
             let dom = makeDom(data);
@@ -4456,95 +4287,26 @@
             });
 
             Object.values(selectors).forEach(sel => {
-                if(sel.onlyGlobal) return true;
-                if(sel.simpleClass) return;
+                if(sel.fullyGlobal) return true;
                 let selected;
                 try {
-                    selected = nw.select([sel.clearSelector]);
+                    selected = nw.select([sel.cleanSelector]);
                 } catch (_) {
-                    let e = new Error(`CSS error: '${sel.fullSelector}'`);
-                    e.details = `selector: '${sel.fullSelector}'`;
+                    let e = new Error(`CSS error: '${selector2str(sel.source[0])}'`);
+                    e.details = `selector: '${selector2str(sel.source[0])}'`;
                     throw e;
                 }
-                if(selected.length) {
-                    const h = sel.useAsLocal();
-                    selected.forEach(s => {
-                        assert(!sel.bound);
-                        s.node.__node.classes.add(h);
-                        s.lvl.forEach(l => l.__node.classes.add(h));
-                    });
-                }
+                selected.forEach(s => {
+                    s.node.__node.classes.add(sel.hash);
+                    s.lvl.forEach(l => l.__node.classes.add(sel.hash));
+                });
             });
         };
 
         self.getContent = function() {
-            Object.values(selectors).forEach(sel => {
-                if(sel.used) {
-                    if(sel.onlyGlobal) return;
-                    sel.nodes.forEach(node => {
-                        let selectorChildren = node.selector.children.map(i => Object.assign({}, i));
-
-                        let hash = [];
-                        if(sel.localHash && !node.bound) hash.push(sel.localHash);
-                        if(sel.boundHash && node.bound) hash.push(sel.boundHash);
-
-                        if(!hash.length) node.selector.removed = true;
-
-                        let id = hash.shift();
-                        if(id) {
-                            node.selector.children.forEach(i => {
-                                if(i.__hash) i.name = id;
-                            });
-                        }
-                        id = hash.shift();
-                        if(id) {
-                            selectorChildren.forEach(i => {
-                                if(i.__hash) i.name = id;
-                            });
-                            node.rule.prelude.children.push({
-                                type: 'Selector',
-                                children: selectorChildren
-                            });
-                        }
-
-                        sel.passedHashes.forEach(p => {
-                            node.rule.prelude.children.push({
-                                type: 'Selector',
-                                children: [{
-                                    type: 'ClassSelector',
-                                    name: p.childName
-                                }, {
-                                    type: 'ClassSelector',
-                                    name: p.hash
-                                }]
-                            });
-                        });
-                    });
-                } else {
-                    sel.nodes.forEach(node => {
-                        let i = node.rule.prelude.children.indexOf(node.selector);
-                        assert(i >= 0);
-                        node.rule.prelude.children.splice(i, 1);
-                    });
-                    config.warning({message: 'No used css-class: ' + sel.fullSelector});
-                }
-            });
-
-            // removed selectors
-            csstree.walk(self.ast, (node) => {
-                if(node.type != 'Rule') return;
-                node.prelude.children = node.prelude.children.filter(s => !s.removed);
-                let parent = node.parent;
-                if(!node.prelude.children.length && parent) {
-                    let i = parent.children.indexOf(node);
-                    if(i >= 0) parent.children.splice(i, 1);
-                }
-            });
-
-            return csstree.generate(self.ast);
+            return astList.map(ast => csstree.generate(ast)).join('');
         };
 
-        transform();
         return self;
     }
 
@@ -4650,7 +4412,7 @@
         return result;
     };
 
-    const version = '0.5.27';
+    const version = '0.6.0-alpha';
 
     function compile(src, config = {}) {
         config = Object.assign({
@@ -4671,9 +4433,7 @@
 
         script = transformJS(script[0] ? script[0].content : null, config);
 
-        let css = data.body.filter(n => n.type == 'style');
-        assert(css.length <= 1, 'Only one style section');
-        css = css[0] && processCSS(css[0], config);
+        const css = processCSS(data.body.filter(n => n.type == 'style'), config);
 
         data.body = data.body.filter(n => n.type != 'script' && n.type != 'style');
         if(config.compact) compactDOM(data);
