@@ -63,8 +63,17 @@ async function fetchMalina(){
         "const version = 'unstable';"
     ));
 
+    let extversions = [];
+    fs.readdirSync(path.join('extversion')).forEach(version => {
+        console.log(`  * ${version}`);
+        fs.copySync(path.join('extversion', version), path.join(MDIR, version));
+        extversions.push(version);
+    });
+
     console.log(`[${NAME}] Fetch MalinaJS versions list...`);
     let versions = JSON.parse( await exec('npm view malinajs versions --json') );
+    let latest = versions[versions.length-1];
+    versions = versions.concat(extversions);
     fs.writeFileSync(path.join(MDIR,'versions.json'),JSON.stringify(versions));
     console.log(`[${NAME}] - ${versions.length} versions found.`);
 
@@ -91,7 +100,7 @@ async function fetchMalina(){
     }
 
     fs.removeSync(LATEST_DIR);
-    fs.copySync(path.join(MDIR,versions.pop()),LATEST_DIR);
+    fs.copySync(path.join(MDIR,latest),LATEST_DIR);
 }
 
 async function copyMalina(src_dir,dest_dir){
