@@ -4132,6 +4132,7 @@
         let self = {id: genId$1(), externalMainName: null};
         let astList = [];
         let selectors = {};
+        let removeBlocks = [];
 
         const selector2str = (sel) => {
             if(!sel.children) sel = {type: 'Selector', children: sel};
@@ -4162,9 +4163,11 @@
 
         function transform(styleNode) {
             let external = false;
+            let globalBlock = false;
             styleNode.attributes.forEach(a => {
                 if(a.name == 'external') self.hasExternal = external = true;
                 else if(a.name == 'main') self.externalMainName = a.value;
+                else if(a.name == 'global') globalBlock = true;
             });
 
             let ast = parseCSS(styleNode.content);
@@ -4194,6 +4197,8 @@
                     assert(node.prelude.type=='SelectorList');
 
                     let emptyBlock = node.block.children.length == 0;
+                    if(emptyBlock) removeBlocks.push(node);
+
                     let selectorList = node.prelude.children;
                     for(let i=0; i < selectorList.length; i++) {
                         processSelector(selectorList[i]);
@@ -4231,7 +4236,7 @@
                             } else cleanSelectorItems.push(s);
                         }
                         while(cleanSelectorItems.length && last(cleanSelectorItems).type == 'WhiteSpace') cleanSelectorItems.pop();
-                        if(!cleanSelectorItems.length) {  // fully global?
+                        if(!cleanSelectorItems.length || globalBlock) {  // fully global?
                             assert(origin.length);
                             fullSelector.children = origin;
                             return;
@@ -4288,8 +4293,6 @@
                             if(!right || ['PseudoClassSelector', 'PseudoElementSelector', 'Combinator', 'WhiteSpace'].includes(right.type)) insert(i + 1);
                         }
 
-                        //console.log(selector2str(origin), '-->', selector2str(hashed));  // DEBUG
-
                         fullSelector.children = hashed;
                     }            }
             });
@@ -4342,6 +4345,10 @@
         };
 
         self.getContent = function() {
+            removeBlocks.forEach(node => {
+                let i = node.parent.children.indexOf(node);
+                if(i>=0) node.parent.children.splice(i, 1);
+            });
             return astList.map(ast => csstree.generate(ast)).join('');
         };
 
@@ -4450,7 +4457,7 @@
         return result;
     };
 
-    const version = '0.6.0-alpha';
+    const version = '0.6.0';
 
     function compile(src, config = {}) {
         config = Object.assign({
