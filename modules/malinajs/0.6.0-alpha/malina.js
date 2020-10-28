@@ -892,7 +892,6 @@
         header.push(parseExp('const $props = $option.props || {}'));
         header.push(parseExp('const $component = $runtime.$$makeComponent($element, $option);'));
         header.push(parseExp('const $$apply = $runtime.$$makeApply($component.$cd)'));
-        header.push(parseExp('let $class = $option.$class'));
 
         if(lastPropIndex != null) {
             resultBody.splice(lastPropIndex, 0, parseExp('let $attributes = $runtime.$$componentCompleteProps($component, $$apply, $props)'));
@@ -1149,7 +1148,7 @@
             } else if(name == 'class' || name.startsWith('class:')) {
                 let metaClass, args = name.split(':');
                 if(args.length == 1) {
-                    metaClass = '$$class';
+                    metaClass = '$$main';
                 } else {
                     assert(args.length == 2);
                     metaClass = args[1];
@@ -1469,47 +1468,55 @@
             let $element=${makeEl()};
             $tick(() => { ${exp}; $$apply(); });}`};
         } else if(name == 'class') {
+            if(node.__skipClass) return {};
             if(!this.css) return {prop: prop.content};
-
-            if(arg) {
-                let className = arg;
-                let exp = prop.value ? getExpression() : className;
-        
-                let bind = [];
-
-                if(this.css.isImportedClass(className)) {
-                    this.use.resolveClass = true;
-                    bind.push(`
-                    $watch($cd, () => !!(${exp}) && $$resolveClass('${className}'), value => {
-                        ${makeEl()}.className = value || '';
-                    });
-                `);
-                    node.classes.clear();
-                } else {
-                    bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
-                }
-                return {bind: bind.join('\n')};
-            }
             
-            let classList = prop.value.trim();
-            if(!classList) return {};
+            node.__skipClass = true;
+            let props = node.attributes.filter(a => a.name == 'class' || a.name.startsWith('class:'));
 
-            if(this.css.importMode || classList.indexOf('{') >= 0) {
-                this.use.resolveClass = true;
-                const e = this.parseText(classList);
-                return {
-                    bind: `
-                    $watchReadOnly($cd, () => $$resolveClass(${e.result}), value => {
-                        ${makeEl()}.className = value;
-                    });
-                `};
-            }
-
-            classList.split(/\s+/).forEach(name => {
-                node.classes.add(name);
+            let compound = props.some(prop => {
+                let classes;
+                if(prop.name == 'class') {
+                    if(prop.value.indexOf('{') >= 0) return true;
+                    classes = prop.value.trim().split(/\s+/);
+                } else {
+                    classes = [prop.name.slice(6)];
+                }
+                return classes.some(name => this.css.isExternalClass(name));
             });
 
-            return {};
+            if(compound) {
+                node.classes.clear();
+                this.use.resolveClass = true;
+                let exp = props.map(prop => {
+                    if(prop.name == 'class') {
+                        return this.parseText(prop.value).result;
+                    } else {
+                        let className = prop.name.slice(6);
+                        assert(className);
+                        let exp = prop.value ? unwrapExp(prop.value) : className;
+                        return `(${exp}) ? \`${this.Q(className)}\` : ''`;
+                    }
+                }).join(') + \' \' + (');
+                return {bind: `
+                $watchReadOnly($cd, () => $$resolveClass((${exp})), value => $runtime.setClassToElement(${makeEl()}, value));
+            `};
+            } else {
+                let bind = [];
+                props.forEach(prop => {
+                    if(prop.name == 'class') {
+                        prop.value.trim().split(/\s+/).forEach(name => {
+                            node.classes.add(name);
+                        });
+                    } else {
+                        let className = prop.name.slice(6);
+                        assert(className);
+                        let exp = prop.value ? unwrapExp(prop.value) : className;
+                        bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
+                    }
+                });
+                return {bind: bind.join('\n')};
+            }
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
                 const parsed = this.parseText(prop.value);
@@ -2035,12 +2042,17 @@
 
         if(ctx.use.resolveClass) {
             if(ctx.css) {
-                let {classMap, metaClass} = ctx.css.getClassMap();
+                let {classMap, metaClass, main} = ctx.css.getClassMap();
+                if(main) main = `'${main}'`;
+                else main = 'null';
                 classMap = Object.entries(classMap).map(i => `'${i[0]}': '${i[1]}'`).join(', ');
-                metaClass = Object.entries(metaClass).map(i => `'${i[0]}': '${i[1]}'`).join(', ');
+                metaClass = Object.entries(metaClass).map(i => {
+                    let value = i[1] === true ? 'true' : `'${i[1]}'`;
+                    return `'${i[0]}': ${value}`;
+                }).join(', ');
                 componentHeader.push(`
                 const $$resolveClass = $runtime.makeClassResolver(
-                    $option, {${classMap}}, {${metaClass}}
+                    $option, {${classMap}}, {${metaClass}}, ${main}
                 );
             `);
             }
@@ -4117,7 +4129,7 @@
         if(!styleNodes.length) return null;
         const genId$1 = () => config.cssGenId ? config.cssGenId() : genId();
 
-        let self = {id: genId$1()};
+        let self = {id: genId$1(), externalMainName: null};
         let astList = [];
         let selectors = {};
 
@@ -4149,8 +4161,11 @@
         styleNodes.forEach(transform);
 
         function transform(styleNode) {
-            const forImport = styleNode.attributes.some(a => a.name == 'import');
-            if(forImport) self.importMode = true;
+            let external = false;
+            styleNode.attributes.forEach(a => {
+                if(a.name == 'external') self.hasExternal = external = true;
+                else if(a.name == 'main') self.externalMainName = a.value;
+            });
 
             let ast = parseCSS(styleNode.content);
             astList.push(ast);
@@ -4178,6 +4193,7 @@
 
                     assert(node.prelude.type=='SelectorList');
 
+                    let emptyBlock = node.block.children.length == 0;
                     let selectorList = node.prelude.children;
                     for(let i=0; i < selectorList.length; i++) {
                         processSelector(selectorList[i]);
@@ -4202,10 +4218,24 @@
                         });
 
                         assert(origin.length);
-                        
-                        let cleanSelectorItems = origin.filter(i => !i.global && i.type != 'PseudoClassSelector' && i.type != 'PseudoElementSelector');
+
+                        let cleanSelectorItems = [];
+                        for(let i=0; i<origin.length; i++) {
+                            let s = origin[i];
+                            if(s.global) continue;
+                            if(s.type == 'PseudoClassSelector' || s.type == 'PseudoElementSelector') {
+                                let prev = origin[i - 1];
+                                if(!prev || prev.type == 'Combinator' || prev.type == 'WhiteSpace') {
+                                    cleanSelectorItems.push({type: 'TypeSelector', name: '*'});
+                                }
+                            } else cleanSelectorItems.push(s);
+                        }
                         while(cleanSelectorItems.length && last(cleanSelectorItems).type == 'WhiteSpace') cleanSelectorItems.pop();
-                        if(!cleanSelectorItems.length) return;  // fully global?
+                        if(!cleanSelectorItems.length) {  // fully global?
+                            assert(origin.length);
+                            fullSelector.children = origin;
+                            return;
+                        }
                         let cleanSelector = selector2str(cleanSelectorItems);
 
                         let sobj = selectors[cleanSelector];
@@ -4224,19 +4254,26 @@
                             selectors[cleanSelector] = sobj = {
                                 cleanSelector,
                                 isSimple,
-                                hash: (isSimple || forImport) ? genId$1() : self.id,
                                 source: [],
                                 fullyGlobal: origin.every(i => i.global)
                             };
                         }
 
-                        if(forImport) sobj.forImport = true;
+                        if(external) {
+                            assert(sobj.isSimple);
+                            if(!sobj.external) sobj.external = emptyBlock ? true : genId$1();
+                        } else if(!sobj.local) {
+                            if(sobj.isSimple) sobj.local = genId$1();
+                            else sobj.local = self.id;
+                        }
 
+                        let hash = external ? sobj.external : sobj.local;
+                        if(emptyBlock) fullSelector.emptyBlock = true;
                         sobj.source.push(fullSelector);
 
                         let hashed = origin.slice();
                         const insert = (i) => {
-                            hashed.splice(i, 0, {type: "ClassSelector", loc: null, name: sobj.hash, __hash: true});
+                            hashed.splice(i, 0, {type: "ClassSelector", loc: null, name: hash, __hash: true});
                         };
 
                         for(let i=hashed.length-1;i>=0;i--) {
@@ -4251,16 +4288,16 @@
                             if(!right || ['PseudoClassSelector', 'PseudoElementSelector', 'Combinator', 'WhiteSpace'].includes(right.type)) insert(i + 1);
                         }
 
-                        console.log(selector2str(origin), '-->', selector2str(hashed));  // DEBUG
+                        //console.log(selector2str(origin), '-->', selector2str(hashed));  // DEBUG
 
                         fullSelector.children = hashed;
                     }            }
             });
         }
 
-        self.isImportedClass = (name) => {
+        self.isExternalClass = (name) => {
             let sobj = selectors['.' + name];
-            return sobj && sobj.forImport;
+            return sobj && sobj.external;
         };
 
         self.getClassMap = () => {
@@ -4270,13 +4307,14 @@
                 if(!sel.isSimple) return;
 
                 let className = sel.source[0].children[0].name;
-                if(sel.forImport) {
-                    metaClass[className] = sel.hash;
-                } else {
-                    classMap[className] = sel.hash;
+                if(sel.external) {
+                    metaClass[className] = sel.external;
+                }
+                if(sel.local) {
+                    classMap[className] = sel.local;
                 }
             });
-            return {classMap, metaClass};
+            return {classMap, metaClass, main: self.externalMainName};
         };
 
         self.process = function(data) {
@@ -4287,7 +4325,7 @@
             });
 
             Object.values(selectors).forEach(sel => {
-                if(sel.fullyGlobal) return true;
+                if(sel.fullyGlobal) return;
                 let selected;
                 try {
                     selected = nw.select([sel.cleanSelector]);
@@ -4297,8 +4335,8 @@
                     throw e;
                 }
                 selected.forEach(s => {
-                    s.node.__node.classes.add(sel.hash);
-                    s.lvl.forEach(l => l.__node.classes.add(sel.hash));
+                    s.node.__node.classes.add(sel.local);
+                    s.lvl.forEach(l => l.__node.classes.add(sel.local));
                 });
             });
         };

@@ -506,6 +506,12 @@ const bindClass = (cd, element, fn, className) => {
 };
 
 
+const setClassToElement = (element, value) => {
+    if(typeof element.className == 'string') element.className = value;
+    else element.className.baseVal = value;
+};
+
+
 const bindText = (cd, element, fn) => {
     $watchReadOnly(cd, fn, value => {
         element.textContent = value;
@@ -513,21 +519,27 @@ const bindText = (cd, element, fn) => {
 };
 
 
-const makeClassResolver = ($option, classMap, metaClass) => {
+const makeClassResolver = ($option, classMap, metaClass, mainName) => {
+    if(!$option.$class) $option.$class = {};
+    if(!mainName && metaClass.main) mainName = 'main';
     return line => {
         let result = [];
         line.trim().split(/\s+/).forEach(name => {
             let h = metaClass[name];
             if(h) {
-                let className = ($option.$class && $option.$class[name] || '').trim();
+                if(name === mainName && $option.$class.$$main) name = '$$main';
+                let className = ($option.$class[name] || '').trim();
                 if(className) {
                     result.push(className);
-                } else {
+                } else if(h !== true) {
                     result.push(name, h);
                 }
-            } else {
+            }
+            let h2 = classMap[name];
+            if(h2) {
+                result.push(name, h2);
+            } else if(!h) {
                 result.push(name);
-                if(h = classMap[name]) result.push(h);
             }
         });
         return result.join(' ');
@@ -736,4 +748,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindText, cd_onDestroy, configure, getFinalLabel, isArray, makeClassResolver, removeElementsBetween, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindText, cd_onDestroy, configure, getFinalLabel, isArray, makeClassResolver, removeElementsBetween, setClassToElement, svgToFragment, watchInit };
