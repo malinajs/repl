@@ -64,9 +64,10 @@ async function fetchMalina(){
     ));
 
     let extversions = [];
-    fs.readdirSync(path.join('extversion')).forEach(version => {
+    const extDir = path.join('extversion');
+    fs.existsSync(extDir) && fs.readdirSync(extDir).forEach(version => {
         console.log(`  * ${version}`);
-        fs.copySync(path.join('extversion', version), path.join(MDIR, version));
+        fs.copySync(extDir.join(version), path.join(MDIR, version));
         extversions.push(version);
     });
 
