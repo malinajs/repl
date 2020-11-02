@@ -506,6 +506,12 @@ const bindClass = (cd, element, fn, className) => {
 };
 
 
+const setClassToElement = (element, value) => {
+    if(typeof element.className == 'string') element.className = value;
+    else element.className.baseVal = value;
+};
+
+
 const bindText = (cd, element, fn) => {
     $watchReadOnly(cd, fn, value => {
         element.textContent = value;
@@ -513,62 +519,31 @@ const bindText = (cd, element, fn) => {
 };
 
 
-const bindParentClass = (cd, el, className, hash, option) => {
-    let $class = option.$class;
-    if(!($class && className in $class)) {
-        el.classList.add(className);
-        el.classList.add(hash);
-        return;
-    }
-
-    if($class.$dyn[className]) {
-        let prev;
-        $watchReadOnly(cd, () => $class[className], line => {
-            if(prev) prev.forEach(name => el.classList.remove(name));
-            if(line) prev = line.split(/\s+/);
-            else prev = [className, hash];
-            prev.forEach(name => el.classList.add(name));
+const makeClassResolver = ($option, classMap, metaClass, mainName) => {
+    if(!$option.$class) $option.$class = {};
+    if(!mainName && metaClass.main) mainName = 'main';
+    return line => {
+        let result = [];
+        line.trim().split(/\s+/).forEach(name => {
+            let h = metaClass[name];
+            if(h) {
+                if(name === mainName && $option.$class.$$main) name = '$$main';
+                let className = ($option.$class[name] || '').trim();
+                if(className) {
+                    result.push(className);
+                } else if(h !== true) {
+                    result.push(name, h);
+                }
+            }
+            let h2 = classMap[name];
+            if(h2) {
+                result.push(name, h2);
+            } else if(!h) {
+                result.push(name);
+            }
         });
-    } else {
-        $class[className].split(/\s+/).forEach(name => el.classList.add(name));
+        return result.join(' ');
     }
-};
-
-
-const bindBoundClass = (cd, element, fn, className, defaultHash, $option) => {
-    let prev, getter, empty = {};
-    let $class = $option.$class;
-    if($class && className in $class) {
-        getter = () => $class[className];
-
-        if($class.$dyn[className]) {
-            let orig = fn;
-            fn = () => {
-                if(!orig()) return false;
-                return $class[className] || empty;
-            };
-        }
-    }
-
-    $watchReadOnly(cd, fn, value => {
-        if(prev) prev.forEach(name => element.classList.remove(name));
-        if(value) {
-            let parent = value === empty ? null : getter && getter();
-            if(parent) prev = parent.split(/\s+/);
-            else prev = [className, defaultHash];
-            prev.forEach(name => element.classList.add(name));
-        } else prev = null;
-    });
-};
-
-
-const makeNamedClass = () => {
-    return {
-        $dyn: {},
-        toString: function() {
-            return this.$default || '';
-        }
-    };
 };
 
 function $$htmlBlock($cd, tag, fn) {
@@ -773,4 +748,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindBoundClass, bindClass, bindParentClass, bindText, cd_onDestroy, configure, getFinalLabel, isArray, makeNamedClass, removeElementsBetween, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindText, cd_onDestroy, configure, getFinalLabel, isArray, makeClassResolver, removeElementsBetween, setClassToElement, svgToFragment, watchInit };
