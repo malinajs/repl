@@ -1486,6 +1486,8 @@
             });
 
             if(compound) {
+                let defaultHash = '';
+                if(node.classes.has(this.css.id)) defaultHash = `,'${this.css.id}'`;
                 node.classes.clear();
                 this.use.resolveClass = true;
                 let exp = props.map(prop => {
@@ -1499,7 +1501,7 @@
                     }
                 }).join(') + \' \' + (');
                 return {bind: `
-                $watchReadOnly($cd, () => $$resolveClass((${exp})), value => $runtime.setClassToElement(${makeEl()}, value));
+                $watchReadOnly($cd, () => $$resolveClass((${exp})${defaultHash}), value => $runtime.setClassToElement(${makeEl()}, value));
             `};
             } else {
                 let bind = [];
@@ -4328,7 +4330,7 @@
             });
 
             Object.values(selectors).forEach(sel => {
-                if(sel.fullyGlobal) return;
+                if(sel.fullyGlobal || !sel.local) return;
                 let selected;
                 try {
                     selected = nw.select([sel.cleanSelector]);

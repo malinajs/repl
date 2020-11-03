@@ -524,13 +524,13 @@ const bindText = (cd, element, fn) => {
 const makeClassResolver = ($option, classMap, metaClass, mainName) => {
     if(!$option.$class) $option.$class = {};
     if(!mainName && metaClass.main) mainName = 'main';
-    return line => {
+    return (line, defaults) => {
         let result = [];
+        if(defaults) result.push(defaults);
         line.trim().split(/\s+/).forEach(name => {
             let h = metaClass[name];
             if(h) {
-                if(name === mainName && $option.$class.$$main) name = '$$main';
-                let className = ($option.$class[name] || '').trim();
+                let className = ($option.$class[name === mainName ? '$$main' : name] || '').trim();
                 if(className) {
                     result.push(className);
                 } else if(h !== true) {
