@@ -4433,10 +4433,10 @@
     }`};
     }
 
-    const version = 'unstable';
+    const version = '0.6.3';
 
 
-    async function compile(source, config = {}) {
+    function compile(source, config = {}) {
         config = Object.assign({
             name: 'widget',
             warning: (w) => console.warn('!', w.message),
@@ -4488,9 +4488,9 @@
             buildRuntime
         };
 
-        await hook(ctx, 'dom:before');
+        hook(ctx, 'dom:before');
         ctx.parseHTML();
-        await hook(ctx, 'dom');
+        hook(ctx, 'dom');
         ctx.scriptNodes = [];
         ctx.styleNodes = [];
         ctx.DOM.body = ctx.DOM.body.filter(n => {
@@ -4504,31 +4504,31 @@
             }
             return true;
         });
-        await hook(ctx, 'dom:check');
+        hook(ctx, 'dom:check');
         assert(ctx.scriptNodes.length <= 1, 'Only one script section');
-        await hook(ctx, 'dom:compact');
+        hook(ctx, 'dom:compact');
         if(config.compact) ctx.compactDOM();
-        await hook(ctx, 'dom:after');
+        hook(ctx, 'dom:after');
 
-        await hook(ctx, 'js:before');
+        hook(ctx, 'js:before');
         ctx.js_parse();
-        await hook(ctx, 'js');
+        hook(ctx, 'js');
         ctx.js_transform();
-        await hook(ctx, 'js:after');
+        hook(ctx, 'js:after');
 
-        await hook(ctx, 'css:before');
+        hook(ctx, 'css:before');
         ctx.processCSS();
         if(ctx.css) ctx.css.process(ctx.DOM);
-        await hook(ctx, 'css');
+        hook(ctx, 'css');
 
-        await hook(ctx, 'runtime:before');
+        hook(ctx, 'runtime:before');
         ctx.buildRuntime();
-        await hook(ctx, 'runtime');
+        hook(ctx, 'runtime');
 
 
-        await hook(ctx, 'build:before');
+        hook(ctx, 'build:before');
         ctx.js_build();
-        await hook(ctx, 'build:assemble');
+        hook(ctx, 'build:assemble');
         let code = `
         import * as $runtime from 'malinajs/runtime.js';
         import { $watch, $watchReadOnly, $tick } from 'malinajs/runtime.js';
@@ -4545,15 +4545,14 @@
         let scriptCode = replace(ctx.script.code, '$$runtimeHeader()', ctx.runtime.header, 1);
         scriptCode = replace(scriptCode, '$$runtime()', ctx.runtime.body, 1);
         ctx.result = code + scriptCode;
-        await hook(ctx, 'build');
+        hook(ctx, 'build');
         return ctx.result;
     }
 
-    async function hook(ctx, name) {
-        for(let i=0; i<ctx.config.plugins.length; i++) {
-            const fn = ctx.config.plugins[i][name];
-            if(fn) await fn(ctx);
-        }
+    function hook(ctx, name) {
+        ctx.config.plugins.forEach(h => {
+            h[name] && h[name](ctx);
+        });
     }
 
     exports.compile = compile;
