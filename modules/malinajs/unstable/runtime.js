@@ -147,6 +147,14 @@ function $$deepComparator(depth) {
 }
 const $$compareDeep = $$deepComparator(10);
 
+const fire = w => {
+    if(w.cmp) w.cmp(w, w.fn());
+    else {
+        w.value = w.fn();
+        w.cb(w.value);
+    }
+};
+
 function $digest($cd) {
     let loop = 10;
     let w;
@@ -178,43 +186,48 @@ function $digest($cd) {
     if(loop < 0) __app_onerror('Infinity changes: ', w);
 }
 
-let templatecache = {false: {}, true: {}, svg: {}};
+let templatecache = {};
+let templatecacheSvg = {};
 
 let $$uniqIndex = 1;
 
-const $$childNodes = 'childNodes';
+const childNodes = 'childNodes';
+const firstChild = 'firstChild';
 
-function $$htmlToFragment(html, lastNotTag) {
-    lastNotTag = !!lastNotTag;
-    if(templatecache[lastNotTag][html]) return templatecache[lastNotTag][html].cloneNode(true);
+let noop = a => a;
+
+function $$htmlToFragment(html) {
+    if(templatecache[html]) return templatecache[html].cloneNode(true);
 
     let t = document.createElement('template');
     t.innerHTML = html;
     let result = t.content;
-    if(lastNotTag && result.lastChild.nodeType == 8) result.appendChild(document.createTextNode(''));
-    templatecache[lastNotTag][html] = result.cloneNode(true);
+    templatecache[html] = result.cloneNode(true);
     return result;
 }
-function $$htmlToFragmentClean(html, lastNotTag) {
-    lastNotTag = !!lastNotTag;
-    if(templatecache[lastNotTag][html]) return templatecache[lastNotTag][html].cloneNode(true);
-    let result = $$htmlToFragment(html, lastNotTag);
+function $$htmlToFragmentClean(html) {
+    if(templatecache[html]) return templatecache[html].cloneNode(true);
+
+    let t = document.createElement('template');
+    t.innerHTML = html;
+    let result = t.content;
+
     let it = document.createNodeIterator(result, 128);
     let n;
     while(n = it.nextNode()) {
         if(!n.nodeValue) n.parentNode.replaceChild(document.createTextNode(''), n);
-    }    templatecache[lastNotTag][html] = result.cloneNode(true);
+    }    templatecache[html] = result.cloneNode(true);
     return result;
 }
 function svgToFragment(content) {
-    if(templatecache.svg[content]) return templatecache.svg[content].cloneNode(true);
+    if(templatecacheSvg[content]) return templatecacheSvg[content].cloneNode(true);
     let t = document.createElement('template');
     t.innerHTML = '<svg>' + content + '</svg>';
 
     let result = document.createDocumentFragment();
-    let svg = t.content.firstChild;
-    while(svg.firstChild) result.appendChild(svg.firstChild);
-    templatecache.svg[content] = result.cloneNode(true);
+    let svg = t.content[firstChild];
+    while(svg[firstChild]) result.appendChild(svg[firstChild]);
+    templatecacheSvg[content] = result.cloneNode(true);
     return result;
 }
 function $$removeElements(el, last) {
@@ -277,6 +290,7 @@ function $makeEmitter(option) {
         fn(e);
     };
 }
+
 function $$addEventForComponent(list, event, fn) {
     let prev = list[event];
     if(prev) {
@@ -350,69 +364,6 @@ function $$makeSpreadObject($cd, el, css) {
         }
     }
 }
-function $$makeSpreadObject2($cd, props) {
-    let index = 0;
-    let list = [];
-    let self = {};
-    let defaultUsed = {};
-
-    const emit = $$groupCall(() => {
-        self.build();
-        self.emit && self.emit();
-    });
-
-    self.build = () => {
-        let obj, name, used = Object.assign({}, defaultUsed);
-        for(let i=index-1; i>=0; i--) {
-            obj = list[i];
-            for(name in obj) {
-                if(used[name]) continue;
-                used[name] = true;
-                props[name] = obj[name];
-            }
-        }
-    };
-
-    self.spread = function(fn) {
-        let i = index++;
-        let value = fn();
-        list[i] = value;
-        $watch($cd, fn, value => {
-            list[i] = value;
-            emit();
-        }, {ro: true, cmp: $$compareDeep, value: $$cloneDeep(value)});
-    };
-    self.prop = function(name, fn) {
-        let value = fn();
-        let i = index++;
-        list[i] = {};
-        list[i][name] = value;
-        $watch($cd, fn, value => {
-            list[i][name] = value;
-            emit();
-        }, {ro: true, cmp: $$compareDeep, value: $$cloneDeep(value)});
-    };
-    self.attr = function(name, value) {
-        let d = {};
-        d[name] = value;
-        list[index++] = d;
-    };
-    self.except = function(list) {
-        list.forEach(n => defaultUsed[n] = true);
-    };
-    return self;
-}
-function $$makeProp($component, $props, bound, name, getter, setter) {
-    let value = $props[name];
-    if(value !== void 0) setter(value);
-    if((bound[name] || bound.$$spreading) && (bound[name] !== 2)) $component.push.push(() => setter($props[name]));
-    $component.exportedProps[name] = true;
-
-    Object.defineProperty($component, name, {
-        get: getter,
-        set: setter
-    });
-}
 
 function $$groupCall(emit) {
     let id = `gc${$$uniqIndex++}`;
@@ -424,30 +375,36 @@ function $$groupCall(emit) {
     fn.emit = emit;
     return fn;
 }
-function $$makeApply($cd) {
+
+const $$makeComponent = ($element, $option) => {
+    if(!$option.events) $option.events = {};
+    if(!$option.props) $option.props = {};
+    let $cd = new $ChangeDetector();
+
     let id = `a${$$uniqIndex++}`;
-    return function apply(r) {
-        if(apply._p) return r;
+    let process;
+    let apply = r => {
+        if(process) return r;
         $tick(() => {
             try {
-                apply._p = true;
+                process = true;
                 $digest($cd);
             } finally {
-                apply._p = false;
+                process = false;
             }
         }, id);
         return r;
     };
-}
 
-function $$makeComponent($element, $option) {
     let $component = {
-        $cd: new $ChangeDetector(),
-        exportedProps: {},
-        push: []
+        $option,
+        $cd,
+        apply,
+        push: apply,
+        destroy: () => $cd.destroy(),
+        context: $option.$$ ? Object.create($option.$$.context) : {}
     };
 
-    $component.destroy = () => $component.$cd.destroy();
     $component.$$render = (rootTemplate) => {
         if ($option.afterElement) {
             $element.parentNode.insertBefore(rootTemplate, $element.nextSibling);
@@ -458,38 +415,27 @@ function $$makeComponent($element, $option) {
     };
 
     return $component;
-}
-const autoSubscribe = (cd, apply, obj) => {
+};
+
+
+const callComponent = (cd, component, el, option) => {
+    option.afterElement = true;
+    option.noMount = true;
+    let $component = component(el, option);
+    if($component) {
+        if($component.destroy) cd_onDestroy(cd, $component.destroy);
+        if($component.onMount) $tick($component.onMount);
+    }
+    return $component;
+};
+
+const autoSubscribe = (component, obj) => {
     if(obj && 'value' in obj && obj.subscribe) {
-        let unsub = obj.subscribe(apply);
-        if(typeof unsub == 'function') cd_onDestroy(unsub);
+        let unsub = obj.subscribe(component.$apply);
+        if(typeof unsub == 'function') cd_onDestroy(component.$cd, unsub);
     }
 };
 
-function $$componentCompleteProps($component, $$apply, $props) {
-    let list = $component.push;
-    let recalcAttributes, $attributes = $props;
-    $component.push = () => {
-        list.forEach(fn => fn());
-        recalcAttributes();
-        $$apply();
-    };
-
-    $attributes = {};
-    for(let k in $props) {
-        if(!$component.exportedProps[k]) {
-            $attributes[k] = $props[k];
-            recalcAttributes = 1;
-        }
-    }
-    if(recalcAttributes) {
-        recalcAttributes = () => {
-            for(let k in $attributes) $attributes[k] = $props[k];
-        };
-    } else recalcAttributes = () => {};
-
-    return $attributes;
-}
 
 const addStyles = (id, content) => {
     if(document.head.querySelector('style#' + id)) return;
@@ -521,6 +467,51 @@ const bindText = (cd, element, fn) => {
 };
 
 
+const bindStyle = (cd, element, name, fn) => {
+    $watchReadOnly(cd, fn, (value) => {
+        element.style[name] = value;
+    });
+};
+
+
+const bindAttribute = (cd, element, name, fn) => {
+    $watchReadOnly(cd, fn, (value) => {
+        if(value != null) element.setAttribute(name, value);
+        else element.removeAttribute(name);
+    });
+};
+
+
+const bindAction = (cd, element, action, fn) => {
+    $tick(() => {
+        let handler, value;
+        if(fn) {
+            value = fn();
+            handler = action.apply(null, [element].concat(value));
+        } else handler = action(element);
+
+        if(handler) {
+            if(handler.update && fn) {
+                $watch(cd, fn, args => {
+                    handler.update.apply(handler, args);
+                }, {cmp: $$deepComparator(1), value: cloneDeep(value, 1) });
+            }
+            if(handler.destroy) cd_onDestroy(cd, handler.destroy);
+        }
+    });
+};
+
+
+const bindInput = (cd, element, name, get, set) => {
+    let w = $watchReadOnly(cd, name == 'checked' ? () => !!get() : get, value => {
+        if(value != element[name]) element[name] = value;
+    });
+    addEvent(cd, element, 'input', () => {
+        set(w.value = element[name]);
+    });
+};
+
+
 const makeClassResolver = ($option, classMap, metaClass, mainName) => {
     if(!$option.$class) $option.$class = {};
     if(!mainName && metaClass.main) mainName = 'main';
@@ -546,6 +537,65 @@ const makeClassResolver = ($option, classMap, metaClass, mainName) => {
         });
         return result.join(' ');
     }
+};
+
+
+const makeTree = (n, lvl) => {
+    let p = null;
+    while(n--) {
+        let c = Object.create(p);
+        lvl.push(c);
+        p = c;
+    }
+    let root = Object.create(p);
+    lvl.unshift(root);
+    return root;
+};
+
+
+const spreadObject = (d, src) => {
+    for(let k in src) d[k] = src[k];
+    for(let k in d) {
+        if(!(k in src)) delete d[k];
+    }
+};
+
+
+const recalcAttributes = (props, skip) => {
+    let result = {};
+    for(let k in props)
+        if(!skip[k]) result[k] = props[k];
+    return result;
+};
+
+
+const completeProps = ($component, setter, getters) => {
+    $component.push = () => {
+        setter();
+        $component.apply();
+    };
+    $component.exportedProps = getters;
+};
+
+
+const bindPropToComponent = ($component, name, parentWatch, up) => {
+    let getter = $component.exportedProps[name];
+    if(!getter) return __app_onerror(`Component doesn't have prop ${name}`);
+
+    let w = $watch($component.$cd, getter, value => {
+        parentWatch.value = w.value;
+        $component.$option.props[name] = value;
+        up(value);
+    }, { value: parentWatch.value, cmp: $$compareDeep });
+    parentWatch.pair = value => w.value = value;
+};
+
+
+const makeExternalProperty = ($component, name, getter, setter) => {
+    Object.defineProperty($component, name, {
+        get: getter,
+        set: v => {setter(v); $component.apply();}
+    });
 };
 
 function $$htmlBlock($cd, tag, fn) {
@@ -581,7 +631,7 @@ function $$ifBlock($cd, $parentElement, fn, tpl, build, tplElse, buildElse) {
         childCD = $cd.new();
         let tpl = fr.cloneNode(true);
         builder(childCD, tpl);
-        first = tpl.firstChild;
+        first = tpl[firstChild];
         last = tpl.lastChild;
         $parentElement.parentNode.insertBefore(tpl, $parentElement.nextSibling);
     }
@@ -621,7 +671,7 @@ function $$awaitBlock($cd, label, fn, $$apply, build_main, build_then, build_cat
         let fr = tpl.cloneNode(true);
         build(childCD, fr, value);
         $$apply();
-        first = fr.firstChild;
+        first = fr[firstChild];
         last = fr.lastChild;
         label.parentNode.insertBefore(fr, label.nextSibling);
     }
@@ -647,19 +697,13 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     let $cd = $parentCD.new();
 
     let mapping = new Map();
-    let lineArray = [];
     let lastNode;
-    let tplLength = itemTemplate.childNodes.length;
-    if(onlyChild) while(label.firstChild) label.firstChild.remove(); // FIXME
+    let tplLength = itemTemplate[childNodes].length;
 
     $watch($cd, fn, (array) => {
         if(!array) array = [];
-        if(typeof(array) == 'number') {
-            lineArray.length = array;
-            array--;
-            while(array >= 0 && !lineArray[array]) lineArray[array] = array-- + 1;
-            array = lineArray;
-        } else if(!isArray(array)) array = [];
+        if(typeof(array) == 'number') array = [...Array(array)].map((_,i) => i + 1);
+        else if(!isArray(array)) array = [];
 
         let newMapping = new Map();
         let prevNode, parentNode;
@@ -709,7 +753,7 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
                 next_ctx = null;
             } else ctx = mapping.get(getKey(item, i));
             if(ctx) {
-                nextEl = i == 0 && onlyChild ? parentNode.firstChild : prevNode.nextSibling;
+                nextEl = i == 0 && onlyChild ? parentNode[firstChild] : prevNode.nextSibling;
                 if(nextEl != ctx.first) {
                     let insert = true;
 
@@ -738,7 +782,7 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
                 let childCD = $cd.new();
                 ctx = {cd: childCD};
                 bind(ctx, tpl, item, i);
-                ctx.first = tpl.firstChild;
+                ctx.first = tpl[firstChild];
                 ctx.last = tpl.lastChild;
                 parentNode.insertBefore(tpl, prevNode && prevNode.nextSibling);
             }
@@ -750,4 +794,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$childNodes, $$cloneDeep, $$compareArray, $$compareDeep, $$componentCompleteProps, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeApply, $$makeComponent, $$makeProp, $$makeSpreadObject, $$makeSpreadObject2, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, addEvent, addStyles, autoSubscribe, bindClass, bindText, cd_onDestroy, configure, getFinalLabel, isArray, makeClassResolver, removeElementsBetween, setClassToElement, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeComponent, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, fire, firstChild, getFinalLabel, isArray, makeClassResolver, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };

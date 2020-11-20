@@ -176,6 +176,10 @@
                             body.splice(i, 1);
                             continue;
                         }
+                        if(parentNode.type == 'node' && (prev && prev.type == 'each' || next && next.type == 'each')) {
+                            body.splice(i, 1);
+                            continue;
+                        }
                     }
                 }
                 i++;
@@ -844,15 +848,33 @@
                 return;
             } else if(n.type == 'ExportNamedDeclaration') {
                 assert(n.declaration.type == 'VariableDeclaration', 'Wrong export');
-                let forInit = [];
                 n.declaration.declarations.forEach(d => {
                     assert(d.type == 'VariableDeclarator', 'Wrong export');
                     result.props.push(d.id.name);
-                    forInit.push(d.id.name);
-                });
-                resultBody.push(n.declaration);
-                forInit.forEach(n => {
-                    resultBody.push(rawNode(`$runtime.$$makeProp($component, $props, $option.boundProps || {}, '${n}', () => ${n}, _${n} => {${n} = _${n}; $$apply();});`));
+                    resultBody.push({
+                        type: 'VariableDeclaration',
+                        kind: 'let',
+                        declarations: [{
+                            type: 'VariableDeclarator',
+                            id: {
+                                type: 'ObjectPattern',
+                                properties: [{
+                                    type: 'Property',
+                                    method: false,
+                                    shorthand: true,
+                                    computed: false,
+                                    kind: 'init',
+                                    key: d.id,
+                                    value: d.init ? {
+                                        type: 'AssignmentPattern',
+                                        left: d.id,
+                                        right: d.init
+                                    } : d.id
+                                }]
+                            },
+                            init: {type: 'Identifier', name: '$props'}
+                        }]
+                    });
                     lastPropIndex = resultBody.length;
                 });
                 return;
@@ -869,43 +891,47 @@
             resultBody.push(n);
         });
 
-        resultBody.push({
-            type: 'ExpressionStatement',
-            expression: {
-                callee: {
-                    type: 'Identifier',
-                    name: '$$runtime'
-                },
-                type: 'CallExpression'
-            }
-        });
-
         let header = [];
-        header.push(rawNode('if(!$option) $option = {};'));
-        header.push(rawNode('if(!$option.events) $option.events = {};'));
-        header.push(rawNode('$$runtimeHeader();'));
-        header.push(rawNode('const $props = $option.props || {};'));
         header.push(rawNode('const $component = $runtime.$$makeComponent($element, $option);'));
-        header.push(rawNode('const $$apply = $runtime.$$makeApply($component.$cd);'));
+        header.push(rawNode('const $$apply = $component.apply;'));
+        header.push(rawNode('$$runtimeHeader();'));
 
         if(lastPropIndex != null) {
-            resultBody.splice(lastPropIndex, 0, rawNode('let $attributes = $runtime.$$componentCompleteProps($component, $$apply, $props);'));
+            header.push(rawNode('const $props = $option.props;'));
+            resultBody.splice(lastPropIndex, 0,
+                rawNode(`let $$skipAttrs = {${result.props.map(n => n + ':1').join(',')}};`, {_name: '$attributes'}),
+                rawNode('let $attributes = $runtime.recalcAttributes($props, $$skipAttrs);', {_name: '$attributes'}),
+                rawNode(`$runtime.completeProps($component, () => {
+                ({${result.props.join(',')}} = $props);`),
+                rawNode('$attributes = $runtime.recalcAttributes($props, $$skipAttrs);', {_name: '$attributes'}),
+                rawNode(`}, {${result.props.map(n => n + ': () => '+n).join(',')}});`)
+            );
         } else {
-            header.push(rawNode('$component.push = $$apply;'));
-            header.push(rawNode('const $attributes = $props;'));
+            header.push(rawNode('const $props = $option.props;', {_name: '$props'}));
+            header.push(rawNode('let $attributes = $props;', {_name: '$attributes'}));
         }
+        header.push(rawNode('const $context = $component.context;', {_name: '$context'}));
 
         if(this.config.autoSubscribe) {
             result.importedNames.forEach(name => {
-                header.push(rawNode(`$runtime.autoSubscribe($component.$cd, $$apply, ${name});`));
+                header.push(rawNode(`$runtime.autoSubscribe($component, ${name});`));
             });
         }
 
-        if(!rootFunctions.$emit) header.push(rawNode('const $emit = $runtime.$makeEmitter($option);'));
+        if(!rootFunctions.$emit) header.push(rawNode('const $emit = $runtime.$makeEmitter($option);', {_name: '$emit'}));
         if(insertOnDestroy) header.push(rawNode('function $onDestroy(fn) {$runtime.cd_onDestroy($component.$cd, fn);};'));
         while(header.length) {
             resultBody.unshift(header.pop());
         }
+
+        if(this.scriptNodes[0] && this.scriptNodes[0].attributes.some(a => a.name == 'property')) {
+            result.props.forEach(name => {
+                resultBody.push(rawNode(`$runtime.makeExternalProperty($component, '${name}', () => ${name}, _${name} => ${name} = _${name});`));
+            });
+        }
+
+        resultBody.push(rawNode('$$runtime();'));
+        this.script.rootLevel = resultBody;
 
         let widgetFunc = {
             body: {
@@ -920,8 +946,15 @@
                 type: 'Identifier',
                 name: '$element'
             }, {
-                type: 'Identifier',
-                name: '$option'
+                type: 'AssignmentPattern',
+                left: {
+                    type: 'Identifier',
+                    name: '$option'
+                },
+                right: {
+                    type: 'ObjectExpression',
+                    properties: []
+                }
             }],
             type: 'FunctionDeclaration'
         };
@@ -950,11 +983,11 @@
     }
 
 
-    function rawNode(exp) {
-        return {
-            type: 'Raw',
-            value: exp
-        };
+    function rawNode(exp, n) {
+        n = n || {};
+        n.type = 'Raw';
+        n.value = exp;
+        return n;
     }
 
     function buildRuntime() {
@@ -1010,6 +1043,10 @@
                     $option, {${classMap}}, {${metaClass}}, ${main}
                 );
             `);
+            } else {
+                this.runtime.componentHeader.push(`
+                const $$resolveClass = $runtime.noop;
+            `);
             }
         }
 
@@ -1018,12 +1055,13 @@
     }
 
 
-    function buildBlock(data) {
+    function buildBlock(data, option) {
         let tpl = [];
         let lvl = [];
         let binds = [];
         let DN = {};
         let result = {};
+        let lastTag = false;
 
         const go = (level, data, isRoot) => {
             let index = 0;
@@ -1106,6 +1144,7 @@
                         else tpl.push(`<!-- ${n.name} -->`);
                         let b = this.makeComponent(n, getElementName);
                         binds.push(b.bind);
+                        lastTag = true;
                         return;
                     }
                     if(n.name == 'slot') {
@@ -1114,6 +1153,7 @@
                         else tpl.push(`<!-- Slot ${slotName} -->`);
                         let b = this.attachSlot(slotName, getElementName(), n);
                         binds.push(b.source);
+                        lastTag = true;
                         return;
                     }
                     if(n.name == 'fragment') {
@@ -1121,6 +1161,7 @@
                         else tpl.push(`<!-- Fragment ${n.name} -->`);
                         let b = this.attachFragment(n, getElementName());
                         binds.push(b.source);
+                        lastTag = true;
                         return;
                     }
 
@@ -1151,27 +1192,21 @@
                         tpl.push(`</${n.name}>`);
                     }
                 } else if(n.type === 'each') {
-                    n.parent = data;
-                    let onlyChild = data.type == 'node' && !body.some(sibling => {
-                        if(sibling.type == 'text' && !sibling.value.trim()) return false;
-                        if(sibling === n) return false;
-                        return true;
-                    });
-
                     setLvl();
-                    if(onlyChild) {
+                    if(data.type == 'node' && data.body.length == 1) {
                         let eachBlock = this.makeEachBlock(n, {
                             elName: getElementName(-1),
                             onlyChild: true
                         });
                         binds.push(eachBlock.source);
-                        return 'stop';
+                        return;
                     } else {
                         if(this.config.hideLabel) tpl.push(`<!---->`);
                         else tpl.push(`<!-- ${n.value} -->`);
-                        n.parent = data;
                         let eachBlock = this.makeEachBlock(n, {elName: getElementName()});
                         binds.push(eachBlock.source);
+                        lastTag = true;
+                        return;
                     }
                 } else if(n.type === 'if') {
                     setLvl();
@@ -1179,6 +1214,8 @@
                     else tpl.push(`<!-- ${n.value} -->`);
                     let ifBlock = this.makeifBlock(n, getElementName());
                     binds.push(ifBlock.source);
+                    lastTag = true;
+                    return;
                 } else if(n.type === 'systag') {
                     let r = n.value.match(/^@(\w+)\s+(.*)$/);
                     let name = r[1];
@@ -1189,6 +1226,8 @@
                         if(this.config.hideLabel) tpl.push(`<!---->`);
                         else tpl.push(`<!-- html -->`);
                         binds.push(this.makeHtmlBlock(exp, getElementName()));
+                        lastTag = true;
+                        return;
                     } else throw 'Wrong tag';
                 } else if(n.type === 'await') {
                     setLvl();
@@ -1196,14 +1235,17 @@
                     else tpl.push(`<!-- ${n.value} -->`);
                     let block = this.makeAwaitBlock(n, getElementName());
                     binds.push(block.source);
+                    lastTag = true;
+                    return;
                 } else if(n.type === 'comment') {
                     setLvl();
                     tpl.push(n.content);
                 }
+                lastTag = false;
             };
-            body.some(node => {
+            body.forEach(node => {
                 try {
-                    return bindNode(node) == 'stop';
+                    bindNode(node);
                 } catch (e) {
                     wrapException(e, node);
                 }
@@ -1212,34 +1254,42 @@
             lvl.length = level;
         };
         go(0, data, true);
+        if(lastTag && option && option.protectLastTag) tpl.push('<!---->');
 
         let source = [];
-        result.name = '$$build' + (this.uniqIndex++);
         result.tpl = this.Q(tpl.join(''));
-        
-        let args = ['$cd', '$parentElement'];
-        if(data.args) args.push.apply(args, data.args);
-        source.push(`function ${result.name}(${args.join(', ')}) {\n`);
 
-        const buildNodes = (d, lvl) => {
-            let keys = Object.keys(d).filter(k => k != 'name');
-            if(keys.length > 1 && !d.name) d.name = 'el' + (this.uniqIndex++);
+        if(binds.length) {
+            result.name = '$$build' + (this.uniqIndex++);
+            
+            let args = ['$cd', '$parentElement'];
+            if(data.args) args.push.apply(args, data.args);
+            source.push(`function ${result.name}(${args.join(', ')}) {\n`);
 
-            if(d.name) {
-                let line = lvl.join('');
-                source.push(`const ${d.name} = ${line};\n`);
-                lvl = [d.name];
-            }
+            const buildNodes = (d, lvl) => {
+                let keys = Object.keys(d).filter(k => k != 'name');
+                if(keys.length > 1 && !d.name) d.name = 'el' + (this.uniqIndex++);
 
-            keys.forEach(k => {
-                buildNodes(d[k], lvl.concat([`[$runtime.$$childNodes][${k}]`]));
-            });
-        };
-        buildNodes(DN, ['$parentElement']);
+                if(d.name) {
+                    let line = lvl.join('');
+                    source.push(`let ${d.name} = ${line};\n`);
+                    lvl = [d.name];
+                }
 
-        source.push(binds.join('\n'));
-        source.push(`};`);
-        result.source = source.join('');
+                keys.forEach(k => {
+                    const p = k == 0 ? `[$runtime.firstChild]` : `[$runtime.childNodes][${k}]`;
+                    buildNodes(d[k], lvl.concat([p]));
+                });
+            };
+            buildNodes(DN, ['$parentElement']);
+
+            source.push(binds.join('\n'));
+            source.push(`};`);
+            result.source = source.join('');
+        } else {
+            result.name = '$runtime.noop';
+            result.source = '';
+        }
         return result;
     }
     function wrapException(e, n) {
@@ -3409,23 +3459,50 @@
         return result;
     };
 
+    function shaking() {
+        let src = this.runtime.header + this.runtime.body + (this.script.source || '');
+
+        const remove = (name) => {
+            let root = this.script.rootLevel;
+            for(let i=root.length - 1; i >= 0; i--) {
+                if(root[i]._name == name) {
+                    root.splice(i, 1);
+                }
+            }
+        };
+
+        if(src.indexOf('$attributes') < 0) {
+            remove('$attributes');
+            if(src.indexOf('$props') < 0) {
+                remove('$props');
+            }
+        }
+
+        if(src.indexOf('$emit') < 0) {
+            remove('$emit');
+        }
+
+        if(src.indexOf('$context') < 0) {
+            remove('$context');
+        }
+    }
+
     function makeComponent(node, makeEl) {
         let propList = node.attributes;
         let binds = [];
         let head = [];
-        let head2 = [];
         let forwardAllEvents = false;
-        let injectGroupCall = 0;
-        let spreading = false;
-        let options = [];
+        let options = ['$$: $component'];
         let dynamicComponent;
 
-        let injectClass = false;
+        let propLevel = 0, propLevelType;
 
         if(node.name == 'component') {
             assert(node.elArg);
             dynamicComponent = node.elArg[0] == '{' ? unwrapExp(node.elArg) : node.elArg;
         }
+
+        let passOption = {};
 
         if(node.body && node.body.length) {
             let slots = {};
@@ -3460,6 +3537,7 @@
                     }).join(',\n');
                 }
 
+                passOption.slots = true;
                 let block = this.buildBlock(slot);
                 const convert = block.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
                 head.push(`
@@ -3485,15 +3563,12 @@
         }
 
         let boundEvents = {};
-        let twoBinds = [];
         propList = propList.filter(prop => {
             let name = prop.name;
             let value = prop.value;
             if(name == '@@') {
                 forwardAllEvents = true;
                 return false;
-            } else if(name.startsWith('{...')) {
-                spreading = true;
             } else if(name[0] == ':' || name.startsWith('bind:')) {
                 let inner, outer;
                 if(name[0] == ':') inner = name.substring(1);
@@ -3502,26 +3577,24 @@
                 else outer = inner;
                 assert(isSimpleName(inner), `Wrong property: '${inner}'`);
                 assert(detectExpressionType(outer) == 'identifier', 'Wrong bind name: ' + outer);
-                twoBinds.push(inner);
-                let valueName0 = '$$v' + (this.uniqIndex++);
-                let valueName = '$$v' + (this.uniqIndex++);
-                head.push(`props.${inner} = ${outer};`);
-                head.push(`boundProps.${inner} = 2;`);
+
+                let watchName = '$$w' + (this.uniqIndex++);
+                propLevelType = 'binding';
+                passOption.props = true;
+                passOption.push = true;
+                head.push(`
+                const ${watchName} = $watch($cd, () => (${outer}), _${inner} => {
+                    props.${inner} = _${inner};
+                    ${watchName}.pair && ${watchName}.pair(${watchName}.value);
+                    $$push();
+                }, {ro: true, cmp: $runtime.$$compareDeep});
+                $runtime.fire(${watchName});
+            `);
                 binds.push(`
-                if('${inner}' in $component) {
-                    let ${valueName0} = $runtime.$$cloneDeep(props.${inner});
-                    let $$_w0 = $watch($cd, () => (${outer}), (value) => {
-                        props.${inner} = value;
-                        $$_w1.value = $$_w0.value;
-                        $component.${inner} = value;
-                    }, {ro: true, cmp: $runtime.$$compareDeep, value: ${valueName0}});
-                    let $$_w1 = $watch($component.$cd, () => ($component.${inner}), (${valueName}) => {
-                        props.${inner} = ${valueName};
-                        $$_w0.value = $$_w1.value;
-                        ${outer} = ${valueName};
-                        $$apply();
-                    }, {cmp: $runtime.$$compareDeep, value: ${valueName0}});
-                } else console.error("Component ${node.name} doesn't have prop ${inner}");
+                $runtime.bindPropToComponent($child, '${inner}', ${watchName}, _${outer} => {
+                    ${outer} = _${outer};
+                    $$apply();
+                });
             `);
                 return false;
             } else if(name == 'this') {
@@ -3531,15 +3604,6 @@
             return true;
         });
 
-        if(spreading) {
-            head.push('let spreadObject = $runtime.$$makeSpreadObject2($cd, props);');
-            head.push('boundProps.$$spreading = true;');
-            binds.push('spreadObject.emit = $component.push;');
-            if(twoBinds.length) {
-                head.push(`spreadObject.except(['${twoBinds.join(',')}']);`);
-            }
-        }
-
         propList.forEach(prop => {
             let name = prop.name;
             let value = prop.value;
@@ -3548,15 +3612,25 @@
                 let name = name.substring(1);
                 assert(isSimpleName(name), name);
                 this.checkRootName(name);
-                binds.push(`${name} = $component;`);
+                binds.push(`${name} = $child;`);
                 return;
             } else if(name[0] == '{') {
                 value = name;
                 name = unwrapExp(name);
                 if(name.startsWith('...')) {
+                    if(propLevelType) propLevel++;
+                    propLevelType = 'spreading';
+
                     name = name.substring(3);
                     assert(detectExpressionType(name) == 'identifier', 'Wrong prop');
-                    head.push(`spreadObject.spread(() => ${name})`);
+                    passOption.push = true;
+                    let propObject = propLevel ? `$$lvl[${propLevel}]` : 'props';
+                    head.push(`
+                    $runtime.fire($watch($cd, () => (${name}), (value) => {
+                        $runtime.spreadObject(${propObject}, value);
+                        $$push();
+                    }, {ro: true, cmp: $runtime.$$deepComparator(0)}));
+                `);
                     return;
                 }            assert(detectExpressionType(name) == 'identifier', 'Wrong prop');
             } else if(name[0] == '@' || name.startsWith('on:')) {
@@ -3570,6 +3644,7 @@
                 else {
                     if(!arg.length) {
                         // forwarding
+                        passOption.events = true;
                         if(forwardAllEvents || boundEvents[event]) head.push(`$runtime.$$addEventForComponent(events, '${event}', $option.events.${event});`);
                         else head.push(`events.${event} = $option.events.${event};`);
                         boundEvents[event] = true;
@@ -3598,6 +3673,7 @@
                     callback = `($event) => {${this.Q(exp)}}`;
                 }
 
+                passOption.events = true;
                 if(forwardAllEvents || boundEvents[event]) head.push(`$runtime.$$addEventForComponent(events, '${event}', ${callback});`);
                 else head.push(`events.${event} = ${callback};`);
                 boundEvents[event] = true;
@@ -3616,92 +3692,109 @@
                 const parsed = this.parseText(prop.value);
                 let exp = parsed.result;
                 let funcName = `$$pf${this.uniqIndex++}`;
-                head2.push(`
+                head.push(`
                 const ${funcName} = () => $$resolveClass(${exp});
                 $class['${metaClass}'] = ${funcName}();
 
                 $watch($cd, ${funcName}, (result) => {
                     $class['${metaClass}'] = result;
-                    groupCall();
+                    $$push();
                 }, {ro: true, value: $class['${metaClass}']});
             `);
-                injectClass = true;
+                passOption.class = true;
+                passOption.push = true;
                 this.use.resolveClass = true;
-                injectGroupCall++;
                 return;
             }
             assert(isSimpleName(name), `Wrong property: '${name}'`);
             if(value && value.indexOf('{') >= 0) {
                 let exp = this.parseText(value).result;
-                let fname = '$$pf' + (this.uniqIndex++);
-                let valueName = '$$v' + (this.uniqIndex++);
-                if(spreading) {
-                    return head.push(`
-                    spreadObject.prop('${name}', () => ${exp});
-                `);
-                }
-                injectGroupCall++;
-                head.push(`
-                let ${fname} = () => (${exp});
-                let ${valueName} = ${fname}()
-                props.${name} = ${valueName};
-                boundProps.${name} = 1;
 
-                $watch($cd, ${fname}, _${name} => {
-                    props.${name} = _${name};
-                    groupCall();
-                }, {ro: true, cmp: $runtime.$$compareDeep, value: $runtime.$$cloneDeep(${valueName})});
+                if(propLevelType == 'spreading') propLevel++;
+                propLevelType = 'prop';
+                let propObject = propLevel ? `$$lvl[${propLevel}]` : 'props';
+
+                passOption.props = true;
+                passOption.push = true;
+                head.push(`
+                $runtime.fire($watch($cd, () => (${exp}), _${name} => {
+                    ${propObject}.${name} = _${name};
+                    $$push();
+                }, {ro: true, cmp: $runtime.$$compareDeep}));
             `);
             } else {
                 if(value) value = '`' + this.Q(value) + '`';
                 else value = 'true';
-                if(spreading) {
-                    head.push(`spreadObject.attr('${name}', ${value});`);
-                } else {
-                    head.push(`props.${name} = ${value};`);
-                }
+
+                if(propLevelType == 'spreading') propLevel++;
+                propLevelType = 'attr';
+
+                let propObject = propLevel ? `$$lvl[${propLevel}]` : 'props';
+                head.push(`
+                ${propObject}.${name} = ${value};
+            `);
             }
         });
 
-        if(injectClass) {
-            head.push(`let $class = {}`);
+        let rootHead = [];
+        if(passOption.push) {
+            rootHead.push(`let $$push = $runtime.noop;`);
+            binds.push(`$$push = $child.push;`);
+        }
+
+        if(passOption.class) {
+            rootHead.push(`let $class = {}`);
             options.push('$class');
         }
 
-        if(forwardAllEvents) head.unshift('let events = Object.assign({}, $option.events);');
-        else head.unshift('let events = {};');
-        if(injectGroupCall) {
-            if(injectGroupCall == 1) {
-                head.push('let groupCall;');
-                binds.push('groupCall = $component.push;');
-            } else {
-                head.push('let groupCall = $runtime.$$groupCall();');
-                binds.push('groupCall.emit = $component.push;');
-            }
+        if(passOption.slots) {
+            rootHead.push('let slots = {};');
+            options.push('slots');
         }
-        if(spreading) head.push('spreadObject.build();');
 
-        options.unshift('afterElement: true, noMount: true, props, boundProps, events, slots');
+        if(propLevel || propLevelType) {
+            if(propLevel) rootHead.push(`let $$lvl = [], props = $runtime.makeTree(${propLevel}, $$lvl);`);
+            else rootHead.push('let props = {};');
+            options.push('props');
+        }
 
-        const makeSrc = (componentName) => {
-            return `
-            let props = {};
-            let boundProps = {};
-            let slots = {};
-            ${head.join('\n')};
-            let componentOption = {${options.join(', ')}};
-            ${head2.join('\n')};
-            let $component = ${componentName}(${makeEl()}, componentOption);
-            if($component) {
-                if($component.destroy) $runtime.cd_onDestroy($cd, $component.destroy);
-                ${binds.join('\n')};
-                if($component.onMount) $tick($component.onMount);
+        if(forwardAllEvents) {
+            rootHead.push('let events = Object.assign({}, $option.events);');
+            options.push('events');
+        } else if(passOption.events) {
+            rootHead.push('let events = {};');
+            options.push('events');
+        }
+
+        const makeSrc = (componentName, brackets) => {
+            let scope = false;
+            let result = '';
+            if(rootHead.length || head.length) {
+                scope = true;
+                result = `
+                ${rootHead.join('\n')};
+                ${head.join('\n')};
+            `;
             }
-        `;
+            if(binds.length) {
+                scope = true;
+                result += `
+                let $child = $runtime.callComponent($cd, ${componentName}, ${makeEl()}, {${options.join(', ')}});
+                if($child) {
+                    ${binds.join('\n')};
+                }
+            `;
+            } else {
+                result += `
+                $runtime.callComponent($cd, ${componentName}, ${makeEl()}, {${options.join(', ')}});
+            `;
+            }
+            if(brackets && scope) return '{' + result + '}';
+            return result;
         };
 
         if(!dynamicComponent) {
-            return {bind: `{ ${makeSrc(node.name)} }`};
+            return {bind: `${makeSrc(node.name, true)}`};
         } else {
             let componentName = '$$comp' + (this.uniqIndex++);
             return {bind: `
@@ -3839,28 +3932,39 @@
                 }        }
 
             if(funcName) {
-                return {bind: `
-                {
+                let bind;
+                if(exp.indexOf('$element') >= 0) {
+                    bind = `{
                     let $element=${makeEl()};
                     const ${funcName} = ${exp};
                     $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} ${funcName}($event); $$apply();});
-                }`
-                };
+                }`;
+                } else {
+                    bind = `
+                    const ${funcName} = ${exp};
+                    $runtime.addEvent($cd, ${makeEl()}, "${event}", ($event) => { ${mod} ${funcName}($event); $$apply();});
+                `;
+                }
+                return {bind};
             } else if(handler) {
                 this.checkRootName(handler);
                 return {bind: `
-                {
-                    let $element=${makeEl()};
-                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} ${handler}($event); $$apply();});
-                }`
+                    $runtime.addEvent($cd, ${makeEl()}, "${event}", ($event) => { ${mod} ${handler}($event); $$apply();});
+                `
                 };
             } else {
-                return {bind: `
-                {
+                let bind;
+                if(exp.indexOf('$element') >= 0) {
+                    bind = `{
                     let $element=${makeEl()};
                     $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} ${this.Q(exp)}; $$apply(); });
-                }`
-                };
+                }`;
+                } else {
+                    bind = `
+                    $runtime.addEvent($cd, ${makeEl()}, "${event}", ($event) => { ${mod} ${this.Q(exp)}; $$apply(); });
+                `;
+                }
+                return {bind};
             }
         } else if(name == 'bind') {
             let exp;
@@ -3886,44 +3990,39 @@
             assert(['value', 'checked', 'valueAsNumber', 'valueAsDate', 'selectedIndex'].includes(attr), 'Not supported: ' + prop.content);
             assert(arg.length == 0);
             assert(detectExpressionType(exp) == 'identifier', 'Wrong bind name: ' + prop.content);
-            let watchExp = attr == 'checked' ? '!!' + exp : exp;
             if(attr == 'value' && ['number', 'range'].includes(inputType)) attr = 'valueAsNumber';
 
             let spreading = '';
             if(node.spreadObject) spreading = `${node.spreadObject}.except(['${attr}']);`;
 
-            return {bind: `{
+            let argName = 'a' + (this.uniqIndex++);
+
+            return {bind: `
             ${spreading}
-            let $element=${makeEl()};
-            let $$w = $watchReadOnly($cd, () => (${watchExp}), (value) => { if(value != $element.${attr}) $element.${attr} = value; });
-            $runtime.addEvent($cd, $element, 'input', () => { $$w.value = ${exp} = $element.${attr}; $$apply(); });
-        }`};
+            $runtime.bindInput($cd, ${makeEl()}, '${attr}', () => ${exp}, ${argName} => {${exp} = ${argName}; $$apply();});
+        `};
         } else if(name == 'style' && arg) {
             let styleName = arg;
             let exp = prop.value ? getExpression() : styleName;
-            return {bind: `{
-                let $element = ${makeEl()};
-                $watchReadOnly($cd, () => (${exp}), (value) => { $element.style.${styleName} = value; });
-            }`};
+            if(exp.indexOf('$element') >= 0) {
+                return {bind: `{
+                    let $element = ${makeEl()};
+                    $runtime.bindStyle($cd, $element, '${styleName}', () => (${exp}));
+                }`};
+            } else {
+                return {bind: `
+                $runtime.bindStyle($cd, ${makeEl()}, '${styleName}', () => (${exp}));
+            `};
+            }
         } else if(name == 'use') {
             if(arg) {
                 assert(isSimpleName(arg), 'Wrong name: ' + arg);
                 this.checkRootName(arg);
-                let args = prop.value ? getExpression() : '';
-                let code = `$tick(() => {
-                let useObject = ${arg}(${makeEl()}${args ? ', ' + args : ''});\n if(useObject) {`;
-                if(args) code += `
-                if(useObject.update) {
-                    let w = $watch($cd, () => [${args}], (args) => {useObject.update.apply(useObject, args);}, {cmp: $runtime.$$compareArray});
-                    w.value = w.fn();
-                }`;
-                code += `if(useObject.destroy) $runtime.cd_onDestroy($cd, useObject.destroy);}});`;
-                return {bind: code};
+                let args = prop.value ? `, () => [${getExpression()}]` : '';
+                return {bind: `$runtime.bindAction($cd, ${makeEl()}, ${arg}${args});`};
             }
             let exp = getExpression();
-            return {bind: `{
-            let $element=${makeEl()};
-            $tick(() => { ${exp}; $$apply(); });}`};
+            return {bind: `$tick(() => { let $element=${makeEl()}; ${exp}; $$apply(); });`};
         } else if(name == 'class') {
             if(node.__skipClass) return {};
             if(!this.css) return {prop: prop.content};
@@ -3980,6 +4079,7 @@
             if(prop.value && prop.value.indexOf('{') >= 0) {
                 const parsed = this.parseText(prop.value);
                 let exp = parsed.result;
+                let hasElement = prop.value.indexOf('$element') >= 0;
 
                 if(node.spreadObject) {
                     return {bind: `
@@ -3998,38 +4098,30 @@
                     src: true
                 };
                 if(propList[name]) {
-                    return {bind: `{
-                    let $element=${makeEl()};
-                    $watchReadOnly($cd, () => (${exp}), (value) => {$element.${name} = value;});
-                }`};
-                } else {
-                    let suffix = '';
-                    if(name == 'class' && this.css) {
-                        let needHash = false;
-                        parsed.parts.forEach(p => {
-                            if(p.type == 'text') {
-                                p.value.trim().split(/\s+/).forEach(name => {
-                                    let c = this.css.simpleClasses[name];
-                                    if(c) {
-                                        c.useAsLocal();
-                                        needHash = true;
-                                    }
-                                });
-                            } else {
-                                if(!p.value.startsWith('$class')) needHash = true;
-                            }
-                        });
-                        if(needHash) suffix = `+' ${this.css.id}'`;
-                    }
-                    return {
-                        bind: `{
+                    if(hasElement) {
+                        return {bind: `{
                         let $element=${makeEl()};
-                        $watchReadOnly($cd, () => (${exp})${suffix}, (value) => {
-                            if(value != null) $element.setAttribute('${name}', value);
-                            else $element.removeAttribute('${name}');
-                        });
-                    }`
-                    };
+                        $watchReadOnly($cd, () => (${exp}), (value) => {$element.${name} = value;});
+                    }`};
+                    } else {
+                        return {bind: `$watchReadOnly($cd, () => (${exp}), (value) => {${makeEl()}.${name} = value;});`};
+                    }
+                } else {
+                    if(hasElement) {
+                        return {
+                            bind: `{
+                            let $element=${makeEl()};
+                            $runtime.bindAttribute($cd, $element, '${name}', () => (${exp}));
+                        }`
+                        };
+                    } else {
+                        let el = makeEl();
+                        return {
+                            bind: `
+                            $runtime.bindAttribute($cd, ${el}, '${name}', () => (${exp}));
+                        `
+                        };
+                    }
                 }
             }
 
@@ -4055,21 +4147,22 @@
         let ifBlockName = 'ifBlock' + (this.uniqIndex++);
         source.push(`function ${ifBlockName}($cd, $parentElement) {`);
         let mainBlock, elseBlock;
+
         if(data.bodyMain) {
-            mainBlock = this.buildBlock({body: data.bodyMain});
-            elseBlock = this.buildBlock(data);
+            mainBlock = this.buildBlock({body: data.bodyMain}, {protectLastTag: true});
+            elseBlock = this.buildBlock(data, {protectLastTag: true});
 
             const convert = elseBlock.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
             source.push(`
-            let elsefr = ${convert}(\`${this.Q(elseBlock.tpl)}\`, true);
+            let elsefr = ${convert}(\`${this.Q(elseBlock.tpl)}\`);
             ${elseBlock.source}
         `);
         } else {
-            mainBlock = this.buildBlock(data);
+            mainBlock = this.buildBlock(data, {protectLastTag: true});
         }
         const convert = mainBlock.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
         source.push(`
-        let mainfr = ${convert}(\`${this.Q(mainBlock.tpl)}\`, true);
+        let mainfr = ${convert}(\`${this.Q(mainBlock.tpl)}\`);
         ${mainBlock.source}
     `);
 
@@ -4105,7 +4198,7 @@
         }
         if(!nodeItems.length) nodeItems = [data.body[0]];
 
-        let itemData = this.buildBlock({body: nodeItems});
+        let itemData = this.buildBlock({body: nodeItems}, {protectLastTag: true});
 
         // #each items as item, index (key)
         let rx = data.value.match(/^#each\s+(\S+)\s+as\s+(.+)$/);
@@ -4152,7 +4245,7 @@
         if(keyName == itemName) keyName = null;
         if(keyName) assert(detectExpressionType(keyName) == 'identifier', `Wrong key '${keyName}'`);
 
-        if(!keyName) keyFunction = 'function getKey(item) {return item;}';
+        if(!keyName) keyFunction = 'let getKey = $runtime.noop;';
         else if(keyName == indexName) keyFunction = 'function getKey(_, i) {return i;}';
         else keyFunction = `function getKey(${itemName}) {return ${keyName};}`;
 
@@ -4172,7 +4265,7 @@
 
             ${keyFunction};
 
-            let itemTemplate = ${convert}(\`${this.Q(itemData.tpl)}\`, true);
+            let itemTemplate = ${convert}(\`${this.Q(itemData.tpl)}\`);
 
             $runtime.$$eachBlock($cd, ${option.elName}, ${option.onlyChild?1:0}, () => (${arrayName}), getKey, itemTemplate, bind);
         }
@@ -4207,11 +4300,11 @@
         let build_main, build_then, build_catch;
         let tpl_main, tpl_then, tpl_catch;
         if(node.parts.main && node.parts.main.length) {
-            block_main = this.buildBlock({body: node.parts.main});
+            block_main = this.buildBlock({body: node.parts.main}, {protectLastTag: true});
             source.push(block_main.source);
             build_main = block_main.name;
             const convert = block_main.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-            source.push(`const tpl_main = ${convert}(\`${this.Q(block_main.tpl)}\`, true);`);
+            source.push(`const tpl_main = ${convert}(\`${this.Q(block_main.tpl)}\`);`);
             tpl_main = 'tpl_main';
         } else tpl_main = 'null';
         if(node.parts.then && node.parts.then.length) {
@@ -4227,11 +4320,11 @@
                 }
             }
 
-            block_then = this.buildBlock({body: node.parts.then, args});
+            block_then = this.buildBlock({body: node.parts.then, args}, {protectLastTag: true});
             source.push(block_then.source);
             build_then = block_then.name;
             const convert = block_then.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-            source.push(`const tpl_then = ${convert}(\`${this.Q(block_then.tpl)}\`, true);`);
+            source.push(`const tpl_then = ${convert}(\`${this.Q(block_then.tpl)}\`);`);
             tpl_then = 'tpl_then';
         } else tpl_then = 'null';
         if(node.parts.catch && node.parts.catch.length) {
@@ -4242,11 +4335,11 @@
                 args.push(rx[1]);
             }
 
-            block_catch = this.buildBlock({body: node.parts.catch, args});
+            block_catch = this.buildBlock({body: node.parts.catch, args}, {protectLastTag: true});
             source.push(block_catch.source);
             build_catch = block_catch.name;
             const convert = block_catch.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-            source.push(`const tpl_catch = ${convert}(\`${this.Q(block_catch.tpl)}\`, true);`);
+            source.push(`const tpl_catch = ${convert}(\`${this.Q(block_catch.tpl)}\`);`);
             tpl_catch = 'tpl_catch';
         } else tpl_catch = 'null';
 
@@ -4478,6 +4571,7 @@
             js_parse: parse$1,
             js_transform: transform,
             js_build: build,
+            js_shaking: shaking,
 
             styleNodes: null,
             css: null,
@@ -4527,6 +4621,8 @@
 
 
         await hook(ctx, 'build:before');
+        ctx.js_shaking();
+        await hook(ctx, 'build:shaking');
         ctx.js_build();
         await hook(ctx, 'build:assemble');
         let code = `
