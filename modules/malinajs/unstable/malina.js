@@ -3541,7 +3541,7 @@
                 let block = this.buildBlock(slot);
                 const convert = block.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
                 head.push(`
-                slots.${slot.name} = function($label) {
+                slots.${slot.name} = function($label, $component) {
                     let $childCD = $cd.new();
                     let $tpl = ${convert}(\`${this.Q(block.tpl)}\`);
 
@@ -4394,7 +4394,7 @@
         return {source: `{
         let $slot = $option.slots && $option.slots.${slotName};
         if($slot) {
-            let s = $slot(${label});
+            let s = $slot(${label}, $component);
             $runtime.cd_onDestroy($cd, s.destroy);
             ${bind.join('\n')}
         } ${placeholder};
