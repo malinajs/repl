@@ -37,18 +37,21 @@ export async function bundle(files){
 
 // Module path resolver
 function module_resolver_plugin(){
+    const localRg = /^\.{1,2}\//;
+    const netRg = /^https?:\/\/|^\/\//;
+    const malinaRg = /^malinajs\//;
     return {
         name: 'rollup_plugin_module_resolver',
         async resolveId(id, importer){
             // Local file
-            if(id.startsWith('./') && (!importer || importer.startsWith('./'))) return id;
+            if(localRg.test(id) && (!importer || localRg.test(importer)) ) return id;
 
             // Local on UNPKG
 
-            if(id.startsWith('./') && /^https?:\/\//.test(importer)) return new URL(id,addSlash(importer)).href;
+            if(localRg.test(id) && netRg.test(importer)) return new URL(id,addSlash(importer)).href;
 
             // MalinaJS Libs
-            if(id.startsWith('malinajs/')) return `${DEPS_REPO}/malinajs/${malina ? malina.version : 'latest'}/${id.slice(9)}`;
+            if(malinaRg.test(id)) return `${DEPS_REPO}/malinajs/${malina ? malina.version : 'latest'}/${id.slice(9)}`;
             
             // From UNPKG
             return await getModuleURL(`${MODULES_REPO}/${id}`);
