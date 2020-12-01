@@ -421,7 +421,11 @@ const $$makeComponent = ($element, $option) => {
 const callComponent = (cd, component, el, option) => {
     option.afterElement = true;
     option.noMount = true;
-    let $component = component(el, option);
+    try {
+        var $component = component(el, option);
+    } catch (e) {
+        __app_onerror(e);
+    }
     if($component) {
         if($component.destroy) cd_onDestroy(cd, $component.destroy);
         if($component.onMount) $tick($component.onMount);
