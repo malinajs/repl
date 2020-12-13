@@ -376,9 +376,29 @@ function $$groupCall(emit) {
     return fn;
 }
 
-const $$makeComponent = ($element, $option) => {
+const makeComponentBase = ($element, $option) => {
     if(!$option.events) $option.events = {};
     if(!$option.props) $option.props = {};
+
+    return {
+        $option,
+        push: noop,
+        destroy: noop,
+        context: $option.$$ ? Object.assign({}, $option.$$.context) : {},
+        $$render: (rootTemplate) => {
+            if ($option.afterElement) {
+                $element.parentNode.insertBefore(rootTemplate, $element.nextSibling);
+            } else {
+                $element.innerHTML = '';
+                $element.appendChild(rootTemplate);
+            }
+        }
+    };
+};
+
+
+const makeComponent = ($element, $option) => {
+    let $component = makeComponentBase($element, $option);
     let $cd = new $ChangeDetector();
 
     let id = `a${$$uniqIndex++}`;
@@ -396,24 +416,10 @@ const $$makeComponent = ($element, $option) => {
         return r;
     };
 
-    let $component = {
-        $option,
-        $cd,
-        apply,
-        push: apply,
-        destroy: () => $cd.destroy(),
-        context: $option.$$ ? Object.assign({}, $option.$$.context) : {}
-    };
-
-    $component.$$render = (rootTemplate) => {
-        if ($option.afterElement) {
-            $element.parentNode.insertBefore(rootTemplate, $element.nextSibling);
-        } else {
-            $element.innerHTML = '';
-            $element.appendChild(rootTemplate);
-        }
-    };
-
+    $component.$cd = $cd;
+    $component.apply = apply;
+    $component.push = apply;
+    $component.destroy = () => $cd.destroy();
     return $component;
 };
 
@@ -547,7 +553,7 @@ const makeClassResolver = ($option, classMap, metaClass, mainName) => {
 const makeTree = (n, lvl) => {
     let p = null;
     while(n--) {
-        let c = Object.create(p);
+        let c = p ? Object.create(p) : {};
         lvl.push(c);
         p = c;
     }
@@ -600,6 +606,23 @@ const makeExternalProperty = ($component, name, getter, setter) => {
         get: getter,
         set: v => {setter(v); $component.apply();}
     });
+};
+
+
+const attachSlot = ($component, $cd, slotName, label, props, placeholder) => {
+    let $slot = $component.$option.slots && $component.$option.slots[slotName];
+    if($slot) {
+        let s = $slot(label, $component);
+        cd_onDestroy($cd, s.destroy);
+        for(let key in props) {
+            let setter = `set_${key}`;
+            if(s[setter]) {
+                let exp = props[key];
+                if(typeof exp == 'function') $watch($cd, exp, s[setter], {ro: true, cmp: $$compareDeep});
+                else s[setter](exp);
+            }
+        }
+    } else placeholder && placeholder();
 };
 
 function $$htmlBlock($cd, tag, fn) {
@@ -657,7 +680,7 @@ function $$ifBlock($cd, $parentElement, fn, tpl, build, tplElse, buildElse) {
     });
 }
 
-function $$awaitBlock($cd, label, fn, $$apply, build_main, build_then, build_catch, tpl_main, tpl_then, tpl_catch) {
+function $$awaitBlock($cd, label, fn, $$apply, build_main, tpl_main, build_then, tpl_then, build_catch, tpl_catch) {
     let promise, childCD;
     let first, last, status = 0;
 
@@ -798,4 +821,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeComponent, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, fire, firstChild, getFinalLabel, isArray, makeClassResolver, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $digest, $makeEmitter, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, attachSlot, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, fire, firstChild, getFinalLabel, isArray, makeClassResolver, makeComponent, makeComponentBase, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };
