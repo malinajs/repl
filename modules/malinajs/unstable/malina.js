@@ -857,6 +857,7 @@
             if(source.includes('$attributes')) this.require('$attributes');
             if(source.includes('$emit')) this.require('$emit');
             if(source.includes('$onDestroy')) this.require('$onDestroy');
+            if(source.includes('$onMount')) this.require('$onMount');
             if(source.includes('$context')) this.require('$context');
         } else {
             this.script.ast = {
@@ -886,7 +887,6 @@
 
         result.onMount = rootFunctions.onMount;
         result.onDestroy = rootFunctions.onDestroy;
-        let insertOnDestroy = !(rootFunctions.$onDestroy || rootVariables.$onDestroy);
 
         const funcTypes = {
             FunctionDeclaration: 1,
@@ -934,18 +934,20 @@
         }
         function transformNode(node) {
             if(funcTypes[node.type] && node.body.body && node.body.body.length) {
-                if(insertOnDestroy && node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
+                if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
                 for(let i=0; i<node.body.body.length; i++) {
                     let n = node.body.body[i];
                     if(!isNoCheck(n)) continue;
                     node.body.body.splice(i, 1);
                     return 'stop';
                 }
+                if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onMount') return;
                 if(!isInLoop(node)) {
                     node.body.body.unshift(applyBlock());
                 }
             } else if(node.type == 'ArrowFunctionExpression') {
-                if(insertOnDestroy && node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
+                if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
+                if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onMount') return;
                 if(node.body.type != 'BlockStatement' && !isInLoop(node)) {
                     node.body = {
                         type: 'BlockStatement',
@@ -1119,17 +1121,6 @@
         });
 
         let header = [];
-        header.push(rawNode(() => {
-            if(this.inuse.apply) {
-                return 'const $component = $runtime.makeComponent($element, $option);';
-            } else {
-                return 'const $component = $runtime.makeComponentBase($element, $option);';
-            }
-        }));
-        header.push(rawNode(() => {
-            if(this.inuse.apply) return 'const $$apply = $component.apply;';
-        }));
-
         if(lastPropIndex != null) {
             header.push(rawNode(() => {
                 if(this.inuse.$props) return 'const $props = $option.props;';
@@ -1164,6 +1155,15 @@
             if(this.inuse.$context) return 'const $context = $component.context;';
         }));
 
+
+        imports.push(rawNode(() => {
+            if(this.inuse.$onMount) return `import {$onMount} from 'malinajs/runtime.js';`;
+        }));
+
+        header.push(rawNode(() => {
+            if(this.inuse.$onDestroy) return `const $onDestroy = fn => $component._d.push(fn);`;
+        }));
+
         if(this.config.autoSubscribe) {
             result.importedNames.forEach(name => {
                 header.push(rawNode(`$runtime.autoSubscribe($component, ${name});`));
@@ -1173,11 +1173,6 @@
         if(!rootFunctions.$emit) {
             header.push(rawNode(() => {
                 if(this.inuse.$emit) return 'const $emit = $runtime.$makeEmitter($option);';
-            }));
-        }
-        if(insertOnDestroy) {
-            header.push(rawNode(() => {
-                if(this.inuse.$onDestroy) return 'function $onDestroy(fn) {$runtime.cd_onDestroy($component.$cd, fn);};';
             }));
         }
 
@@ -1225,8 +1220,26 @@
         Raw: function(node, state) {
             let value = typeof node.value == 'function' ? node.value() : node.value;
             if(value) {
-                if(Array.isArray(value)) value.forEach(v => state.write(v));
-                else state.write(value);
+                var indent = state.indent.repeat(state.indentLevel);
+                if(!Array.isArray(value)) value = [value];
+                value.forEach(v => {
+                    state.write(indent + v + state.lineEnd);
+                });
+            }
+        },
+        CustomBlock: function(node, state) {
+            var indent = state.indent.repeat(state.indentLevel);
+            var lineEnd = state.lineEnd;
+
+            var statements = node.body;
+            var length = statements.length;
+
+            for (var i = 0; i < length; i++) {
+                var statement = statements[i];
+
+                if(statement.type != 'Raw') state.write(indent);
+                this[statement.type](statement, state);
+                if(statement.type != 'Raw') state.write(lineEnd);
             }
         }
     }, astring.baseGenerator);
@@ -1235,8 +1248,7 @@
     xNode.init.ast = (ctx, node) => {
         if(!node.body.length) return;
         let code = astring.generate({
-            type: 'Program',
-            sourceType: 'module',
+            type: 'CustomBlock',
             body: node.body
         }, {generator, startingIndentLevel: ctx.indent});
         ctx.write(code);
@@ -1255,13 +1267,9 @@
             svg: bb.svg
         }));
         runtime.push(bb.source);
-        runtime.push(`$component.$$render($parentElement);`);
 
-        if(this.script.onMount) {
-            runtime.push(`if($option.noMount) $component.onMount = onMount;`);
-            runtime.push(`else $tick(onMount);`);
-        }
-        if(this.script.onDestroy) runtime.push(`$runtime.cd_onDestroy($cd, onDestroy);`);
+        if(this.script.onMount) runtime.push(`$runtime.$onMount(onMount);`);
+        if(this.script.onDestroy) runtime.push(`$runtime.$onDestroy(onDestroy);`);
         if(this.script.watchers.length) {
             this.script.watchers.forEach(n => runtime.push(n));
         }
@@ -1271,11 +1279,7 @@
             ctx.writeLine(`$runtime.addStyles('${this.css.id}', \`${this.Q(this.css.getContent())}\`);`);
         }));
 
-        runtime.push(xNode('raw:apply', ctx => {
-            if(this.inuse.apply) ctx.writeLine('$$apply();');
-        }));
-
-        runtime.push(`return $component;`);
+        runtime.push(`return $parentElement;`);
 
         this.module.body.push(runtime);
 
@@ -5036,6 +5040,7 @@
                 ctx.inuse[name] = true;
                 if(name == '$attributes') ctx.require('$props');
                 if(name == '$props') ctx.require('apply');
+                if(name == '$onDestroy') ctx.require('apply');
             },
             detectDependency,
 
@@ -5121,14 +5126,25 @@
         if(config.injectRuntime) result.push(config.injectRuntime);
         result.push(ctx.module.top);
 
-        result.push(xNode('exportDefault', ctx => {
+        result.push(xNode('block', {
+            name: config.name,
+            component: xNode('function', {
+                args: ['$component', '$option'],
+                inline: true,
+                arrow: true,
+                body: [ctx.module.head, ctx.module.code, ctx.module.body]
+            })
+        }, (ctx, n) => {
+            ctx.writeIndent();
             if(config.exportDefault) ctx.write('export default ');
-        }));
-        result.push(xNode('function', {
-            name: ctx.config.name,
-            args: ['$element', '$option = {}'],
-            inline: true,
-            body: [ctx.module.head, ctx.module.code, ctx.module.body]
+            else ctx.write(`const ${n.name} = `);
+
+            if(ctx._ctx.inuse.apply) {
+                ctx.write('$runtime.makeComponent(');
+                n.component.args.push('$$apply');
+            } else ctx.write('$runtime.makeComponentBase(');
+            ctx.build(n.component);
+            ctx.write(');\n');
         }));
 
         ctx.result = ctx.xBuild(result);
