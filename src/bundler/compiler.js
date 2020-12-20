@@ -24,12 +24,12 @@ export async function compile(code,name,treeshaked){
 async function treeshake(code){
     checkDependency('rollup');
     let bundle = await rollup.rollup({
-        input: "./made_by_AlexxNB.js",
+        input: "./app.js",
         external: ()=>true,
         plugins: [{
             name: 'plugin',
             async resolveId(id) {return id},
-            async load(id) {return id === './made_by_AlexxNB.js' ? code : ''}
+            async load(id) {return id === './app.js' ? code : ''}
         }],
         onwarn: ()=>{}
     });

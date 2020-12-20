@@ -51,6 +51,7 @@ function module_resolver_plugin(){
             if(localRg.test(id) && netRg.test(importer)) return new URL(id,addSlash(importer)).href;
 
             // MalinaJS Libs
+            if(id == '@malinajs') return `${DEPS_REPO}/malinajs/${malina ? malina.version : 'latest'}/runtime.js`;
             if(malinaRg.test(id)) return `${DEPS_REPO}/malinajs/${malina ? malina.version : 'latest'}/${id.slice(9)}`;
             
             // From UNPKG

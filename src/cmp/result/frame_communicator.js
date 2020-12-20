@@ -109,9 +109,9 @@ function frame_inner(){
 
     on('bundle',bundle => {
         if(!bundle) return;
-        const App = new Function(bundle+'; return Component.default;')();
+        const app = new Function(bundle+'; return Component.default;')();
         for(let style of document.querySelectorAll('style[id]')) style.parentNode.removeChild(style);
         if(window.app) window.app.destroy();
-        window.app = new App(document.body);
+        window.app = app(document.body);
     });
 }
