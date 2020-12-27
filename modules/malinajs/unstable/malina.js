@@ -1275,8 +1275,9 @@
         }
 
         runtime.push(xNode('addStyle', ctx => {
-            if(!this.css) return;
-            ctx.writeLine(`$runtime.addStyles('${this.css.id}', \`${this.Q(this.css.getContent())}\`);`);
+            if(!this.css.active()) return;
+            let style = this.css.getContent();
+            if(style) ctx.writeLine(`$runtime.addStyles('${this.css.id}', \`${this.Q(style)}\`);`);
         }));
 
         runtime.push(`return $parentElement;`);
@@ -1285,7 +1286,7 @@
 
         this.module.head.push(xNode('resolveClass', (ctx) => {
             if(!this.inuse.resolveClass) return;
-            if(this.css) {
+            if(this.css.active()) {
                 let {classMap, metaClass, main} = this.css.getClassMap();
                 if(main) main = `'${main}'`;
                 else main = 'null';
@@ -1388,13 +1389,13 @@
 
                     if(n.attributes.some(a => a.name.startsWith('{...'))) {
                         n.spreadObject = 'spread' + (this.uniqIndex++);
-                        if(this.css) n.classes.add(this.css.id);
+                        if(this.css.active()) n.classes.add(this.css.id);
                         this.require('apply');
                         binds.push(xNode('spread-to-element', {
                             el: el.bindName(),
                             name: n.spreadObject
                         }, (ctx, n) => {
-                            let css = this.css ? `, '${this.css.id}'` : '';
+                            let css = this.css.active() ? `, '${this.css.id}'` : '';
                             ctx.writeLine(`let ${n.name} = $runtime.$$makeSpreadObject($cd, ${n.el}${css});`);
                         }));
                     }
@@ -3348,13 +3349,13 @@
 
     function processCSS() {
         let styleNodes = this.styleNodes;
-        if(!styleNodes.length) return;
         const genId$1 = () => this.config.cssGenId ? this.config.cssGenId() : genId();
 
         let self = this.css = {id: genId$1(), externalMainName: null};
         let astList = [];
         let selectors = {};
         let removeBlocks = [];
+        let active = false;
 
         const selector2str = (sel) => {
             if(!sel.children) sel = {type: 'Selector', children: sel};
@@ -3382,6 +3383,7 @@
         styleNodes.forEach(transform);
 
         function transform(styleNode) {
+            active = true;
             let external = false;
             let globalBlock = false;
             styleNode.attributes.forEach(a => {
@@ -3523,13 +3525,22 @@
             return sobj && sobj.external;
         };
 
+        self.markAsExternal = (name) => {
+            let sobj = selectors['.' + name];
+            if(!sobj) selectors['.' + name] = sobj = {isSimple: true, cleanSelector: '.' + name};
+            if(!sobj.external) sobj.external = true;
+            active = true;
+        };
+
+        self.active = () => active;
+
         self.getClassMap = () => {
             let classMap = {};
             let metaClass = {};
             Object.values(selectors).forEach(sel => {
                 if(!sel.isSimple) return;
 
-                let className = sel.source[0].children[0].name;
+                let className = sel.source ? sel.source[0].children[0].name : sel.cleanSelector.substring(1);
                 if(sel.external) {
                     metaClass[className] = sel.external;
                 }
@@ -3929,21 +3940,24 @@
                 let exp, handler, isFunc, event = arg.shift();
                 assert(event);
 
+                if(event[0] == '@') {  // forwarding
+                    event = event.substring(1);
+                    assert(!value);
+                    passOption.events = true;
+                    boundEvent(event);
+                    head.push(xNode('forwardEvent', {
+                        event
+                    }, (ctx, data) => {
+                        if(_boundEvents[data.event] > 1) ctx.writeLine(`$runtime.$$addEventForComponent(events, '${data.event}', $option.events.${data.event});`);
+                        else ctx.writeLine(`events.${data.event} = $option.events.${data.event};`);
+                    }));
+                    return;
+                }
+
                 if(value) exp = unwrapExp(value);
                 else {
-                    if(!arg.length) {
-                        // forwarding
-                        passOption.events = true;
-                        boundEvent(event);
-                        head.push(xNode('forwardEvent', {
-                            event
-                        }, (ctx, data) => {
-                            if(_boundEvents[data.event] > 1) ctx.writeLine(`$runtime.$$addEventForComponent(events, '${data.event}', $option.events.${data.event});`);
-                            else ctx.writeLine(`events.${data.event} = $option.events.${data.event};`);
-                        }));
-                        return;
-                    }
-                    handler = arg.pop();
+                    if(arg.length) handler = arg.pop();
+                    else handler = event;
                 }
                 assert(arg.length == 0);
                 assert(!handler ^ !exp);
@@ -4193,20 +4207,24 @@
             let mod = '', opts = arg.split(/[\|:]/);
             let event = opts.shift();
             let exp, handler, funcName;
+
+            if(event[0] == '@') {  // forwarding
+                event = event.substring(1);
+                assert(!prop.value);
+                return {bind: xNode('forwardEvent', {
+                    event,
+                    el: element.bindName()
+                }, (ctx, data) => {
+                    ctx.writeLine(`$runtime.addEvent($cd, ${data.el}, "${data.event}", ($event) => {`
+                        + `$option.events.${data.event} && $option.events.${data.event}($event)});`);
+                })};
+            }
+
             if(prop.value) {
                 exp = getExpression();
             } else {
-                if(!opts.length) {
-                    // forwarding
-                    return {bind: xNode('forwardEvent', {
-                        event,
-                        el: element.bindName()
-                    }, (ctx, data) => {
-                        ctx.writeLine(`$runtime.addEvent($cd, ${data.el}, "${data.event}", ($event) => {`
-                            + `$option.events.${data.event} && $option.events.${data.event}($event)});`);
-                    })};
-                }
-                handler = opts.pop();
+                if(opts.length) handler = opts.pop();
+                else handler = event;
             }        assert(event, prop.content);
             assert(!handler ^ !exp, prop.content);
 
@@ -4357,12 +4375,8 @@
             return {bind: `$tick(() => { let $element=${element.bindName()}; ${exp}; $$apply(); });`};
         } else if(name == 'class') {
             if(node.__skipClass) return {};
-            if(!this.css) {
-                element.attributes.push({name: prop.name, value: prop.value});
-                return;
-            }
-
             node.__skipClass = true;
+
             let props = node.attributes.filter(a => a.name == 'class' || a.name.startsWith('class:'));
 
             let compound = props.some(prop => {
@@ -4373,7 +4387,13 @@
                 } else {
                     classes = [prop.name.slice(6)];
                 }
-                return classes.some(name => this.css.isExternalClass(name));
+                return classes.some(name => {
+                    if(this.css.isExternalClass(name)) return true;
+                    if(name[0] == '$') {
+                        this.css.markAsExternal(name.substring(1));
+                        return true;
+                    }
+                });
             });
 
             if(compound) {
@@ -4418,9 +4438,19 @@
                         bind.push(xNode('bindClass', {
                             el: element.bindName(),
                             className,
-                            exp
-                        }, (ctx, data) => {
-                            ctx.writeLine(`$runtime.bindClass($cd, ${data.el}, () => !!(${data.exp}), '${data.className}');`);
+                            exp,
+                            $element: exp.includes('$element')
+                        }, (ctx, n) => {
+                            if(n.$element) {
+                                ctx.writeLine(`{`);
+                                ctx.indent++;
+                                ctx.writeLine(`let $element = ${n.el};`);
+                            }
+                            ctx.writeLine(`$runtime.bindClass($cd, ${n.el}, () => !!(${n.exp}), '${n.className}');`);
+                            if(n.$element) {
+                                ctx.indent--;
+                                ctx.writeLine(`}`);
+                            }
                         }));
                     }
                 });
@@ -5006,7 +5036,7 @@
         config = Object.assign({
             name: 'widget',
             warning: (w) => console.warn('!', w.message),
-            exportDefault: true,  // TODO: fix
+            exportDefault: true,
             inlineTemplate: false,
             hideLabel: false,
             compact: true,
@@ -5106,7 +5136,7 @@
 
         await hook(ctx, 'css:before');
         ctx.processCSS();
-        if(ctx.css) ctx.css.process(ctx.DOM);
+        if(ctx.css.active()) ctx.css.process(ctx.DOM);
         await hook(ctx, 'css');
 
         await hook(ctx, 'runtime:before');
