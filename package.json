@@ -12,7 +12,7 @@
         "acorn": "^7.3.1",
         "astring": "^1.4.3",
         "cjs2es": "^1.1.0",
-        "codejar": "^3.1.0",
+        "codejar": "^3.2.3",
         "fs-extra": "^9.0.1",
         "malinajs": "git+https://github.com/malinajs/malinajs.git",
         "node-watch": "^0.6.4",
