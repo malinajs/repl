@@ -10,7 +10,8 @@ export default function malina(option = {}) {
 
             let opts = Object.assign({
                 exportDefault: true,
-                name: id.match(/([^/]+).(html|xht)$/)[1]
+                name: id.match(/([^/]+).(html|xht)$/)[1],
+                path: id
             }, option);
             try {
                 result = await malinajs.compile(code, opts);

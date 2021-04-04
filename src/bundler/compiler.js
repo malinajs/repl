@@ -9,6 +9,7 @@ export async function compile(code,name,treeshaked){
         inlineTemplate: true,
         autoSubscribe: true,
         name,
+        localConfig: false,
         injectRuntime: treeshaked ? null : '$runtime.configure({onerror: (e) => {window.malina_onerror && malina_onerror(e)}})'
     }
     
