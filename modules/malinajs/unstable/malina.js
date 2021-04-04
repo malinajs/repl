@@ -429,7 +429,6 @@
             let attributes = [];
             let begin = true;
             let name = '';
-            let bind = 0;
             let eq, attr_start;
             let elArg = null;
 
@@ -471,15 +470,9 @@
                     continue;
                 }
                 if(a == '{') {
-                    bind++;
-                    continue;
-                }
-                if(bind) {
-                    if(a == '}') {
-                        bind--;
-                        if(bind > 0) continue;
-                        flush(1);
-                    }
+                    index--;
+                    readBinding();
+                    flush(1);
                     continue;
                 }
                 if(a == '}') error('Wrong attr');
@@ -561,19 +554,30 @@
         const readBinding = () => {
             let start = index;
             assert(readNext() === '{', 'Bind error');
-            let q;
+            let a = null, p, q;
             let bkt = 1;
 
             while(true) {
-                let a = readNext();
+                p = a;
+                a = readNext();
 
                 if(q) {
                     if(a != q) continue;
+                    if(p == '\\') continue;
                     q = null;
                     continue
                 }
-                if(a == '"' || a == '\'' || a == '`') {
+                if(a == '"' || a == "'" || a == '`') {
                     q = a;
+                    continue;
+                }
+                if(a == '*' && p == '/') {
+                    // comment block
+                    while(true) {
+                        p = a;
+                        a = readNext();
+                        if(a == '/' && p == '*') break;
+                    }
                     continue;
                 }
 
@@ -5033,6 +5037,8 @@
 
 
     async function compile(source, config = {}) {
+        if(config.localConfig !== false) config = loadConfig(config.path, config);
+
         config = Object.assign({
             name: 'widget',
             warning: (w) => console.warn('!', w.message),
@@ -5206,6 +5212,32 @@
                 if(p.type == 'exp') check(p.value);
             }
         }
+    }
+
+
+    function loadConfig(filename, option) {
+        const fs = require('fs');
+        let result = Object.assign({}, option);
+        if(result.plugins) result.plugins = result.plugins.slice();
+
+        let localConfig;
+        let parts = filename.split(/[\/\\]/);
+        for(let i=parts.length-1;i>1;i--) {
+            let local = parts.slice(0, i).join('/') + '/malina.config.js';
+            if(fs.existsSync(local)) {
+                localConfig = local;
+                break;
+            }
+        }
+
+        if(localConfig) {
+            const confFn = require(localConfig);
+            result = confFn(result, filename);
+        }
+        if(!result.path) result.path = filename;
+        if(!result.name) result.name = filename.match(/([^/\\]+)\.\w+$/)[1];
+
+        return result;
     }
 
     exports.compile = compile;
