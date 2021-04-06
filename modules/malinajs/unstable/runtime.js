@@ -651,6 +651,9 @@ const attachSlot = ($component, $cd, slotName, label, props, placeholder) => {
     } else placeholder && placeholder();
 };
 
+
+const eachDefaultKey = (item, index, array) => typeof array[0] === 'object' ? item : index;
+
 function $$htmlBlock($cd, tag, fn) {
     let lastElement;
     let create = (html) => {
@@ -771,7 +774,7 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
         if(mapping.size) {
             let ctx, count = 0;
             for(let i=0;i<array.length;i++) {
-                ctx = mapping.get(getKey(array[i], i));
+                ctx = mapping.get(getKey(array[i], i, array));
                 if(ctx) {
                     ctx.a = true;
                     count++;
@@ -804,14 +807,14 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
             if(next_ctx) {
                 ctx = next_ctx;
                 next_ctx = null;
-            } else ctx = mapping.get(getKey(item, i));
+            } else ctx = mapping.get(getKey(item, i, array));
             if(ctx) {
                 nextEl = i == 0 && onlyChild ? parentNode[firstChild] : prevNode.nextSibling;
                 if(nextEl != ctx.first) {
                     let insert = true;
 
-                    if(tplLength == 1 && (i + 1 < array.length) && prevNode.nextSibling) {
-                        next_ctx = mapping.get(getKey(array[i + 1], i + 1));
+                    if(tplLength == 1 && (i + 1 < array.length) && prevNode && prevNode.nextSibling) {
+                        next_ctx = mapping.get(getKey(array[i + 1], i + 1, array));
                         if(prevNode.nextSibling.nextSibling === next_ctx.first) {
                             parentNode.replaceChild(ctx.first, prevNode.nextSibling);
                             insert = false;
@@ -819,7 +822,7 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
                     }
 
                     if(insert) {
-                        let insertBefore = prevNode.nextSibling;
+                        let insertBefore = prevNode && prevNode.nextSibling;
                         let next, el = ctx.first;
                         while(el) {
                             next = el.nextSibling;
@@ -840,11 +843,11 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
                 parentNode.insertBefore(tpl, prevNode && prevNode.nextSibling);
             }
             prevNode = ctx.last;
-            newMapping.set(getKey(item, i), ctx);
+            newMapping.set(getKey(item, i, array), ctx);
         }        lastNode = prevNode;
         mapping.clear();
         mapping = newMapping;
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $context, $digest, $makeEmitter, $onDestroy, $onMount, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, attachSlot, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, current_component, fire, firstChild, getFinalLabel, isArray, makeClassResolver, makeComponent, makeComponentBase, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $context, $digest, $makeEmitter, $onDestroy, $onMount, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, attachSlot, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, current_component, eachDefaultKey, fire, firstChild, getFinalLabel, isArray, makeClassResolver, makeComponent, makeComponentBase, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };
