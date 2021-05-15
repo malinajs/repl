@@ -38,7 +38,7 @@ function addEvent(cd, el, event, callback) {
     });
 }
 function cd_onDestroy(cd, fn) {
-    cd.destroyList.push(fn);
+    if(fn) cd.destroyList.push(fn);
 }
 function $$removeItem(array, item) {
     let i = array.indexOf(item);
@@ -655,8 +655,8 @@ const attachSlot = ($component, $cd, slotName, label, props, placeholder) => {
 const eachDefaultKey = (item, index, array) => typeof array[0] === 'object' ? item : index;
 
 
-const attachNamespace = ($component, $cd, name, el) => {
-    let fn = $component.$option.namespace && $component.$option.namespace[name];
+const attachAnchor = ($component, $cd, name, el) => {
+    let fn = $component.$option.anchor && $component.$option.anchor[name];
     if(fn) cd_onDestroy($cd, fn(el));
 };
 
@@ -856,4 +856,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $context, $digest, $makeEmitter, $onDestroy, $onMount, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, attachNamespace, attachSlot, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, current_component, eachDefaultKey, fire, firstChild, getFinalLabel, isArray, makeClassResolver, makeComponent, makeComponentBase, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $context, $digest, $makeEmitter, $onDestroy, $onMount, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, attachAnchor, attachSlot, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, current_component, eachDefaultKey, fire, firstChild, getFinalLabel, isArray, makeClassResolver, makeComponent, makeComponentBase, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };

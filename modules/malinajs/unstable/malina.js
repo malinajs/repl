@@ -81,6 +81,23 @@
         if(this.script.rootVariables[root] || this.script.rootFunctions[root]) return true;
         this.config.warning({message:'No name: ' + name});
     }
+
+    function trimEmptyNodes(srcNodes) {
+        let nodes = srcNodes.slice();
+        while(nodes.length) {
+            let n = nodes[0];
+            if(n.type == 'text' && !n.value.trim()) nodes.shift();
+            else break;
+        }
+        while(nodes.length) {
+            let n = last(nodes);
+            if(n.type == 'text' && !n.value.trim()) nodes.pop();
+            else break;
+        }
+        return nodes;
+    }
+
+
     function compactDOM() {
         let data = this.DOM;
         const details = {
@@ -899,7 +916,7 @@
         };
 
         const applyBlock = () => {
-            this.require('apply');
+            this.require('apply', '$cd');
             return {
                 _apply: true,
                 type: 'ExpressionStatement',
@@ -914,7 +931,7 @@
         };
 
         const returnApplyBlock = (a) => {
-            this.require('apply');
+            this.require('apply', '$cd');
             return {
                 _apply: true,
                 callee: {
@@ -1261,7 +1278,7 @@
     function buildRuntime() {
         let runtime = xNode('block', {scope: true});
         runtime.push(xNode((ctx) => {
-            if(this.inuse.apply) ctx.writeLine('let $cd = $component.$cd;');
+            if(this.inuse.$cd) ctx.writeLine('let $cd = $component.$cd;');
         }));
 
         let bb = this.buildBlock(this.DOM, {inline: true});
@@ -1316,6 +1333,7 @@
         let rootTemplate = xNode('node', {inline: true, _ctx: this});
         let binds = xNode('block');
         let result = {};
+        let inuse = Object.assign({}, this.inuse);
 
         const go = (data, isRoot, tpl) => {
             let body = data.body.filter(n => {
@@ -1349,11 +1367,12 @@
                         let t = tpl.push(' ');
                         const pe = this.parseText(n.value);
                         this.detectDependency(pe);
+                        this.require('optional_$cd');
                         binds.push(xNode('bindText', {
                             el: t.bindName(),
                             exp: pe.result
                         }, (ctx, n) => {
-                            if(this.inuse.apply) ctx.writeLine(`$runtime.bindText($cd, ${n.el}, () => ${n.exp});`);
+                            if(this.inuse.$cd) ctx.writeLine(`$runtime.bindText($cd, ${n.el}, () => ${n.exp});`);
                             else ctx.writeLine(`${n.el}.textContent = ${n.exp};`);
                         }));
 
@@ -1395,7 +1414,7 @@
                     if(n.attributes.some(a => a.name.startsWith('{...'))) {
                         n.spreadObject = 'spread' + (this.uniqIndex++);
                         if(this.css.active()) n.classes.add(this.css.id);
-                        this.require('apply');
+                        this.require('apply', '$cd');
                         binds.push(xNode('spread-to-element', {
                             el: el.bindName(),
                             name: n.spreadObject
@@ -1533,6 +1552,10 @@
         } else {
             result.name = '$runtime.noop';
             result.source = null;
+        }
+        result.inuse = {};
+        for(let k in this.inuse) {
+            result.inuse[k] = this.inuse[k] - (inuse[k] || 0);
         }
         return result;
     }
@@ -3726,8 +3749,7 @@
 
         let passOption = {};
 
-
-        this.require('apply');
+        this.require('apply', '$cd');
         let head = xNode('block');
         let body = xNode('block');
 
@@ -3771,10 +3793,10 @@
             ctx.writeLine(`let $class = {}`);
         }));
 
-        head.push(xNode('namespace', {
-            $cond: () => passOption.namespace
+        head.push(xNode('anchor', {
+            $cond: () => passOption.anchor
         }, ctx => {
-            ctx.writeLine('let namespace = {};');
+            ctx.writeLine('let anchor = {};');
         }));
 
         let _boundEvents = {};
@@ -3785,14 +3807,14 @@
 
         if(node.body && node.body.length) {
             let slots = {};
-            let namespaces = [];
+            let anchors = [];
             let defaultSlot = {
                 name: 'default',
                 type: 'slot'
             };
-            defaultSlot.body = node.body.filter(n => {
+            defaultSlot.body = trimEmptyNodes(node.body.filter(n => {
                 if(n.type == 'node' && n.name[0] == '^') {
-                    namespaces.push(n);
+                    anchors.push(n);
                     return false;
                 }
                 if(n.type != 'slot') return true;
@@ -3801,10 +3823,9 @@
                 else n.name = 'default';
                 assert(!slots[n], 'double slot');
                 slots[n.name] = n;
-            });
+            }));
 
-            if(!slots.default) slots.default = defaultSlot;
-            // TODO: (else) check if defaultSlot is empty
+            if(!slots.default && defaultSlot.body.length) slots.default = defaultSlot;
 
             Object.values(slots).forEach(slot => {
                 assert(isSimpleName(slot.name));
@@ -3844,26 +3865,33 @@
                     bind: block.source,
 
                     props,
-                    setters
+                    setters,
+                    $cd: block.inuse.$cd,
+                    optional_$cd: block.inuse.optional_$cd
                 }, (ctx, data) => {
+                    let $cd = data.$cd || data.optional_$cd && this.inuse.$cd;
                     ctx.writeLine(`slots.${data.name} = function($label, $component) {`);
                     ctx.goIndent(() => {
-                        ctx.writeLine(`let $childCD = $cd.new();`);
+                        if($cd) ctx.writeLine(`let $childCD = $cd.new();`);
                         ctx.build(data.template);
                         ctx.build(data.props);
                         if(data.bind) {
-                            ctx.writeLine(`{`);
-                            ctx.goIndent(() => {
-                                ctx.writeLine(`let $cd = $childCD;`);
+                            if($cd) {
+                                ctx.writeLine(`{`);
+                                ctx.goIndent(() => {
+                                    ctx.writeLine(`let $cd = $childCD;`);
+                                    ctx.build(data.bind);
+                                });
+                                ctx.writeLine(`}`);
+                            } else {
                                 ctx.build(data.bind);
-                            });
-                            ctx.writeLine(`}`);
+                            }
                         }
-                        
+
                         ctx.writeLine(`$label.parentNode.insertBefore($parentElement, $label.nextSibling);`);
                         ctx.writeLine(`return {`);
                         ctx.goIndent(() => {
-                            ctx.writeLine(`destroy: () => {$childCD.destroy();}`);
+                            if($cd) ctx.writeLine(`destroy: () => {$childCD.destroy();}`);
                             ctx.build(data.setters);
                         });
                         ctx.writeLine(`};`);
@@ -3872,25 +3900,31 @@
                 }));
             });
 
-            namespaces.forEach(n => {
-                passOption.namespace = true;
+            anchors.forEach(n => {
+                passOption.anchor = true;
                 let block = this.buildBlock({body: [n]}, {inline: true, oneElement: 'el', bindAttributes: true});
-                let name = n.name.slice(1);
-                head.push(xNode('namespace', {
-                    name: name || 'default',
-                    source: block.source
-                }, (ctx, data) => {
-                    ctx.writeLine(`namespace.${data.name} = function(el) {`);
-                    ctx.goIndent(() => {
-                        ctx.writeLine(`let $childCD = $cd.new();`);
-                        ctx.writeLine(`{`);
+                let name = n.name.slice(1) || 'default';
+                assert(isSimpleName(name));
+                head.push(xNode('anchor', {
+                    name,
+                    source: block.source,
+                    $cd: block.inuse.$cd
+                }, (ctx, n) => {
+                    ctx.writeLine(`anchor.${n.name} = (el) => {`);
+                    if(n.$cd) {
                         ctx.goIndent(() => {
-                            ctx.writeLine(`let $cd = $childCD;`);
-                            ctx.build(data.source);
+                            ctx.writeLine(`let $childCD = $cd.new();`);
+                            ctx.writeLine(`{`);
+                            ctx.goIndent(() => {
+                                ctx.writeLine(`let $cd = $childCD;`);
+                                ctx.build(n.source);
+                            });
+                            ctx.writeLine(`}`);
+                            ctx.writeLine(`return () => {$childCD.destroy();}`);
                         });
-                        ctx.writeLine(`}`);
-                        ctx.writeLine(`return () => {$childCD.destroy();}`);
-                    });
+                    } else {
+                        ctx.build(n.source);
+                    }
                     ctx.writeLine(`}`);
                 }));
             });
@@ -4133,7 +4167,7 @@
         if(forwardAllEvents || passOption.events) options.push('events');
         if(passOption.slots) options.push('slots');
         if(passOption.class) options.push('$class');
-        if(passOption.namespace) options.push('namespace');
+        if(passOption.anchor) options.push('anchor');
 
         let result = xNode('component', {
             el: element.bindName(),
@@ -4318,7 +4352,7 @@
                 }        }
 
             if(funcName) {
-                this.require('apply');
+                this.require('apply', '$cd');
                 let bind = xNode('bindEvent', {
                     event,
                     mod,
@@ -4341,7 +4375,7 @@
                 });
                 return {bind};
             } else {
-                this.require('apply');
+                this.require('apply', '$cd');
                 const bind = xNode('bindEvent', {
                     el: element.bindName(),
                     event,
@@ -4363,7 +4397,7 @@
                 return {bind};
             }
         } else if(name == 'bind') {
-            this.require('apply');
+            this.require('apply', '$cd');
             let exp;
             arg = arg.split(/[\:\|]/);
             let attr = arg.shift();
@@ -4402,7 +4436,7 @@
                 ctx.writeLine(`$runtime.bindInput($cd, ${n.el}, '${attr}', () => ${exp}, ${argName} => {${exp} = ${argName}; $$apply();});`);
             })};
         } else if(name == 'style' && arg) {
-            this.require('apply');
+            this.require('apply', '$cd');
             let styleName = arg;
             let exp = prop.value ? getExpression() : styleName;
             this.detectDependency(exp);
@@ -4421,7 +4455,7 @@
                 })]
             })};
         } else if(name == 'use') {
-            this.require('apply');
+            this.require('apply', '$cd');
             if(arg) {
                 assert(isSimpleName(arg), 'Wrong name: ' + arg);
                 this.checkRootName(arg);
@@ -4456,7 +4490,7 @@
             });
 
             if(compound) {
-                this.require('apply');
+                this.require('apply', '$cd');
                 let defaultHash = '';
                 if(node.classes.has(this.css.id)) defaultHash = this.css.id;
                 node.classes.clear();
@@ -4489,7 +4523,7 @@
                             node.classes.add(name);
                         });
                     } else {
-                        this.require('apply');
+                        this.require('apply', '$cd');
                         let className = prop.name.slice(6);
                         assert(className);
                         let exp = prop.value ? unwrapExp(prop.value) : className;
@@ -4516,16 +4550,16 @@
                 return {bind};
             }
         } else if(name[0] == '^') {
-            this.require('apply');
-            return {bind: xNode('bindNamespace', {
+            this.require('$cd');
+            return {bind: xNode('bindAnchor', {
                 name: name.slice(1) || 'default',
                 el: element.bindName()
             }, (ctx, n) => {
-                ctx.writeLine(`$runtime.attachNamespace($component, $cd, '${n.name}', ${n.el});`);
+                ctx.writeLine(`$runtime.attachAnchor($component, $cd, '${n.name}', ${n.el});`);
             })};
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
-                this.require('apply');
+                this.require('apply', '$cd');
                 const parsed = this.parseText(prop.value);
                 this.detectDependency(parsed);
                 let exp = parsed.result;
@@ -4586,7 +4620,7 @@
         let exp = r[1];
         assert(exp, 'Wrong binding: ' + data.value);
         this.detectDependency(exp);
-        this.require('apply');
+        this.require('apply', '$cd');
 
         let mainBlock, elseBlock, mainTpl, elseTpl;
 
@@ -4656,17 +4690,7 @@
 
     function makeEachBlock(data, option) {
 
-        let nodeItems = data.body;
-        while(nodeItems.length) {
-            let n = nodeItems[0];
-            if(n.type == 'text' && !n.value.trim()) nodeItems.shift();
-            else break;
-        }
-        while(nodeItems.length) {
-            let n = nodeItems[nodeItems.length - 1];
-            if(n.type == 'text' && !n.value.trim()) nodeItems.pop();
-            else break;
-        }
+        let nodeItems = trimEmptyNodes(data.body);
         if(!nodeItems.length) nodeItems = [data.body[0]];
 
         let itemData = this.buildBlock({body: nodeItems}, {protectLastTag: true, inline: true});
@@ -4767,7 +4791,7 @@
             svg: itemData.svg
         });
 
-        this.require('apply');
+        this.require('apply', '$cd');
         const source = xNode('each', {
             keyFunction,
             template,
@@ -4842,7 +4866,7 @@
         }
 
         this.detectDependency(exp);
-        this.require('apply');
+        this.require('apply', '$cd');
 
         return xNode('await', {
             el: element.bindName(),
@@ -4924,7 +4948,7 @@
             });
         }
 
-        this.require('apply');
+        this.require('apply', '$cd');
 
         return xNode('slot', {
             name: slotName,
@@ -5139,11 +5163,14 @@
             checkRootName: checkRootName,
 
             inuse: {},
-            require: name => {
-                ctx.inuse[name] = true;
-                if(name == '$attributes') ctx.require('$props');
-                if(name == '$props') ctx.require('apply');
-                if(name == '$onDestroy') ctx.require('apply');
+            require: function() {
+                for(let name of arguments) {
+                    if(ctx.inuse[name] == null) ctx.inuse[name] = 0;
+                    ctx.inuse[name]++;
+                    if(name == '$attributes') ctx.require('$props');
+                    if(name == '$props') ctx.require('apply', '$cd');
+                    if(name == '$onDestroy') ctx.require('apply', '$cd');
+                }
             },
             detectDependency,
 
@@ -5242,7 +5269,7 @@
             if(config.exportDefault) ctx.write('export default ');
             else ctx.write(`const ${n.name} = `);
 
-            if(ctx._ctx.inuse.apply) {
+            if(ctx._ctx.inuse.apply || ctx._ctx.inuse.$cd) {
                 ctx.write('$runtime.makeComponent(');
                 n.component.args.push('$$apply');
             } else ctx.write('$runtime.makeComponentBase(');
