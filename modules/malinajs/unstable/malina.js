@@ -500,7 +500,7 @@
                     }
                 }
                 if(begin) {
-                    if(a.match(/[\da-zA-Z]/)) {
+                    if(a.match(/[\da-zA-Z^]/)) {
                         name += a;
                         continue;
                     } else {
@@ -1389,6 +1389,7 @@
                     }
 
                     let el = xNode('node', {name: n.name});
+                    if(option.oneElement) el._boundName = option.oneElement;
                     tpl.push(el);
 
                     if(n.attributes.some(a => a.name.startsWith('{...'))) {
@@ -1408,6 +1409,24 @@
                         if(b && b.bind) binds.push(b.bind);
                     });
                     n.classes.forEach(n => el.class.add(n));
+
+                    if(option.bindAttributes && (el.attributes.length || el.class.size)) {
+                        el.bindName();
+                        binds.push(xNode('bindAttributes', {el}, (ctx, n) => {
+                            let elName = n.el.bindName();
+                            n.el.attributes.forEach(a => {
+                                ctx.writeLine(`${elName}.setAttribute('${a.name}', \`${this.Q(a.value)}\`);`);
+                            });
+                        }));
+                        binds.push(xNode('bindClasses', {el}, (ctx, n) => {
+                            let el = n.el;
+                            let elName = el.bindName();
+                            if(el.class.size) {
+                                let className = Array.from(el.class.values()).join(' ');
+                                ctx.writeLine(`${elName}.className += ' ${className}';`);
+                            }
+                        }));
+                    }
 
                     el.voidTag = n.voidTag;
                     if(!n.closedTag) {
@@ -1474,22 +1493,24 @@
 
         if(!binds.empty()) {
             const innerBlock = xNode('block');
-            innerBlock.push(xNode('bindNodes', ctx => {
-
-                const gen = (parent, parentName) => {
-                    for(let i=0; i < parent.children.length; i++) {
-                        let node = parent.children[i];
-                        let diff = i == 0 ? '[$runtime.firstChild]' : `[$runtime.childNodes][${i}]`;
-
-                        if(node._boundName) ctx.writeLine(`let ${node._boundName} = ${parentName() + diff};`);
-                        if(node.children) gen(node, () => {
-                            if(node._boundName) return node._boundName;
-                            return parentName() + diff;
-                        });
-                    }
-                };
-                gen(rootTemplate, () => '$parentElement');
-            }));
+            if(!option.oneElement) {
+                innerBlock.push(xNode('bindNodes', ctx => {
+        
+                    const gen = (parent, parentName) => {
+                        for(let i=0; i < parent.children.length; i++) {
+                            let node = parent.children[i];
+                            let diff = i == 0 ? '[$runtime.firstChild]' : `[$runtime.childNodes][${i}]`;
+        
+                            if(node._boundName) ctx.writeLine(`let ${node._boundName} = ${parentName() + diff};`);
+                            if(node.children) gen(node, () => {
+                                if(node._boundName) return node._boundName;
+                                return parentName() + diff;
+                            });
+                        }
+                    };
+                    gen(rootTemplate, () => '$parentElement');
+                }));
+            }
             innerBlock.push(binds);
 
             if(option.inline) {
@@ -3750,20 +3771,30 @@
             ctx.writeLine(`let $class = {}`);
         }));
 
+        head.push(xNode('namespace', {
+            $cond: () => passOption.namespace
+        }, ctx => {
+            ctx.writeLine('let namespace = {};');
+        }));
+
         let _boundEvents = {};
         const boundEvent = (name) => {
             if(!_boundEvents[name]) _boundEvents[name] = forwardAllEvents ? 1 : 0;
             _boundEvents[name]++;
         };
 
-
         if(node.body && node.body.length) {
             let slots = {};
+            let namespaces = [];
             let defaultSlot = {
                 name: 'default',
                 type: 'slot'
             };
             defaultSlot.body = node.body.filter(n => {
+                if(n.type == 'node' && n.name[0] == '^') {
+                    namespaces.push(n);
+                    return false;
+                }
                 if(n.type != 'slot') return true;
                 let rx = n.value.match(/^\#slot:(\S+)/);
                 if(rx) n.name = rx[1];
@@ -3836,6 +3867,29 @@
                             ctx.build(data.setters);
                         });
                         ctx.writeLine(`};`);
+                    });
+                    ctx.writeLine(`}`);
+                }));
+            });
+
+            namespaces.forEach(n => {
+                passOption.namespace = true;
+                let block = this.buildBlock({body: [n]}, {inline: true, oneElement: 'el', bindAttributes: true});
+                let name = n.name.slice(1);
+                head.push(xNode('namespace', {
+                    name: name || 'default',
+                    source: block.source
+                }, (ctx, data) => {
+                    ctx.writeLine(`namespace.${data.name} = function(el) {`);
+                    ctx.goIndent(() => {
+                        ctx.writeLine(`let $childCD = $cd.new();`);
+                        ctx.writeLine(`{`);
+                        ctx.goIndent(() => {
+                            ctx.writeLine(`let $cd = $childCD;`);
+                            ctx.build(data.source);
+                        });
+                        ctx.writeLine(`}`);
+                        ctx.writeLine(`return () => {$childCD.destroy();}`);
                     });
                     ctx.writeLine(`}`);
                 }));
@@ -4079,6 +4133,7 @@
         if(forwardAllEvents || passOption.events) options.push('events');
         if(passOption.slots) options.push('slots');
         if(passOption.class) options.push('$class');
+        if(passOption.namespace) options.push('namespace');
 
         let result = xNode('component', {
             el: element.bindName(),
@@ -4460,6 +4515,14 @@
                 });
                 return {bind};
             }
+        } else if(name[0] == '^') {
+            this.require('apply');
+            return {bind: xNode('bindNamespace', {
+                name: name.slice(1) || 'default',
+                el: element.bindName()
+            }, (ctx, n) => {
+                ctx.writeLine(`$runtime.attachNamespace($component, $cd, '${n.name}', ${n.el});`);
+            })};
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
                 this.require('apply');
