@@ -14,7 +14,8 @@ export default function malina(option = {}) {
                 path: id
             }, option);
             try {
-                result = await malinajs.compile(code, opts);
+                let ctx = await malinajs.compile(code, opts);
+                result = ctx.result;
             } catch (e) {
                 if(e.details) console.log(e.details);
                 throw e;
