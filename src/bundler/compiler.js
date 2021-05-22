@@ -14,7 +14,8 @@ export async function compile(code,name,treeshaked){
     }
     
     try {
-        const result =  await malina.compile(code, opts);
+        let result =  await malina.compile(code, opts);
+        if(result.result) result = result.result;
         return treeshaked ? await treeshake(result) : result;
     } catch (e) {
         console.error(e);
