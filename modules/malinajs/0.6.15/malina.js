@@ -5165,7 +5165,7 @@
         return {source};
     }
 
-    const version = '0.6.16';
+    const version = '0.6.15';
 
 
     async function compile(source, config = {}) {
@@ -5322,7 +5322,8 @@
         ctx.result = ctx.xBuild(result);
 
         await hook(ctx, 'build');
-        return ctx;
+        if(config._get_ctx) return ctx;
+        return ctx.result;
     }
 
     async function hook(ctx, name) {

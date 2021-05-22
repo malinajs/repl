@@ -461,8 +461,8 @@ const callComponent = (cd, component, el, option) => {
 };
 
 const autoSubscribe = (component, obj) => {
-    if(obj.subscribe) {
-        let unsub = obj.subscribe(component.apply);
+    if(obj && 'value' in obj && obj.subscribe) {
+        let unsub = obj.subscribe(component.$apply);
         if(typeof unsub == 'function') cd_onDestroy(component.$cd, unsub);
     }
 };

@@ -18,6 +18,12 @@
         if(!x) throw info || (new Error('AssertError'));
     }
 
+    function toCamelCase(name) {
+        assert(name[name.length - 1] !== '-', 'Wrong name');
+        return name.replace(/(\-\w)/g, function(part) {
+            return part[1].toUpperCase();
+        });
+    }
     function Q(s) {
         return s.replace(/`/g, '\\`');
     }
@@ -1298,7 +1304,14 @@
         runtime.push(xNode('addStyle', ctx => {
             if(!this.css.active()) return;
             let style = this.css.getContent();
-            if(style) ctx.writeLine(`$runtime.addStyles('${this.css.id}', \`${this.Q(style)}\`);`);
+            if(!style) return;
+            let config = ctx._ctx.config;
+            if(config.css) {
+                if(typeof config.css == 'function') config.css(style, config.path, ctx._ctx, ctx);
+                else ctx.writeLine(`$runtime.addStyles('${this.css.id}', \`${this.Q(style)}\`);`);
+            } else {
+                ctx._ctx.css.result = style;
+            }
         }));
 
         runtime.push(`return $parentElement;`);
@@ -1423,9 +1436,13 @@
                             ctx.writeLine(`let ${n.name} = $runtime.$$makeSpreadObject($cd, ${n.el}${css});`);
                         }));
                     }
+                    let bindTail = [];
                     n.attributes.forEach(p => {
                         let b = this.bindProp(p, n, el);
-                        if(b && b.bind) binds.push(b.bind);
+                        if(b) {
+                            if(b.bind) binds.push(b.bind);
+                            if(b.bindTail) bindTail.push(b.bindTail);
+                        }
                     });
                     n.classes.forEach(n => el.class.add(n));
 
@@ -1446,6 +1463,7 @@
                             }
                         }));
                     }
+                    bindTail.forEach(b => binds.push(b));
 
                     el.voidTag = n.voidTag;
                     if(!n.closedTag) {
@@ -4273,11 +4291,13 @@
             } else name = prop.name;
         }
 
-        function getExpression() {
+        const isExpression = s => s[0] == '{' && last(s) == '}';
+
+        const getExpression = () => {
             let exp = prop.value.match(/^\{(.*)\}$/)[1];
             assert(exp, prop.content);
             return exp;
-        }
+        };
 
         if(name[0] == '#') {
             let target = name.substring(1);
@@ -4436,11 +4456,32 @@
                 ctx.writeLine(`$runtime.bindInput($cd, ${n.el}, '${attr}', () => ${exp}, ${argName} => {${exp} = ${argName}; $$apply();});`);
             })};
         } else if(name == 'style' && arg) {
-            this.require('apply', '$cd');
-            let styleName = arg;
-            let exp = prop.value ? getExpression() : styleName;
-            this.detectDependency(exp);
+            let styleName = toCamelCase(arg);
+            let exp;
+            if(prop.value) {
+                if(isExpression(prop.value)) {
+                    exp = getExpression();
+                    this.detectDependency(exp);
+                } else {
+                    if(prop.value.includes('{')) {
+                        const parsed = this.parseText(prop.value);
+                        this.detectDependency(parsed);
+                        exp = parsed.result;
+                    } else {
+                        return {bind: xNode('staticStyle', {
+                            el: element.bindName(),
+                            name: styleName,
+                            value: prop.value
+                        }, (ctx, n) => {
+                            ctx.writeLine(`${n.el}.style.${n.name} = \`${this.Q(n.value)}\`;`);
+                        })};
+                    }
+                }
+            } else {
+                exp = styleName;
+            }
 
+            this.require('$cd');
             let hasElement = exp.includes('$element');
             return {bind: xNode('block', {
                 scope: hasElement,
@@ -4551,7 +4592,7 @@
             }
         } else if(name[0] == '^') {
             this.require('$cd');
-            return {bind: xNode('bindAnchor', {
+            return {bindTail: xNode('bindAnchor', {
                 name: name.slice(1) || 'default',
                 el: element.bindName()
             }, (ctx, n) => {
@@ -5128,7 +5169,7 @@
 
 
     async function compile(source, config = {}) {
-        if(config.localConfig !== false) config = loadConfig(config.path, config);
+        if(config.localConfig !== false && config.path) config = loadConfig(config.path, config);
 
         config = Object.assign({
             name: 'widget',
@@ -5140,7 +5181,8 @@
             autoSubscribe: true,
             cssGenId: null,
             plugins: [],
-            debug: true
+            debug: true,
+            css: true
         }, config);
 
         const ctx = {
@@ -5280,7 +5322,7 @@
         ctx.result = ctx.xBuild(result);
 
         await hook(ctx, 'build');
-        return ctx.result;
+        return ctx;
     }
 
     async function hook(ctx, name) {
