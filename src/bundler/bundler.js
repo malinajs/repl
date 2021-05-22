@@ -103,7 +103,9 @@ function malina_plugin() {
 
         async transform(code, id) {
             const name = id.match(/([^/]+).(html|ma|xht)$/);
-            return name ? {code: await compile(code,name[1])} : null;
+            let result = await compile(code,name[1]);
+            if(result.result) result = result.result;
+            return name ? {code: result} : null;
         }
     }
 }

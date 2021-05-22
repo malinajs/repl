@@ -37,7 +37,8 @@ try{
 
     on('compile', async data => {
         try{
-            const result =  await compile(data.code,data.name,true);
+            let result =  await compile(data.code,data.name,true);
+            if(result.result) result = result.result;
             emit('compile',result);
         }catch(err){
             console.error(err);
