@@ -38,10 +38,17 @@
     }
     function isSimpleName(name) {
         if(!name) return false;
-        if(!name.match(/^([\w\$_][\w\d\$_\.]*)$/)) return false;
+        if(!name.match(/^([a-zA-Z\$_][\w\d\$_\.]*)$/)) return false;
         if(name[name.length - 1] == '.') return false;
         return true;
     }
+
+    const isNumber = (value) => {
+        if(typeof value == 'number') return true;
+        if(!value) return false;
+        if(typeof value != 'string') return false;
+        return !isNaN(value);
+    };
 
     function detectExpressionType(name) {
         if(isSimpleName(name)) return 'identifier';
@@ -218,6 +225,7 @@
 
     function xWriter(ctx) {
         this._ctx = ctx;
+        this.inuse = ctx.inuse;
         this.result = [];
         this.indent = 0;
 
@@ -425,8 +433,11 @@
             }
         },
         template: (ctx, node) => {
-            const convert = node.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
             let template = ctx._ctx.xBuild(node.body);
+            let convert;
+            if(node.svg) convert = '$runtime.svgToFragment';
+            else if(!template.match(/[<>]/)) convert = '$runtime.createTextNode';
+            else convert = '$$htmlToFragment';
             if(node.inline) {
                 ctx.write(`${convert}(\`${ctx._ctx.Q(template)}\`)`);
             } else {
@@ -886,6 +897,7 @@
             if(source.includes('$onDestroy')) this.require('$onDestroy');
             if(source.includes('$onMount')) this.require('$onMount');
             if(source.includes('$context')) this.require('$context');
+            if(source.includes('$component')) this.require('$component');
         } else {
             this.script.ast = {
                 body: [],
@@ -968,13 +980,11 @@
                     node.body.body.splice(i, 1);
                     return 'stop';
                 }
-                if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onMount') return;
                 if(!isInLoop(node)) {
                     node.body.body.unshift(applyBlock());
                 }
             } else if(node.type == 'ArrowFunctionExpression') {
                 if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
-                if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onMount') return;
                 if(node.body.type != 'BlockStatement' && !isInLoop(node)) {
                     node.body = {
                         type: 'BlockStatement',
@@ -1148,6 +1158,10 @@
         });
 
         let header = [];
+        header.push(rawNode(() => {
+            if(this.inuse.$component) return 'const $component = $runtime.current_component;';
+        }));
+
         if(lastPropIndex != null) {
             header.push(rawNode(() => {
                 if(this.inuse.$props) return 'const $props = $option.props;';
@@ -1179,7 +1193,7 @@
         }
 
         header.push(rawNode(() => {
-            if(this.inuse.$context) return 'const $context = $component.context;';
+            if(this.inuse.$context) return 'const $context = $runtime.$context;';
         }));
 
 
@@ -1193,6 +1207,8 @@
 
         if(this.config.autoSubscribe) {
             result.importedNames.forEach(name => {
+                if(name[0].toUpperCase() == name[0]) return;
+                this.require('$cd');
                 header.push(rawNode(`$runtime.autoSubscribe($component, ${name});`));
             });
         }
@@ -1205,6 +1221,7 @@
 
         if(this.scriptNodes[0] && this.scriptNodes[0].attributes.some(a => a.name == 'property')) {
             result.props.forEach(name => {
+                this.require('$cd');
                 resultBody.push(rawNode(`$runtime.makeExternalProperty($component, '${name}', () => ${name}, _${name} => ${name} = _${name});`));
             });
         }
@@ -3755,6 +3772,10 @@
     function makeComponent(node, element) {
         let propList = node.attributes;
         let forwardAllEvents = false;
+
+        this.require('$component');
+        this.require('apply', '$cd');
+
         let options = ['$$: $component'];
         let dynamicComponent;
 
@@ -3767,7 +3788,6 @@
 
         let passOption = {};
 
-        this.require('apply', '$cd');
         let head = xNode('block');
         let body = xNode('block');
 
@@ -3906,7 +3926,7 @@
                             }
                         }
 
-                        ctx.writeLine(`$label.parentNode.insertBefore($parentElement, $label.nextSibling);`);
+                        ctx.writeLine(`$runtime.insertBefore($label, $parentElement, $label.nextSibling);`);
                         ctx.writeLine(`return {`);
                         ctx.goIndent(() => {
                             if($cd) ctx.writeLine(`destroy: () => {$childCD.destroy();}`);
@@ -4138,32 +4158,10 @@
                 this.require('resolveClass');
                 return;
             }
-            assert(isSimpleName(name), `Wrong property: '${name}'`);
-            if(value && value.indexOf('{') >= 0) {
-                const pe = this.parseText(value);
-                this.detectDependency(pe);
-                let exp = pe.result;
 
-                if(propLevelType == 'spreading') propLevel++;
-                propLevelType = 'prop';
-                let propObject = propLevel ? `$$lvl[${propLevel}]` : 'props';
-
-                passOption.props = true;
-                passOption.push = true;
-                head.push(xNode('bindProp', {
-                    exp,
-                    name,
-                    propObject
-                }, (ctx, data) => {
-                    ctx.writeLine(`$runtime.fire($watch($cd, () => (${data.exp}), _${data.name} => {`);
-                    ctx.goIndent(() => {
-                        ctx.writeLine(`${data.propObject}.${data.name} = _${data.name};`);
-                        ctx.writeLine(`$$push();`);
-                    });
-                    ctx.writeLine(`}, {ro: true, cmp: $runtime.$$compareDeep}));`);
-                }));
-            } else {
-                if(value) value = '`' + this.Q(value) + '`';
+            const staticProp = (name, value) => {
+                if(typeof value == 'number') value = '' + value;
+                else if(value) value = '`' + this.Q(value) + '`';
                 else value = 'true';
 
                 if(propLevelType == 'spreading') propLevel++;
@@ -4177,6 +4175,39 @@
                 }, (ctx, data) => {
                     ctx.writeLine(`${data.propObject}.${data.name} = ${data.value};`);
                 }));
+            };
+
+            assert(name.match(/^([\w\$_][\w\d\$_\.\-]*)$/), `Wrong property: '${name}'`);
+            name = toCamelCase(name);
+            if(value && value.indexOf('{') >= 0) {
+                const pe = this.parseText(value);
+                this.detectDependency(pe);
+                if(pe.parts.length == 1 && isNumber(pe.parts[0].value)) {
+                    staticProp(name, Number(pe.parts[0].value));
+                } else {
+                    let exp = pe.result;
+
+                    if(propLevelType == 'spreading') propLevel++;
+                    propLevelType = 'prop';
+                    let propObject = propLevel ? `$$lvl[${propLevel}]` : 'props';
+
+                    passOption.props = true;
+                    passOption.push = true;
+                    head.push(xNode('bindProp', {
+                        exp,
+                        name,
+                        propObject
+                    }, (ctx, data) => {
+                        ctx.writeLine(`$runtime.fire($watch($cd, () => (${data.exp}), _${data.name} => {`);
+                        ctx.goIndent(() => {
+                            ctx.writeLine(`${data.propObject}.${data.name} = _${data.name};`);
+                            ctx.writeLine(`$$push();`);
+                        });
+                        ctx.writeLine(`}, {ro: true, cmp: $runtime.$$compareDeep}));`);
+                    }));
+                }
+            } else {
+                staticProp(name, value);
             }
         });
 
@@ -4324,12 +4355,18 @@
             if(event[0] == '@') {  // forwarding
                 event = event.substring(1);
                 assert(!prop.value);
+                this.require('$component');
                 return {bind: xNode('forwardEvent', {
                     event,
                     el: element.bindName()
                 }, (ctx, data) => {
-                    ctx.writeLine(`$runtime.addEvent($cd, ${data.el}, "${data.event}", ($event) => {`
-                        + `$option.events.${data.event} && $option.events.${data.event}($event)});`);
+                    if(ctx._ctx.inuse.$cd) {
+                        ctx.writeLine(`$runtime.addEvent($cd, ${data.el}, "${data.event}", ($event) => {`
+                            + `$option.events.${data.event} && $option.events.${data.event}($event)});`);
+                    } else {
+                        ctx.writeLine(`$runtime.addEvent($component, ${data.el}, "${data.event}", ($event) => {`
+                            + `$option.events.${data.event} && $option.events.${data.event}($event)});`);
+                    }
                 })};
             }
 
@@ -4513,19 +4550,25 @@
 
             let props = node.attributes.filter(a => a.name == 'class' || a.name.startsWith('class:'));
 
-            let compound = props.some(prop => {
-                let classes;
+            let compound = false;
+            props.forEach(prop => {
+                let classes = [];
                 if(prop.name == 'class') {
-                    if(prop.value.indexOf('{') >= 0) return true;
-                    classes = prop.value.trim().split(/\s+/);
+                    if(!prop.value) return;
+                    let parsed = this.parseText(prop.value);
+                    for(let p of parsed.parts) {
+                        if(p.type == 'text') {
+                            classes = classes.concat(p.value.trim().split(/\s+/));
+                        } else if(p.type == 'exp') compound = true;
+                    }
                 } else {
                     classes = [prop.name.slice(6)];
                 }
                 return classes.some(name => {
-                    if(this.css.isExternalClass(name)) return true;
-                    if(name[0] == '$') {
+                    if(this.css.isExternalClass(name)) compound=true;
+                    else if(name[0] == '$') {
                         this.css.markAsExternal(name.substring(1));
-                        return true;
+                        compound = true;
                     }
                 });
             });
@@ -4560,7 +4603,7 @@
                 let bind = xNode('block');
                 props.forEach(prop => {
                     if(prop.name == 'class') {
-                        prop.value.trim().split(/\s+/).forEach(name => {
+                        prop.value && prop.value.trim().split(/\s+/).forEach(name => {
                             node.classes.add(name);
                         });
                     } else {
@@ -4591,7 +4634,7 @@
                 return {bind};
             }
         } else if(name[0] == '^') {
-            this.require('$cd');
+            this.require('$cd', '$component');
             return {bindTail: xNode('bindAnchor', {
                 name: name.slice(1) || 'default',
                 el: element.bindName()
@@ -4985,11 +5028,11 @@
             }, (ctx, n) => {
                 ctx.build(n.tpl);
                 ctx.build(n.body);
-                ctx.writeLine(`${n.el}.parentNode.insertBefore($parentElement, ${n.el}.nextSibling);`);
+                ctx.writeLine(`$runtime.insertBefore(${n.el}, $parentElement, ${n.el}.nextSibling);`);
             });
         }
 
-        this.require('apply', '$cd');
+        this.require('apply', '$cd', '$component');
 
         return xNode('slot', {
             name: slotName,
@@ -5079,7 +5122,7 @@
             data.source.handler(ctx, data.source);
             ctx.writeLine(`${data.name}($cd, $tpl);`);
         }));
-        source.push(`label.parentNode.insertBefore($tpl, label.nextSibling);`);
+        source.push(`$runtime.insertBefore(label, $tpl, label.nextSibling);`);
 
         return {source};
     }
@@ -5211,7 +5254,9 @@
                     ctx.inuse[name]++;
                     if(name == '$attributes') ctx.require('$props');
                     if(name == '$props') ctx.require('apply', '$cd');
-                    if(name == '$onDestroy') ctx.require('apply', '$cd');
+                    if(name == '$cd') ctx.require('$component');
+                    if(name == '$onDestroy') ctx.require('$component');
+                    if(name == '$onMount') ctx.require('$component');
                 }
             },
             detectDependency,
@@ -5301,7 +5346,7 @@
         result.push(xNode('block', {
             name: config.name,
             component: xNode('function', {
-                args: ['$component', '$option'],
+                args: ['$option'],
                 inline: true,
                 arrow: true,
                 body: [ctx.module.head, ctx.module.code, ctx.module.body]
@@ -5311,12 +5356,24 @@
             if(config.exportDefault) ctx.write('export default ');
             else ctx.write(`const ${n.name} = `);
 
-            if(ctx._ctx.inuse.apply || ctx._ctx.inuse.$cd) {
+            if(ctx.inuse.apply || ctx.inuse.$cd) {
                 ctx.write('$runtime.makeComponent(');
                 n.component.args.push('$$apply');
-            } else ctx.write('$runtime.makeComponentBase(');
-            ctx.build(n.component);
-            ctx.write(');\n');
+                ctx.build(n.component);
+                ctx.write(');\n');
+            } else if(ctx.inuse.$component || ctx.inuse.$context) {
+                ctx.write('$runtime.makeComponentBase(');
+                ctx.build(n.component);
+                ctx.write(');\n');
+            } else {
+                ctx.write('($element, $option={}) => {\n');
+                ctx.goIndent(() => {
+                    ctx.write(ctx.getIndent() + '$runtime.$bindComponent(');
+                    ctx.build(n.component);
+                    ctx.write(', $element, $option);\n');
+                });
+                ctx.write('}');
+            }
         }));
 
         ctx.result = ctx.xBuild(result);

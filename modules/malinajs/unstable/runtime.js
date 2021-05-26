@@ -8,7 +8,7 @@ const configure = (option) => {
 
 const safeCall = fn => {
     try {
-        return fn();
+        return typeof fn == 'function' && fn();
     } catch (e) {
         __app_onerror(e);
     }
@@ -31,14 +31,14 @@ const watchInit = (cd, fn, callback) => {
     return w.value;
 };
 
-function addEvent(cd, el, event, callback) {
+function addEvent(cd_component, el, event, callback) {
     el.addEventListener(event, callback);
-    cd_onDestroy(cd, () => {
+    cd_onDestroy(cd_component, () => {
         el.removeEventListener(event, callback);
     });
 }
-function cd_onDestroy(cd, fn) {
-    if(fn) cd.destroyList.push(fn);
+function cd_onDestroy(cd_component, fn) {
+    if(fn) cd_component._d.push(fn);
 }
 function $$removeItem(array, item) {
     let i = array.indexOf(item);
@@ -48,7 +48,7 @@ function $ChangeDetector(parent) {
     this.parent = parent;
     this.children = [];
     this.watchers = [];
-    this.destroyList = [];
+    this._d = [];
     this.prefix = [];
 }
 $ChangeDetector.prototype.new = function() {
@@ -61,11 +61,9 @@ $ChangeDetector.prototype.destroy = function(option) {
     if(option !== false && this.parent) $$removeItem(this.parent.children, this);
     this.watchers.length = 0;
     this.prefix.length = 0;
-    this.destroyList.forEach(safeCall);
-    this.destroyList.length = 0;
-    this.children.forEach(cd => {
-        cd.destroy(false);
-    });
+    this._d.map(safeCall);
+    this._d.length = 0;
+    this.children.map(cd => cd.destroy(false));
     this.children.length = 0;
 };
 
@@ -200,7 +198,17 @@ const firstChild = 'firstChild';
 
 let noop = a => a;
 
-function $$htmlToFragment(html) {
+const insertBefore = (el, node, before) => {
+    el.parentNode.insertBefore(node, before);
+};
+
+const createTextNode = (text) => {
+    let f = document.createDocumentFragment();
+    f.append(text);
+    return f;
+};
+
+const $$htmlToFragment = (html) => {
     if(templatecache[html]) return templatecache[html].cloneNode(true);
 
     let t = document.createElement('template');
@@ -208,8 +216,9 @@ function $$htmlToFragment(html) {
     let result = t.content;
     templatecache[html] = result.cloneNode(true);
     return result;
-}
-function $$htmlToFragmentClean(html) {
+};
+
+const $$htmlToFragmentClean = (html) => {
     if(templatecache[html]) return templatecache[html].cloneNode(true);
 
     let t = document.createElement('template');
@@ -222,7 +231,8 @@ function $$htmlToFragmentClean(html) {
         if(!n.nodeValue) n.parentNode.replaceChild(document.createTextNode(''), n);
     }    templatecache[html] = result.cloneNode(true);
     return result;
-}
+};
+
 function svgToFragment(content) {
     if(templatecacheSvg[content]) return templatecacheSvg[content].cloneNode(true);
     let t = document.createElement('template');
@@ -275,7 +285,7 @@ function $tick(fn, uniq) {
         _tick_planned = {};
         let list = _tick_list;
         _tick_list = [];
-        list.forEach(safeCall);
+        list.map(safeCall);
     }, 0);
 }
 
@@ -379,44 +389,40 @@ const $onDestroy = fn => current_component._d.push(fn);
 const $onMount = fn => current_component._m.push(fn);
 
 
+const $bindComponent = (init, $element, $option) => {
+    if(!$option.events) $option.events = {};
+    let r = init($option);
+    if ($option.afterElement) {
+        insertBefore($element, r, $element.nextSibling);
+    } else {
+        $element.innerHTML = '';
+        $element.appendChild(r);
+    }
+};
+
+
 const makeComponentBase = (init) => {
     return ($element, $option={}) => {
         if(!$option.events) $option.events = {};
-        if(!$option.props) $option.props = {};
 
-        const $component = {
+        let prev = current_component;
+        $context = {...$option.$$?.context};
+        let $component = current_component = {
             $option,
-            push: noop,
-            destroy: () => $component._d.forEach(safeCall),
-            context: $option.$$ ? Object.assign({}, $option.$$.context) : {},
+            destroy: () => $component._d.map(safeCall),
+            context: $context,
             _d: [],
             _m: []
         };
 
-        let r, prev = current_component;
         try {
-            current_component = $component;
-            $context = $component.context;
-            r = init($component, $option);
+            $bindComponent(init, $element, $option);
         } finally {
             current_component = prev;
-            $context = prev && prev.context;
+            $context = null;
         }
 
-        if ($option.afterElement) {
-            $element.parentNode.insertBefore(r, $element.nextSibling);
-        } else {
-            $element.innerHTML = '';
-            $element.appendChild(r);
-        }
-
-        $tick(() => {
-            $component._m.forEach(fn => {
-                let d = safeCall(fn);
-                if(typeof d == 'function') $component._d.push(d);
-            });
-        });
-
+        $component._d.push(...$component._m.map(safeCall));
         return $component;
     };
 };
@@ -424,7 +430,8 @@ const makeComponentBase = (init) => {
 
 const makeComponent = (init) => {
     return ($element, $option={}) => {
-        return makeComponentBase(($component, $option) => {
+        if(!$option.props) $option.props = {};
+        return makeComponentBase(() => {
             let $cd = new $ChangeDetector();
             $onDestroy(() => $cd.destroy());
 
@@ -443,20 +450,20 @@ const makeComponent = (init) => {
                 return r;
             };
 
-            $component.$cd = $cd;
-            $component.apply = apply;
-            $component.push = apply;
+            current_component.$cd = $cd;
+            current_component.apply = apply;
+            current_component.push = apply;
 
-            return apply(init($component, $option, apply));
-        })($element, $option)
+            return apply(init($option, apply));
+        })($element, $option);
     };
 };
 
 
-const callComponent = (cd, component, el, option) => {
+const callComponent = (cd_component, component, el, option) => {
     option.afterElement = true;
     let $component = safeCall(() => component(el, option));
-    if($component && $component.destroy) cd_onDestroy(cd, $component.destroy);
+    if($component && $component.destroy) cd_onDestroy(cd_component, $component.destroy);
     return $component;
 };
 
@@ -665,7 +672,7 @@ function $$htmlBlock($cd, tag, fn) {
     let create = (html) => {
         let fr = $$htmlToFragment(html);
         lastElement = fr.lastChild;
-        tag.parentNode.insertBefore(fr, tag.nextSibling);
+        insertBefore(tag, fr, tag.nextSibling);
     };
     let destroy = () => {
         if(!lastElement) return;
@@ -695,7 +702,7 @@ function $$ifBlock($cd, $parentElement, fn, tpl, build, tplElse, buildElse) {
         builder(childCD, tpl);
         first = tpl[firstChild];
         last = tpl.lastChild;
-        $parentElement.parentNode.insertBefore(tpl, $parentElement.nextSibling);
+        insertBefore($parentElement, tpl, $parentElement.nextSibling);
     }
     function destroy() {
         if(!childCD) return;
@@ -735,7 +742,7 @@ function $$awaitBlock($cd, label, fn, $$apply, build_main, tpl_main, build_then,
         $$apply();
         first = fr[firstChild];
         last = fr.lastChild;
-        label.parentNode.insertBefore(fr, label.nextSibling);
+        insertBefore(label, fr, label.nextSibling);
     }
     $watchReadOnly($cd, fn, p => {
         if(status !== 1) render(build_main, tpl_main);
@@ -856,4 +863,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $context, $digest, $makeEmitter, $onDestroy, $onMount, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, attachAnchor, attachSlot, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, current_component, eachDefaultKey, fire, firstChild, getFinalLabel, isArray, makeClassResolver, makeComponent, makeComponentBase, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };
+export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $bindComponent, $context, $digest, $makeEmitter, $onDestroy, $onMount, $tick, $watch, $watchReadOnly, __app_onerror, addEvent, addStyles, attachAnchor, attachSlot, autoSubscribe, bindAction, bindAttribute, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, completeProps, configure, createTextNode, current_component, eachDefaultKey, fire, firstChild, getFinalLabel, insertBefore, isArray, makeClassResolver, makeComponent, makeComponentBase, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment, watchInit };
