@@ -45,7 +45,7 @@ function pretify(code){
     code = code.replace(/ import\(/g,' import_dynamic(');
 
     console.log(code);
-    let ast = acorn.parse(code, {sourceType: 'module'});
+    let ast = acorn.parse(code, {sourceType: 'module', ecmaVersion:2020});
     code =  astring.generate(ast);
     
     //FIX dynamic import in astring
