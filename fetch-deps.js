@@ -16,22 +16,11 @@ const DEPS = [
     ['cjs2es/dist/cjs2es.mjs','cjs2es.js',false]
 ]
 
-let once = false;
-
-export default function fetchDeps() {
+module.exports.fetchDeps = async function() {
     
-    return {
-        name: NAME,
-        async writeBundle() {
-            if(!once){
-                once = true;
-                fetchDependencies();
-                await fetchMalina();
-
-                console.log(`[${NAME}] All done!`);
-            }            
-        }
-    };
+    fetchDependencies();
+    await fetchMalina();
+    console.log(`[${NAME}] All done!`);
 
 }
 

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const watch = require('node-watch');
+const {spawn} =  require('child_process');
 
 const NAME = 'examples-generator';
 
@@ -9,16 +10,24 @@ const OUTPUT = path.join('public','examples');
 
 const mode = process.argv[2] === 'watch' ? 'watch' : 'build';
 
-if(mode === 'build'){
-    generateExamples();
-    process.exit(0);
-}
-
-if(mode === 'watch'){
-    generateExamples();;
-    watch(DIR, { recursive: true }, function(_,name) {
-        generateExamples(name);
+module.exports.generateExamples = function (production){
+    spawn('node examples-generator.js', [production ? 'build':'watch'],{
+        stdio: ['ignore', 'inherit', 'inherit'],
+        shell: true
     });
+}
+if(!module.parent){
+    if(mode === 'build'){
+        generateExamples();
+        process.exit(0);
+    }
+
+    if(mode === 'watch'){
+        generateExamples();
+        watch(DIR, { recursive: true }, function(_,name) {
+            generateExamples(name);
+        });
+    }
 }
 
 function generateExamples(){
