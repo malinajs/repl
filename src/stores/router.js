@@ -35,13 +35,16 @@ function routerStore(){
                 .forEach( el => el.setAttribute('content',window.document.title));
         },
         version(){
-            const r = window.location.hash.match(/[\?&]version=([\.\-\w]+)/);
-            return r && r[1];
+            return getURL().searchParams.get('version');
         }
     }
 }
 
 function getSlugsFromHash(){
-    const path = window.location.hash.match(/^#\/([a-z0-9-_\/]+[a-z0-9-_])\/?/);
-    return path ? path[1].split('/') : [];
+    const path = getURL().pathname.slice(1);
+    return path ? path.split('/') : [];
+}
+
+function getURL(){
+    return new URL(window.location.hash.slice(1),'http://domain.tld');
 }

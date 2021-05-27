@@ -4,7 +4,7 @@ import serve from 'rollup-plugin-serve';
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import analyze from 'rollup-plugin-analyzer';
-import malina from './rollup-malina';
+import malina from 'malinajs/malina-rollup';
 import fetchDeps from './rollup-fetch-deps';
 import examples from './rollup-examples';
 

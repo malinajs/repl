@@ -5,8 +5,6 @@ import {router} from './router';
 
 export let shares = sharesStore();
 
-const BOXID = 'box_c58ead21d91d66a931e0';
-
 function sharesStore(){
 
     return {
@@ -45,7 +43,7 @@ let cash = {};
 async function saveShare(shareObj){
     const json = JSON.stringify(shareObj);
     try{
-        const result = await fetch(`https://jsonbox.io/${BOXID}`,{
+        const result = await fetch(`https://repl.malina.workers.dev/gist`,{
             method: 'POST',
             headers: {
                 'content-type': 'application/json',
@@ -54,9 +52,9 @@ async function saveShare(shareObj){
         });
         if(result.ok) {
             const answer = await result.json();
-            if(!answer._id) throw new Error('Wrong answer from Jsonbox');
-            cash[answer._id] = json;
-            return answer._id;
+            if(!answer.gid) throw new Error('Wrong answer from API');
+            cash[answer.gid] = json;
+            return answer.gid;
         }else{
             throw new Error(`Error while saving your share. Try again.`);
         }
@@ -70,11 +68,8 @@ async function fetchShare(id){
 
     if(!cash[id]) {
         try{
-            const result = await fetch(`https://jsonbox.io/${BOXID}/${id}`,{
-                method: 'GET',
-                headers: {
-                    'content-type': 'application/json',
-                }
+            const result = await fetch(`https://repl.malina.workers.dev/gist/${id}`,{
+                method: 'GET'
             });
             if(result.ok) {
                 const answer = await result.json();
