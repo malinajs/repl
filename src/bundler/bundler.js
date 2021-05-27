@@ -120,9 +120,13 @@ function addSlash(url){
 
 async function getModuleURL(url){
     try{
-        // try to find package real URL
-        let result = await cash_or_fetch(url);
-        if(!result.ok)  throw new Error(`Can't find module ${url}`);
+        // try to find module URL
+        let result = await cash_or_fetch(url+'?module');
+        if(!result.ok){
+            // try to load as is
+            result = await cash_or_fetch(url);
+            if(!result.ok)  throw new Error(`Can't find module ${url}`);
+        }
         url = result.url;
         return url;
     }catch(err){
@@ -134,7 +138,6 @@ const FCASH = {};
 async function cash_or_fetch(url){
     if(!FCASH[url]) {
         const resp = await fetch(url);
-        if(!resp.ok) throw new Error(`[Bundler] Can't download module from ${url}`);
         FCASH[url] = {url: resp.url, ok: resp.ok, status:resp.status, body: resp.ok ? await resp.text() : ''}
     }
     return FCASH[url];
