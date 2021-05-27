@@ -3,7 +3,7 @@
     "version": "0.2.1",
     "scripts": {
         "dev": "node esbuild --dev",
-        "build": "rollup -c",
+        "build": "node esbuild",
         "update": "npm install -D https://github.com/malinajs/malinajs.git"
     },
     "devDependencies": {
