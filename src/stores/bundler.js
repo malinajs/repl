@@ -73,6 +73,11 @@ function bundleStore(){
                 versions.set({ malina:data.malinaVersion, rollup:data.rollupVersion });
                 malinaVerChanger = ver => emit('malinaVersion', ver || 'latest');
                 files.touch();
+
+                if(self.requireVersion) {
+                    malinaVerChanger(self.requireVersion);
+                    self.requireVersion = null;
+                }
             });
 
             on('bundle', code => {
@@ -106,7 +111,8 @@ function bundleStore(){
         });
     }
     
-    return {
+    let self = {
+        requireVersion: null,
         subscribe: output.subscribe,
         ready: ()=>output.get().ready,
         mode: mode,
@@ -116,6 +122,7 @@ function bundleStore(){
             list: getMalinaVersions
         }
     }
+    return self;
 }
 
 let verCash;

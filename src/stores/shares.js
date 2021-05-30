@@ -26,6 +26,8 @@ function sharesStore(){
                     if(version && version !== activeVersion) {
                         bundler.malina.load(version);
                     }
+                } else if(share.meta?.version && !router.version()) {
+                    bundler.requireVersion = share.meta.version;
                 }
             }else{
                 const title = 'Oops! Shared code not found!';
