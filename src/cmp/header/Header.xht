@@ -65,7 +65,7 @@
         {/if}
     </div>
 
-    <div>
+    <div class="social">
         <Social/>
     </div>
 
@@ -82,28 +82,36 @@
         cursor: pointer;
         line-height: 35px;
         font-weight: 300;
+        color: var(--color-lighter)
     }
 
     img{
         height: 40px;
-        margin: 10px;
+        margin: 10px 10px 10px 20px;
         vertical-align: middle;
     }
 
     .title{
         padding: 5px;
         font-size: 24px;
-        color: var(--color-gray);
+        color: var(--color-light);
         margin-left: -5px;
     }
 
     .title:hover,.title:focus{
         border: 1px solid var(--color-gray);
+        border-radius: 3px;
     }
 
     button{
         height: 24px;
         line-height: 24px;
         padding: 0 5px;
+        color: var(--color-light);
+        background-color:var(--color-gray);
+    }
+
+    .social{
+        margin-right: 20px;
     }
 </style>
