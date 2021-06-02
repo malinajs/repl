@@ -1,6 +1,6 @@
 <script>
     import Examples from './ExamplesList.xht';
-    import Github from './Github.xht';
+    import Social from './Social.xht';
 
     import {files} from './../../stores/files.js';
     import {router} from './../../stores/router.js';
@@ -46,13 +46,14 @@
     }
 </script>
 
+<div class="wrapper">
 
-<div style="float: left">
     <h1 @click:router.go>
         <img src="branding/malinajs_logo_notext.svg"/>
         malina.js
     </h1>
-    <div class="header">
+
+    <div>
         {#if slug === 'example' && !modified}
             Select an example: <Examples/>
         {:else}
@@ -63,13 +64,20 @@
             {/if}
         {/if}
     </div>
-</div>
-<div style="float: right">
-    <Github/>
-</div>
 
+    <div>
+        <Social/>
+    </div>
+
+</div>
 
 <style>
+    .wrapper{
+        display:flex;
+        justify-content: space-between;
+        align-items:center;
+    }
+
     h1{
         cursor: pointer;
         line-height: 35px;
@@ -77,27 +85,20 @@
     }
 
     img{
-        height: 30px;
-        margin: 0 5px 5px 10px;
+        height: 40px;
+        margin: 10px;
         vertical-align: middle;
     }
 
-    .header{
-        margin-left: 10px;
-        height: 55px;
-        line-height: 55px;
-    }
-
     .title{
-        border: 1px solid rgb(0,0,0,0);
         padding: 5px;
         font-size: 24px;
-        color: var(--color-light);
+        color: var(--color-gray);
         margin-left: -5px;
     }
 
     .title:hover,.title:focus{
-        border-color: var(--color-gray);
+        border: 1px solid var(--color-gray);
     }
 
     button{

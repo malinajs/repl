@@ -4,6 +4,8 @@
 
     import {files} from './../../stores/files.js';
 
+    let lines = 1;
+
 
     let ext = 'xht';
     files.current.subscribe(f => {
@@ -11,12 +13,18 @@
         if(!['js','json'].includes(ext)) ext = 'xht';
     });
 
+    function setLines(text){
+        lines = text.replace(/\n$/,'').split('\n').length;
+    }
+
     function codeJarAction(node){
         let prevContent = '';
+
         function save(content){
             if(prevContent == content) return;
             prevContent = content;
             files.current.save(content);
+            setLines(content);
         }
 
         const editor = new CodeJar(node,e => {
@@ -32,9 +40,10 @@
 
         const unsbcr = files.current.subscribe(file => {
             if(editor.toString() === file.body) return;
+            console.log(file.body.split('\n').length)
             prevContent = file.body;
-            console.log('update')
             editor.updateCode(file.body);
+            setLines(file.body);
         });
 
         return{
@@ -46,16 +55,42 @@
     }
 </script>
 
-<div *codeJarAction></div>
+<div class="code">
+    <div class="lines">
+    {#each lines as line}
+        {line}<br/>
+    {/each}
+    </div>
+    <div class="editor" *codeJarAction></div>
+</div>
+
+
 
 <style>
-    div{
+    .code{
+        display:flex;
+        min-height:100%;
+
+        font-family: var(--font-mono);
+        font-size: 12px;
+    }
+
+    .lines{
+         line-height: 20px;
+         padding: 10px;
+         border-right: 1px solid var(--color-light);
+         min-height:100%;
+         text-align: right;
+         color: var(--color-light);
+    }
+
+
+    .editor{
+        font-family: var(--font-mono);
         width: 100%;
         min-height:100%;
         resize: none;
         border: 0;
-
-        font-family: 'Source Code Pro', monospace;
         font-size: 16px;
         font-weight: 400;
         letter-spacing: normal;

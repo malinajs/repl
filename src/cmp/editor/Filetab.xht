@@ -77,7 +77,7 @@
     {/if}
 
     {#if file !== files.default}
-        <span class="delete" @click={deleteFile(file)}><Icon name="close" size="18"/></span>
+        <span class="delete" @click={deleteFile(file)}><Icon name="close" size="12"/></span>
     {/if}
 {:else}
     {file}
@@ -87,21 +87,18 @@
 
 <style>
     div{
-        display: inline-block;
-        vertical-align:middle;
-        height: 28px;
-        line-height: 28px;
         border: none;
-        background-color: var(--color-light);
-        border-radius: 3px 3px 0px 0px;
         cursor: pointer;
-        margin: 2px 2px 0px 0px;
-        padding: 0px 5px;
+        font-family: var(--font-mono);
+        font-size: 14px;
+        line-height: 40px;
+        padding: 0 10px;
+        color: var(--color-gray);
     }
 
     input{
        padding:1px 3px;
-       font-family: 'Courier New', Courier, monospace;
+       font-family: var(--font-mono);
        border: 1px solid var(--color-dark);
        height: 24px;
     }
@@ -111,7 +108,8 @@
     }
 
     .active{
-        background-color: var(--hl-background);
+        color: var(--color-primary);
+        border-bottom: 3px solid var(--color-primary)
     }
 
     .delete{

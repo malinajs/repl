@@ -21,33 +21,38 @@
     }
 </script>
 
-<div>
+<div class="filetabs">
     {#each list as tab(tab)}
     <Filetab file={tab}/>
     {/each}
-    <button class="add" title="Add component" @click:addFile><Icon name="plus" size="20"/></button>
+    <div class="add" title="Add component" @click:addFile><Icon name="plus" size="20"/></div>
 </div>
 
 <style>
 
-    div{
-        height: 30px;
-        background-color: var(--color-gray);
+    .filetabs{
         padding: 0px;
-        white-space: nowrap;
         overflow:hidden;
+        display:flex;
+        border-bottom: 1px solid var(--color-light);
+        flex-wrap: nowrap;
+        height: 40px;
     }
 
     .add{
-        background-color: var(--color-gray);
-        color: var(--color-lightest);
+        background: none;
+        color: var(--color-light);
         border: none;
         font-weight: bold;
         font-size: 20px;
-        line-height: 27px;
-        width: 27px;
-        height: 27px;
+        line-height: 40px;
+        height: 40px;
         padding: 0px;
         cursor: pointer;
+        margin-left: 20px;
+    }
+
+    .add:hover{
+        color: var(--color-gray);
     }
 </style>
