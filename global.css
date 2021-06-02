@@ -4,7 +4,15 @@
    --color-light: #cccccc;
    --color-lighter: #f4f4f4;
    --color-lightest: #f9f9f9;
+
+   --color-primary: #FF0000;
+   --color-secondary: #009615;
+
+   --font: 'Ubuntu',sans-serif;
+   --font-mono: 'Source Code Pro',monospace;
+
 }
+
 
 *{
     margin: 0px;
@@ -13,7 +21,7 @@
 }
 
 body{
-	font-family: 'Ubuntu',sans-serif;
+	font-family: var(--font);
 	color: var(--color-gray);
 }
 

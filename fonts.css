@@ -28,3 +28,13 @@
 		local('Ubuntu-Bold'),
 		url('font/ubuntu-bold.woff2') format('woff2');
 }
+
+@font-face {
+    font-family: 'Source Code Pro';
+    font-weight: 400;
+    font-style: normal;
+    src: 
+		local('Source Code Pro'), 
+		local('SourceCodePro-Regular'), 
+		url('font/Sourcecodepro.woff2') format('woff2');
+}
