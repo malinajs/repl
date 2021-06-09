@@ -464,7 +464,6 @@ const makeComponent = (init, $base) => {
             $option,
             destroy: () => $component._d.map(safeCall),
             context: $context,
-            exported: {},
             _d: [],
             _m: []
         };
@@ -529,7 +528,7 @@ const setClassToElement = (element, value) => {
 
 
 const bindText = (cd, element, fn) => {
-    $watchReadOnly(cd, fn, value => {
+    $watchReadOnly(cd, () => '' + fn(), value => {
         element.textContent = value;
     });
 };
@@ -549,7 +548,7 @@ const bindAttributeBase = (element, name, value) => {
 
 
 const bindAttribute = (cd, element, name, fn) => {
-    $watchReadOnly(cd, fn, value => bindAttributeBase(element, name, value));
+    $watchReadOnly(cd, () => '' + fn(), value => bindAttributeBase(element, name, value));
 };
 
 
@@ -577,7 +576,7 @@ const __bindActionSubscribe = (cd, fn, handler, value) => {
 
 const bindInput = (cd, element, name, get, set) => {
     let w = $watchReadOnly(cd, name == 'checked' ? () => !!get() : get, value => {
-        if(value != element[name]) element[name] = value;
+        element[name] = value == null ? '' : value;
     });
     addEvent(cd, element, 'input', () => {
         set(w.value = element[name]);
@@ -668,18 +667,18 @@ const makeExternalProperty = ($component, name, getter, setter) => {
 };
 
 
-const attachSlotBase = ($component, $context, $cd, slotName, label, placeholder) => {
-    let $slot = $component.$option.slots?.[slotName];
+const attachSlotBase = ($option, $context, $cd, slotName, label, placeholder) => {
+    let $slot = $option.slots && $option.slots[slotName];
     if($slot) {
-        let s = $slot(label, $context, $component);
+        let s = $slot(label, $context);
         cd_onDestroy($cd, s.destroy);
         return s;
     } else placeholder && placeholder();
 };
 
 
-const attachSlot = ($component, $context, $cd, slotName, label, props, placeholder) => {
-    let slot = attachSlotBase($component, $context, $cd, slotName, label, placeholder);
+const attachSlot = ($option, $context, $cd, slotName, label, props, placeholder) => {
+    let slot = attachSlotBase($option, $context, $cd, slotName, label, placeholder);
     if(slot) {
         for(let key in props) {
             let setter = `set_${key}`;
