@@ -80,7 +80,7 @@ async function fetchMalina(){
     
     for(let ver of versions){
         const dest_dir = path.join(MDIR,ver)
-        if(fs.existsSync(dest_dir)) continue;
+        if(fs.existsSync(dest_dir) && ver != '0.6.22') continue;
         try{
             await downloadMalina(ver,dest_dir);
             console.log(`[${NAME}] - Downloaded v.${ver}`);
