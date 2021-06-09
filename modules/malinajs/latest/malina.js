@@ -241,8 +241,11 @@
             this.indent--;
         };
         this.write = function(a, b) {
-            if(a == true) this.result.push(this.getIndent() + b);
-            else a && this.result.push(a);
+            if(a === true) {
+                this.result.push(this.getIndent());
+                a = b;
+            }
+            a && this.result.push(a);
         };
         this.writeLine = function(s) {
             this.write(this.getIndent());
@@ -524,7 +527,7 @@
                 }
                 if(a == '>') {
                     flush();
-                    const voidTags = ['fragment', 'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
+                    const voidTags = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
                     let voidTag = voidTags.indexOf(name) >= 0;
                     let closedTag = voidTag || source[index-2] == '/';
                     return {
@@ -675,7 +678,10 @@
                             if(a === '>') break;
                             name += a;
                         }
-                        assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
+                        if(name) {
+                            name = name.split(':')[0];
+                            assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
+                        }
                         return;
                     }
 
@@ -787,9 +793,9 @@
                         } else if(bind.value == '/slot') {
                             assert(parent.type === 'slot', 'Slot error: /slot');
                             return;
-                        } else if(bind.value.match(/^\#fragment\W/)) {
+                        } else if(bind.value.startsWith('#fragment:') || bind.value.startsWith('#export:')) {
                             let tag = {
-                                type: 'fragment',
+                                type: bind.value.startsWith('#export:') ? 'export' : 'fragment',
                                 value: bind.value,
                                 body: []
                             };
@@ -798,6 +804,9 @@
                             continue;
                         } else if(bind.value == '/fragment') {
                             assert(parent.type === 'fragment', 'Fragment error: /fragment');
+                            return;
+                        } else if(bind.value == '/export') {
+                            assert(parent.type === 'export', 'Fragment error: /export');
                             return;
                         } else throw 'Error binding: ' + bind.value;
                     }
@@ -1391,7 +1400,7 @@
             let body = data.body.filter(n => {
                 if(n.type == 'script' || n.type == 'style' || n.type == 'slot') return false;
                 if(n.type == 'comment' && !this.config.preserveComments) return false;
-                if(n.type == 'fragment') {
+                if(n.type == 'fragment' || n.type == 'export') {
                     try {
                         let f = this.makeFragment(n);
                         f && binds.push(f);
@@ -1436,11 +1445,18 @@
                     tpl.push('</template>');
                 } else if(n.type === 'node') {
                     if(n.name == 'component' || n.name.match(/^[A-Z]/)) {
-                        // component
-                        let el = xNode('node:comment', {label: true, value: n.name});
-                        tpl.push(el);
-                        let b = this.makeComponent(n, el);
-                        binds.push(b.bind);
+                        if(n.elArg) {
+                            let el = xNode('node:comment', {label: true, value: `exported ${n.elArg}`});
+                            tpl.push(el);
+                            let b = this.attachFragment(n, el, n.name);
+                            b && binds.push(b);
+                        } else {
+                            // component
+                            let el = xNode('node:comment', {label: true, value: n.name});
+                            tpl.push(el);
+                            let b = this.makeComponent(n, el);
+                            binds.push(b.bind);
+                        }
                         return;
                     }
                     if(n.name == 'slot') {
@@ -1451,10 +1467,16 @@
                         return;
                     }
                     if(n.name == 'fragment') {
-                        let el = xNode('node:comment', {label: true, value: `fragment ${n.elArg}`});
-                        tpl.push(el);
-                        let b = this.attachFragment(n, el);
-                        b && binds.push(b);
+                        if(n.elArg) {
+                            let el = xNode('node:comment', {label: true, value: `fragment ${n.elArg}`});
+                            tpl.push(el);
+                            let b = this.attachFragment(n, el);
+                            b && binds.push(b);
+                        } else {
+                            let el = xNode('node:comment', {label: true, value: 'fragment'});
+                            tpl.push(el);
+                            binds.push(this.attachFragmentSlot(el, n));
+                        }
                         return;
                     }
 
@@ -3700,7 +3722,7 @@
 
         function build(parent, list) {
             list.forEach(e => {
-                if(e.type == 'each' || e.type == 'fragment' || e.type == 'slot') {
+                if(e.type == 'each' || e.type == 'fragment' || e.type == 'export' || e.type == 'slot') {
                     if(e.body && e.body.length) build(parent, e.body);
                     return;
                 } else if(e.type == 'if') {
@@ -3808,7 +3830,8 @@
 
         let propLevel = 0, propLevelType;
 
-        if(node.name == 'component') {
+        let componentName = node.name;
+        if(componentName == 'component') {
             assert(node.elArg);
             dynamicComponent = node.elArg[0] == '{' ? unwrapExp(node.elArg) : node.elArg;
         }
@@ -3944,12 +3967,12 @@
                     name: slot.name,
                     template,
                     bind: block.source,
-
+                    componentName,
                     props,
                     setters,
                     $cd: block.inuse.$cd
                 }, (ctx, data) => {
-                    ctx.writeLine(`slots.${data.name} = function($label, $context) {`);
+                    ctx.writeLine(`slots.${data.name} = function($label, $context, $instance_${data.componentName}) {`);
                     ctx.goIndent(() => {
                         if(data.$cd) ctx.writeLine(`let $childCD = $cd.new();`);
                         ctx.build(data.template);
@@ -3968,6 +3991,7 @@
                         }
 
                         ctx.writeLine(`$runtime.insertAfter($label, $parentElement);`);
+                        if(ctx.inuse.apply) ctx.writeLine(`$$apply();`);
                         ctx.writeLine(`return {`);
                         ctx.goIndent(() => {
                             if(data.$cd) ctx.writeLine(`destroy: () => {$childCD.destroy();}`);
@@ -4271,7 +4295,7 @@
 
         let result = xNode('component', {
             el: element.bindName(),
-            componentName: node.name,
+            componentName,
             head,
             body,
             options,
@@ -5160,7 +5184,7 @@
             });
         }
 
-        this.require('$cd', '$context');
+        this.require('$component', '$cd', '$context');
 
         return xNode('slot', {
             name: slotName,
@@ -5170,7 +5194,7 @@
         }, (ctx, n) => {
             ctx.writeIndent();
             if(n.props.length) {
-                ctx.write(`$runtime.attachSlot($option, $context, $cd, '${n.name}', ${n.el}, {\n`);
+                ctx.write(`$runtime.attachSlot($component, $context, $cd, '${n.name}', ${n.el}, {\n`);
                 ctx.goIndent(() => {
                     for(let i=0; i < props.length; i++) {
                         let prop = props[i];
@@ -5183,7 +5207,7 @@
                 ctx.writeIndent();
                 ctx.write('}');
             } else {
-                ctx.write(`$runtime.attachSlotBase($option, $context, $cd, '${n.name}', ${n.el}`);
+                ctx.write(`$runtime.attachSlotBase($component, $context, $cd, '${n.name}', ${n.el}`);
             }
             if(n.placeholder) {
                 ctx.write(', () => {\n');
@@ -5198,7 +5222,14 @@
     }
 
     function makeFragment(node) {
-        let rx = node.value.match(/#fragment\:(\S+)(.*)$/);
+        let rx, exported = false;
+        if(node.type == 'export') {
+            this.require('$component');
+            exported = true;
+            rx = node.value.match(/#export\:(\S+)(.*)$/);
+        } else {
+            rx = node.value.match(/#fragment\:(\S+)(.*)$/);
+        }
         assert(rx);
         let name = rx[1];
         assert(isSimpleName(name));
@@ -5217,6 +5248,7 @@
         return xNode('fragment', {
             name,
             props,
+            exported,
             source: block.source,
             template: xNode('template', {
                 name: '$parentElement',
@@ -5224,7 +5256,9 @@
                 svg: block.svg
             })
         }, (ctx, n) => {
-            ctx.writeLine(`function $fragment_${n.name}($cd, label, $option={}) {`);
+            ctx.write(true);
+            if(n.exported) ctx.write(`$component.exported.${n.name} = `);
+            ctx.write(`function $fragment_${n.name}($cd, label, $option={}) {\n`);
             ctx.indent++;
 
             if(n.props) {
@@ -5247,13 +5281,16 @@
     }
 
 
-    function attachFragment(node, element) {
+    function attachFragment(node, element, componentName) {
         let name = node.elArg;
         assert(isSimpleName(name));
 
         let props = [];
         let events = [];
         let forwardAllEvents;
+        let slot = null;
+
+        if(node.body?.length) slot = this.buildBlock({body: trimEmptyNodes(node.body)}, {inline: true});
 
         node.attributes.forEach(prop => {
             let name = prop.name;
@@ -5334,13 +5371,24 @@
             forwardAllEvents,
             el: element.bindName(),
             name,
+            parentComponent: componentName,
             events,
-            props
+            props,
+            slot: slot ? {
+                source: slot.source,
+                template: xNode('template', {
+                    name: '$parentElement',
+                    body: slot.tpl,
+                    svg: slot.svg
+                })
+            } : null
         }, (ctx, n) => {
-            ctx.write(true, `$fragment_${n.name}($cd, ${n.el}`);
-            if(n.props.length || n.events.length) {
-                ctx.write(`, {\n`);
+            if(n.parentComponent) ctx.write(true, `$instance_${componentName}.exported.${name}?.($instance_${componentName}.$cd, ${n.el}`);
+            else ctx.write(true, `$fragment_${n.name}($cd, ${n.el}`);
+            if(n.props.length || n.events.length || n.slot) {
+                ctx.write(`, {...$option,\n`);
                 ctx.indent++;
+                let comma;
 
                 if(n.props.length) {
                     ctx.write(true, 'props: () => ({');
@@ -5349,33 +5397,73 @@
                         ctx.write(`${p.name}: ${p.exp}`);
                     });
                     ctx.write('})');
+                    comma = true;
                 }
 
                 if(n.forwardAllEvents) {
-                    if(n.events.length) this.warning(`Fragment: mixing binding and forwarding is not supported:: '${node.openTag}'`);
-                    if(n.props.length) ctx.write(',\n');
+                    if(n.events.length) this.warning(`Fragment: mixing binding and forwarding is not supported: '${node.openTag}'`);
+                    if(comma) ctx.write(',\n');
                     ctx.write(true, 'events: $option.events');
+                    comma = true;
                 } else if(n.events.length) {
-                    if(n.props.length) ctx.write(',\n');
-                    ctx.write(true, 'events: {');
+                    if(comma) ctx.write(',\n');
+                    ctx.write(true, 'events: {...$option.events,');
                     n.events.forEach((e, i) => {
                         if(i) ctx.write(', ');
                         if(e.name == e.callback) ctx.write(`${e.name}`);
                         else ctx.write(`${e.name}: ${e.callback}`);
                     });
                     ctx.write('}');
+                    comma = true;
                 }
-
+                if(n.slot) {
+                    if(comma) ctx.write(',\n');
+                    if(n.parentComponent) {
+                        ctx.writeLine(`fragment: ($parentCD, label, $option) => {`);
+                        ctx.goIndent(() => {
+                            ctx.writeLine(`let $childCD = $cd.new();`);
+                            ctx.writeLine(`$runtime.cd_onDestroy($parentCD, () => $childCD.destroy());`);
+                            ctx.writeLine(`{`);
+                            ctx.goIndent(() => {
+                                ctx.writeLine(`let $cd = $childCD;`);
+                                ctx.build(n.slot.template);
+                                ctx.build(n.slot.source);
+                                ctx.writeLine(`$runtime.insertAfter(label, $parentElement);`);
+                                if(ctx.inuse.apply) ctx.writeLine(`$$apply();`);
+                            });
+                            ctx.writeLine(`}`);
+                        });
+                        ctx.write(true, `}`);
+                    } else {
+                        ctx.writeLine(`fragment: ($cd, label, $option) => {`);
+                        ctx.goIndent(() => {
+                            ctx.build(n.slot.template);
+                            ctx.build(n.slot.source);
+                            ctx.writeLine(`$runtime.insertAfter(label, $parentElement);`);
+                        });
+                        ctx.write(true, `}`);
+                    }
+                }
                 ctx.write('\n');
                 ctx.indent--;
                 ctx.writeLine(`});`);
             } else {
-                ctx.write(`);\n`);
+                ctx.write(`, $option);\n`);
             }
         });
     }
 
-    const version = '0.6.21';
+    function attachFragmentSlot(label, node) {
+        this.require('$cd', '$context');
+
+        return xNode('fragment-slot', {
+            el: label.bindName()
+        }, (ctx, n) => {
+            ctx.writeLine(`$option.fragment?.($cd, ${n.el}, $option);`);
+        });
+    }
+
+    const version = '0.6.22';
 
 
     async function compile(source, config = {}) {
@@ -5411,6 +5499,7 @@
             makeAwaitBlock,
             attachSlot,
             makeFragment,
+            attachFragmentSlot,
             attachFragment,
             checkRootName: checkRootName,
 
