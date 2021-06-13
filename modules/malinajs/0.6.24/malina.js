@@ -282,11 +282,8 @@
             this.indent--;
         };
         this.write = function(a, b) {
-            if(a === true) {
-                this.result.push(this.getIndent());
-                a = b;
-            }
-            a && this.result.push(a);
+            if(a == true) this.result.push(this.getIndent() + b);
+            else a && this.result.push(a);
         };
         this.writeLine = function(s) {
             this.write(this.getIndent());
@@ -568,7 +565,7 @@
                 }
                 if(a == '>') {
                     flush();
-                    const voidTags = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
+                    const voidTags = ['fragment', 'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
                     let voidTag = voidTags.indexOf(name) >= 0;
                     let closedTag = voidTag || source[index-2] == '/';
                     return {
@@ -719,10 +716,7 @@
                             if(a === '>') break;
                             name += a;
                         }
-                        if(name) {
-                            name = name.split(':')[0];
-                            assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
-                        }
+                        assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
                         return;
                     }
 
@@ -834,9 +828,9 @@
                         } else if(bind.value == '/slot') {
                             assert(parent.type === 'slot', 'Slot error: /slot');
                             return;
-                        } else if(bind.value.startsWith('#fragment:') || bind.value.startsWith('#export:')) {
+                        } else if(bind.value.match(/^\#fragment\W/)) {
                             let tag = {
-                                type: bind.value.startsWith('#export:') ? 'export' : 'fragment',
+                                type: 'fragment',
                                 value: bind.value,
                                 body: []
                             };
@@ -845,9 +839,6 @@
                             continue;
                         } else if(bind.value == '/fragment') {
                             assert(parent.type === 'fragment', 'Fragment error: /fragment');
-                            return;
-                        } else if(bind.value == '/export') {
-                            assert(parent.type === 'export', 'Fragment error: /export');
                             return;
                         } else throw 'Error binding: ' + bind.value;
                     }
@@ -1226,7 +1217,7 @@
                     code.push(`let {${pa}, ...$attributes} = $props;`);
 
                     if(!this.script.readOnly && !constantProps) {
-                        code.push(`$runtime.current_component.push = () => {`);
+                        code.push(`$runtime.current_component.push = () => {  `);
                         code.push(`  ({${result.props.map(p => p.name+'='+p.name).join(', ')}, ...$attributes} = $props);`);
                         code.push(`  $$apply();`);
                         code.push(`};`);
@@ -1240,7 +1231,7 @@
                     code.push(`let {${pa}} = $props;`);
 
                     if(!this.script.readOnly && !constantProps) {
-                        code.push(`$runtime.current_component.push = () => {`);
+                        code.push(`$runtime.current_component.push = () => {  `);
                         code.push(`  ({${result.props.map(p => p.name+'='+p.name).join(', ')}} = $props);`);
                         code.push(`  $$apply();`);
                         code.push(`};`);
@@ -1441,7 +1432,7 @@
             let body = data.body.filter(n => {
                 if(n.type == 'script' || n.type == 'style' || n.type == 'slot') return false;
                 if(n.type == 'comment' && !this.config.preserveComments) return false;
-                if(n.type == 'fragment' || n.type == 'export') {
+                if(n.type == 'fragment') {
                     try {
                         let f = this.makeFragment(n);
                         f && binds.push(f);
@@ -1486,18 +1477,11 @@
                     tpl.push('</template>');
                 } else if(n.type === 'node') {
                     if(n.name == 'component' || n.name.match(/^[A-Z]/)) {
-                        if(n.elArg) {
-                            let el = xNode('node:comment', {label: true, value: `exported ${n.elArg}`});
-                            tpl.push(el);
-                            let b = this.attachFragment(n, el, n.name);
-                            b && binds.push(b);
-                        } else {
-                            // component
-                            let el = xNode('node:comment', {label: true, value: n.name});
-                            tpl.push(el);
-                            let b = this.makeComponent(n, el);
-                            binds.push(b.bind);
-                        }
+                        // component
+                        let el = xNode('node:comment', {label: true, value: n.name});
+                        tpl.push(el);
+                        let b = this.makeComponent(n, el);
+                        binds.push(b.bind);
                         return;
                     }
                     if(n.name == 'slot') {
@@ -1508,16 +1492,10 @@
                         return;
                     }
                     if(n.name == 'fragment') {
-                        if(n.elArg) {
-                            let el = xNode('node:comment', {label: true, value: `fragment ${n.elArg}`});
-                            tpl.push(el);
-                            let b = this.attachFragment(n, el);
-                            b && binds.push(b);
-                        } else {
-                            let el = xNode('node:comment', {label: true, value: 'fragment'});
-                            tpl.push(el);
-                            binds.push(this.attachFragmentSlot(el, n));
-                        }
+                        let el = xNode('node:comment', {label: true, value: `fragment ${n.elArg}`});
+                        tpl.push(el);
+                        let b = this.attachFragment(n, el);
+                        b && binds.push(b);
                         return;
                     }
 
@@ -3763,7 +3741,7 @@
 
         function build(parent, list) {
             list.forEach(e => {
-                if(e.type == 'each' || e.type == 'fragment' || e.type == 'export' || e.type == 'slot') {
+                if(e.type == 'each' || e.type == 'fragment' || e.type == 'slot') {
                     if(e.body && e.body.length) build(parent, e.body);
                     return;
                 } else if(e.type == 'if') {
@@ -3871,8 +3849,7 @@
 
         let propLevel = 0, propLevelType;
 
-        let componentName = node.name;
-        if(componentName == 'component') {
+        if(node.name == 'component') {
             assert(node.elArg);
             dynamicComponent = node.elArg[0] == '{' ? unwrapExp(node.elArg) : node.elArg;
         }
@@ -3957,19 +3934,30 @@
             if(!slots.default && defaultSlot.body.length) slots.default = defaultSlot;
 
             Object.values(slots).forEach(slot => {
-                if(!slot.body.length) return;
                 assert(isSimpleName(slot.name));
-                passOption.slots = true;
-
-                let props;
+                let props, setters;
                 let rx = slot.value && slot.value.match(/^#slot\S*\s+(.*)$/);
                 if(rx) {
-                    props = rx[1].trim().split(/\s*,\s*/);
-                    assert(props.length);
-                    props.forEach(n => {
+                    let args = rx[1].trim().split(/\s*,\s*/);
+                    args.forEach(n => {
                         assert(isSimpleName(n), 'Wrong prop for slot');
                     });
+                    props = xNode('slot:props', {
+                        props: args
+                    }, (ctx, data) => {
+                        ctx.writeLine(`let ${data.props.join(', ')};`);
+                    });
+                    setters = xNode('slot:setters', {
+                        props: args
+                    }, (ctx, data) => {
+                        for(let name of data.props) {
+                            ctx.writeLine(`, set_${name}: (_${name}) => {${name} = _${name}; $$apply();}`);
+                        }
+                    });
                 }
+
+                if(!slot.body.length) return;
+                passOption.slots = true;
 
                 let contentNodes = trimEmptyNodes(slot.body);
                 if(contentNodes.length == 1 && contentNodes[0].type == 'node' && contentNodes[0].name == 'slot') {
@@ -3985,53 +3973,50 @@
                     }
                 }
 
-                if(props) this.require('apply');
-                this.require('$cd');
-
                 let block = this.buildBlock(slot, {inline: true});
 
                 const template = xNode('template', {
+                    name: '$parentElement',
                     body: block.tpl,
-                    svg: block.svg,
-                    inline: true
+                    svg: block.svg
                 });
 
                 head.push(xNode('slot', {
                     name: slot.name,
                     template,
                     bind: block.source,
-                    componentName,
-                    props
-                }, (ctx, n) => {
-                    if(n.bind) {
-                        ctx.write(true, `slots.${n.name} = $runtime.makeSlot($cd, ($cd, $context, $instance_${n.componentName}`);
-                        if(n.props) ctx.write(`, props`);
-                        ctx.write(`) => {\n`);
-                        ctx.goIndent(() => {
-                            if(n.bind) {
-                                let push = n.props && ctx.inuse.apply;
-                                ctx.write(true, `let $parentElement = `);
-                                ctx.build(n.template);
-                                ctx.write(`;\n`);
-                                if(n.props) {
-                                    ctx.writeLine(`let {${n.props.join(', ')}} = props;`);
-                                    if(push) ctx.writeLine(`let push = () => ({${n.props.join(', ')}} = props, $$apply());`);
-                                }
-                                ctx.build(n.bind);
-                                if(push) ctx.writeLine(`return {push, el: $parentElement};`);
-                                else ctx.writeLine(`return $parentElement;`);
+
+                    props,
+                    setters,
+                    $cd: block.inuse.$cd
+                }, (ctx, data) => {
+                    ctx.writeLine(`slots.${data.name} = function($label, $context) {`);
+                    ctx.goIndent(() => {
+                        if(data.$cd) ctx.writeLine(`let $childCD = $cd.new();`);
+                        ctx.build(data.template);
+                        ctx.build(data.props);
+                        if(data.bind) {
+                            if(data.$cd) {
+                                ctx.writeLine(`{`);
+                                ctx.goIndent(() => {
+                                    ctx.writeLine(`let $cd = $childCD;`);
+                                    ctx.build(data.bind);
+                                });
+                                ctx.writeLine(`}`);
                             } else {
-                                ctx.write(true, `return `);
-                                ctx.build(n.template);
-                                ctx.write(`;\n`);
+                                ctx.build(data.bind);
                             }
+                        }
+
+                        ctx.writeLine(`$runtime.insertAfter($label, $parentElement);`);
+                        ctx.writeLine(`return {`);
+                        ctx.goIndent(() => {
+                            if(data.$cd) ctx.writeLine(`destroy: () => {$childCD.destroy();}`);
+                            ctx.build(data.setters);
                         });
-                        ctx.writeLine(`});`);
-                    } else {
-                        ctx.write(true, `slots.${n.name} = $runtime.makeSlotStatic(() => `);
-                        ctx.build(n.template);
-                        ctx.write(`);\n`);
-                    }
+                        ctx.writeLine(`};`);
+                    });
+                    ctx.writeLine(`}`);
                 }));
             });
 
@@ -4327,7 +4312,7 @@
 
         let result = xNode('component', {
             el: element.bindName(),
-            componentName,
+            componentName: node.name,
             head,
             body,
             options,
@@ -5185,11 +5170,9 @@
 
                     props.push(xNode('prop', {
                         name,
-                        value,
-                        dyn: true
+                        value
                     }, (ctx, n) => {
-                        if(this.inuse.apply) ctx.write(`${n.name}: () => (${n.value})`);
-                        else ctx.write(`${n.name}: (${n.value})`);
+                        ctx.write(`${n.name}: () => (${n.value})`);
                     }));
                 } else {
                     props.push(xNode('static-prop', {
@@ -5222,7 +5205,7 @@
             });
         }
 
-        this.require('$component', '$cd', '$context');
+        this.require('$cd', '$context');
 
         return xNode('slot', {
             name: slotName,
@@ -5230,48 +5213,37 @@
             props,
             placeholder
         }, (ctx, n) => {
-            let hasDynProps = n.props.some(p => p.dyn);
-            let base = 'Base';
-            if(hasDynProps && ctx.inuse.apply) {
-                assert(!ctx._ctx.script.readOnly);
-                base = '';
-            }
-            ctx.write(true, `$runtime.attachSlot${base}($context, $cd, '${n.name}', ${n.el}, `);
+            ctx.writeIndent();
             if(n.props.length) {
-                ctx.write(`{\n`);
+                ctx.write(`$runtime.attachSlot($option, $context, $cd, '${n.name}', ${n.el}, {\n`);
                 ctx.goIndent(() => {
-                    for(let i=0; i < n.props.length; i++) {
-                        let prop = n.props[i];
+                    for(let i=0; i < props.length; i++) {
+                        let prop = props[i];
                         ctx.writeIndent();
                         ctx.build(prop);
-                        if(i + 1 < n.props.length) ctx.write(',');
+                        if(i + 1 < props.length) ctx.write(',');
                         ctx.write('\n');
                     }
                 });
-                ctx.write(true, `}`);
+                ctx.writeIndent();
+                ctx.write('}');
             } else {
-                ctx.write(`null`);
+                ctx.write(`$runtime.attachSlotBase($option, $context, $cd, '${n.name}', ${n.el}`);
             }
             if(n.placeholder) {
                 ctx.write(', () => {\n');
                 ctx.goIndent(() => {
                     ctx.build(n.placeholder);
                 });
-                ctx.write(true, '}');
+                ctx.writeIndent();
+                ctx.write('}');
             }
             ctx.write(');\n');
         });
     }
 
     function makeFragment(node) {
-        let rx, exported = false;
-        if(node.type == 'export') {
-            this.require('$component');
-            exported = true;
-            rx = node.value.match(/#export\:(\S+)(.*)$/);
-        } else {
-            rx = node.value.match(/#fragment\:(\S+)(.*)$/);
-        }
+        let rx = node.value.match(/#fragment\:(\S+)(.*)$/);
         assert(rx);
         let name = rx[1];
         assert(isSimpleName(name));
@@ -5290,7 +5262,6 @@
         return xNode('fragment', {
             name,
             props,
-            exported,
             source: block.source,
             template: xNode('template', {
                 name: '$parentElement',
@@ -5298,9 +5269,7 @@
                 svg: block.svg
             })
         }, (ctx, n) => {
-            ctx.write(true);
-            if(n.exported) ctx.write(`$component.exported.${n.name} = `);
-            ctx.write(`function $fragment_${n.name}($cd, label, $option={}) {\n`);
+            ctx.writeLine(`function $fragment_${n.name}($cd, label, $option={}) {`);
             ctx.indent++;
 
             if(n.props) {
@@ -5323,16 +5292,13 @@
     }
 
 
-    function attachFragment(node, element, componentName) {
+    function attachFragment(node, element) {
         let name = node.elArg;
         assert(isSimpleName(name));
 
         let props = [];
         let events = [];
         let forwardAllEvents;
-        let slotBlock = null;
-
-        if(node.body?.length) slotBlock = this.buildBlock({body: trimEmptyNodes(node.body)}, {inline: true});
 
         node.attributes.forEach(prop => {
             let name = prop.name;
@@ -5409,37 +5375,17 @@
 
         this.require('$cd');
 
-        let slot = null;
-        if(slotBlock) {
-            let template = xNode('template', {
-                name: '$parentElement',
-                body: slotBlock.tpl,
-                svg: slotBlock.svg,
-                inline: !slotBlock.source
-            });
-
-            slot = {
-                source: slotBlock.source,
-                template
-            };
-        }
-
         return xNode('call-fragment', {
             forwardAllEvents,
             el: element.bindName(),
             name,
-            parentComponent: componentName,
             events,
-            props,
-            slot
+            props
         }, (ctx, n) => {
-            if(n.parentComponent) ctx.write(true, `$instance_${componentName}.$$.exported.${name}?.($instance_${componentName}, ${n.el}`);
-            else ctx.write(true, `$fragment_${n.name}($cd, ${n.el}`);
-            if(n.props.length || n.events.length || n.slot) {
-                if(n.parentComponent) ctx.write(`, {\n`);
-                else ctx.write(`, {...$option,\n`);
+            ctx.write(true, `$fragment_${n.name}($cd, ${n.el}`);
+            if(n.props.length || n.events.length) {
+                ctx.write(`, {...$option,\n`);
                 ctx.indent++;
-                let comma;
 
                 if(n.props.length) {
                     ctx.write(true, 'props: () => ({');
@@ -5448,16 +5394,14 @@
                         ctx.write(`${p.name}: ${p.exp}`);
                     });
                     ctx.write('})');
-                    comma = true;
                 }
 
                 if(n.forwardAllEvents) {
-                    if(n.events.length) this.warning(`Fragment: mixing binding and forwarding is not supported: '${node.openTag}'`);
-                    if(comma) ctx.write(',\n');
+                    if(n.events.length) this.warning(`Fragment: mixing binding and forwarding is not supported:: '${node.openTag}'`);
+                    if(n.props.length) ctx.write(',\n');
                     ctx.write(true, 'events: $option.events');
-                    comma = true;
                 } else if(n.events.length) {
-                    if(comma) ctx.write(',\n');
+                    if(n.props.length) ctx.write(',\n');
                     ctx.write(true, 'events: {...$option.events,');
                     n.events.forEach((e, i) => {
                         if(i) ctx.write(', ');
@@ -5465,55 +5409,18 @@
                         else ctx.write(`${e.name}: ${e.callback}`);
                     });
                     ctx.write('}');
-                    comma = true;
                 }
-                if(n.slot) {
-                    if(comma) ctx.write(',\n');
-                    if(n.parentComponent) {
-                        if(n.slot.template.inline) {
-                            ctx.write(true, `fragment: $runtime.makeSlotStatic(() => `);
-                            ctx.build(n.slot.template);
-                            ctx.write(`)`);
-                        } else {
-                            ctx.writeLine(`fragment: $runtime.makeFragmentSlot($cd, ($cd) => {`);
-                            ctx.goIndent(() => {
-                                ctx.build(n.slot.template);
-                                ctx.build(n.slot.source);
-                                ctx.writeLine(`return $parentElement;`);
-                            });
-                            ctx.writeLine(`})`);
-                        }
-                    } else {
-                        ctx.writeLine(`fragment: ($cd, label, $option) => {`);
-                        ctx.goIndent(() => {
-                            ctx.build(n.slot.template);
-                            ctx.build(n.slot.source);
-                            ctx.writeLine(`$runtime.insertAfter(label, $parentElement);`);
-                        });
-                        ctx.write(true, `}`);
-                    }
-                }
+
                 ctx.write('\n');
                 ctx.indent--;
                 ctx.writeLine(`});`);
             } else {
-                if(n.parentComponent) ctx.write(`);\n`);
-                else ctx.write(`, $option);\n`);
+                ctx.write(`, $option);\n`);
             }
         });
     }
 
-    function attachFragmentSlot(label, node) {
-        this.require('$cd');
-
-        return xNode('fragment-slot', {
-            el: label.bindName()
-        }, (ctx, n) => {
-            ctx.writeLine(`$option.fragment?.($cd, ${n.el});`);
-        });
-    }
-
-    const version = '0.6.25';
+    const version = '0.6.24';
 
 
     async function compile(source, config = {}) {
@@ -5549,7 +5456,6 @@
             makeAwaitBlock,
             attachSlot,
             makeFragment,
-            attachFragmentSlot,
             attachFragment,
             checkRootName: checkRootName,
 

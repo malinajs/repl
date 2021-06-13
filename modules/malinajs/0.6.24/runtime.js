@@ -47,7 +47,6 @@ function $ChangeDetector(parent) {
     this.watchers = [];
     this._d = [];
     this.prefix = [];
-    this.$$ = parent?.$$;
 }
 $ChangeDetector.prototype.new = function() {
     var cd = new $ChangeDetector(this);
@@ -404,8 +403,7 @@ const $readOnlyBase = {
             watchers: [],
             prefix: [],
             new: () => $component.$cd,
-            destroy: noop,
-            $$: $component
+            destroy: noop
         };
     },
     b: ($component) => {
@@ -425,7 +423,6 @@ const $readOnlyBase = {
 const $base = {
     a: ($component) => {
         let $cd = new $ChangeDetector();
-        $cd.$$ = $component;
         $onDestroy(() => $cd.destroy());
 
         let id = `a${$$uniqIndex++}`;
@@ -461,7 +458,6 @@ const makeComponent = (init, $base) => {
             $option,
             destroy: () => $component._d.map(safeCall),
             context: $context,
-            exported: {},
             _d: [],
             _m: []
         };
@@ -665,61 +661,27 @@ const makeExternalProperty = ($component, name, getter, setter) => {
 };
 
 
-const attachSlotBase = ($context, $cd, slotName, label, props, placeholder) => {
-    let $slot = $cd.$$.$option.slots?.[slotName];
-    if($slot) $slot($cd, label, $context, props);
-    else placeholder && placeholder();
-};
-
-
-const attachSlot = ($context, $cd, slotName, label, props, placeholder) => {
-    let $slot = $cd.$$.$option.slots?.[slotName];
+const attachSlotBase = ($option, $context, $cd, slotName, label, placeholder) => {
+    let $slot = $option.slots && $option.slots[slotName];
     if($slot) {
-        let resultProps = {}, push;
-        if(props) {
-            let setter = (k) => {
-                return v => {
-                    resultProps[k] = v;
-                    push?.();
-                }
-            };
-            for(let k in props) {
-                let v = props[k];
-                if(isFunction(v)) {
-                    fire($watch($cd, v, setter(k), {ro: true, cmp: $$compareDeep}));
-                } else resultProps[k] = v;
-            }
-        }
-        push = $slot($cd, label, $context, resultProps);
+        let s = $slot(label, $context);
+        cd_onDestroy($cd, s.destroy);
+        return s;
     } else placeholder && placeholder();
 };
 
 
-const makeSlot = (parentCD, fn) => {
-    return (callerCD, label, $context, props) => {
-        let $cd = parentCD.new();
-        cd_onDestroy(callerCD, () => $cd.destroy());
-        let r = fn($cd, $context, callerCD, props || {});
-        insertAfter(label, r.el || r);
-        $cd.$$.apply?.();
-        return r.push;
-    };
-};
-
-
-const makeSlotStatic = (fn) => {
-    return (callerCD, label) => {
-        insertAfter(label, fn());
-    }
-};
-
-
-const makeFragmentSlot = (parentCD, fn) => {
-    return (callerCD, label) => {
-        let $cd = parentCD.new();
-        cd_onDestroy(callerCD, () => $cd.destroy());
-        insertAfter(label, fn($cd));
-        $cd.$$.apply();
+const attachSlot = ($option, $context, $cd, slotName, label, props, placeholder) => {
+    let slot = attachSlotBase($option, $context, $cd, slotName, label, placeholder);
+    if(slot) {
+        for(let key in props) {
+            let setter = `set_${key}`;
+            if(s[setter]) {
+                let exp = props[key];
+                if(isFunction(exp)) $watch($cd, exp, s[setter], {ro: true, cmp: $$compareDeep});
+                else s[setter](exp);
+            }
+        }
     }
 };
 
@@ -929,4 +891,4 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, itemTemplate, bind
     }, {ro: true, cmp: $$compareArray});
 }
 
-export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $base, $context, $digest, $insertElementByOption, $makeEmitter, $onDestroy, $onMount, $readOnlyBase, $tick, $watch, $watchReadOnly, __app_onerror, __bindActionSubscribe, addClass, addEvent, addStyles, attachAnchor, attachSlot, attachSlotBase, autoSubscribe, bindAction, bindAttribute, bindAttributeBase, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, configure, createTextNode, current_component, eachDefaultKey, fire, firstChild, getFinalLabel, insertAfter, isArray, isFunction, makeClassResolver, makeComponent, makeExternalProperty, makeFragmentSlot, makeSlot, makeSlotStatic, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment };
+export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$groupCall, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$ifBlock, $$makeSpreadObject, $$removeElements, $$removeItem, $ChangeDetector, $base, $context, $digest, $insertElementByOption, $makeEmitter, $onDestroy, $onMount, $readOnlyBase, $tick, $watch, $watchReadOnly, __app_onerror, __bindActionSubscribe, addClass, addEvent, addStyles, attachAnchor, attachSlot, attachSlotBase, autoSubscribe, bindAction, bindAttribute, bindAttributeBase, bindClass, bindInput, bindPropToComponent, bindStyle, bindText, callComponent, cd_onDestroy, childNodes, cloneDeep, configure, createTextNode, current_component, eachDefaultKey, fire, firstChild, getFinalLabel, insertAfter, isArray, isFunction, makeClassResolver, makeComponent, makeExternalProperty, makeTree, noop, recalcAttributes, removeElementsBetween, setClassToElement, spreadObject, svgToFragment };
