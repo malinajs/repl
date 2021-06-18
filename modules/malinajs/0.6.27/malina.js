@@ -1486,8 +1486,48 @@
                     tpl.push('</template>');
                 } else if(n.type === 'node') {
                     if(n.name == 'malina' && !option.malinaElement) {
-                        let b = this.attachHead(n);
-                        b && binds.push(b);
+                        if(n.elArg == 'window' || n.elArg == 'body') {
+                            let name = 'el' + (this.uniqIndex++);
+                            let block = this.buildBlock({body: [n]}, {malinaElement: true, inline: true, oneElement: name, bindAttributes: true});
+                            if(block.source) {
+                                binds.push(xNode('block', {
+                                    name,
+                                    target: n.elArg,
+                                    source: block.source
+                                }, (ctx, n) => {
+                                    if(n.target == 'window') ctx.writeLine(`let ${n.name} = window;`);
+                                    else ctx.writeLine(`let ${n.name} = document.body;`);
+                                    ctx.build(n.source);
+                                }));
+                            }
+                        } else if(n.elArg == 'head') {
+                            let body = (n.body || []).filter(n => n.type != 'text');
+                            if(!body.length) return;
+                            let block = this.buildBlock({body}, {inline: true});
+
+                            binds.push(xNode('malina:head', {
+                                source: block.source,
+                                template: xNode('template', {
+                                    name: '$parentElement',
+                                    body: block.tpl
+                                })
+                            }, (ctx, n) => {
+                                if(n.source) {
+                                    ctx.writeLine(`{`);
+                                    ctx.indent++;
+                                    ctx.build(n.template);
+                                    ctx.build(n.source);
+                                    ctx.writeLine(`document.head.appendChild($parentElement);`);
+                                    ctx.indent--;
+                                    ctx.writeLine(`}`);
+                                } else {
+                                    n.template.inline = true;
+                                    ctx.write(true, `document.head.appendChild(`);
+                                    ctx.build(n.template);
+                                    ctx.write(`);\n`);
+                                }
+                            }));
+                        } else throw 'Wrong tag'
                         return;
                     }
                     if(n.name == 'component' || n.name.match(/^[A-Z]/)) {
@@ -1597,7 +1637,7 @@
                     binds.push(ifBlock.source);
                     return;
                 } else if(n.type === 'systag') {
-                    let r = n.value.match(/^@(\w+)\s+(.*)$/s);
+                    let r = n.value.match(/^@(\w+)\s+(.*)$/);
                     let name = r[1];
                     let exp = r[2];
 
@@ -5518,75 +5558,7 @@
         });
     }
 
-    function attachHead(n) {
-        if(n.elArg == 'window' || n.elArg == 'body') {
-            let name = 'el' + (this.uniqIndex++);
-            let block = this.buildBlock({body: [n]}, {malinaElement: true, inline: true, oneElement: name, bindAttributes: true});
-            if(block.source) {
-                return xNode('block', {
-                    name,
-                    target: n.elArg,
-                    source: block.source
-                }, (ctx, n) => {
-                    if(n.target == 'window') ctx.writeLine(`let ${n.name} = window;`);
-                    else ctx.writeLine(`let ${n.name} = document.body;`);
-                    ctx.build(n.source);
-                });
-            }
-        } else if(n.elArg == 'head') {
-            let title;
-            let body = (n.body || []).filter(n => {
-                if(n.type == 'text') return false;
-                if(n.name == 'title') {
-                    title = n;
-                    return false;
-                }
-                return true;
-            });
-
-            let d = {};
-            if(title?.body?.[0]) {
-                assert(title.body[0].type == 'text');
-                let r = this.parseText(title.body[0].value);
-                if(r.parts.some(i => i.type == 'exp')) {
-                    d.dynTitle = r.result;
-                } else {
-                    d.title = r.result;
-                }
-            }
-            if(body.length) {
-                let block = this.buildBlock({body}, {inline: true});
-                d.source = block.source;
-                d.template = xNode('template', {
-                    name: '$parentElement',
-                    body: block.tpl
-                });
-                this.require('$onDestroy');
-            }
-
-            return xNode('malina:head', d, (ctx, n) => {
-                if(n.title != null) ctx.writeLine(`document.title = ${n.title};`);
-                if(n.dynTitle) {
-                    if(ctx.inuse.apply) ctx.writeLine(`$watchReadOnly($cd, () => (${n.dynTitle}), (value) => {document.title = value;});`);
-                    else ctx.writeLine(`document.title = ${n.dynTitle};`);
-                }
-
-                if(n.template) {
-                    ctx.writeLine(`{`);
-                    ctx.indent++;
-                    ctx.build(n.template);
-                    ctx.build(n.source);
-                    ctx.writeLine(`let a=$parentElement.firstChild, b=$parentElement.lastChild;`);
-                    ctx.writeLine(`$onDestroy(() => {$runtime.$$removeElements(a, b)});`);
-                    ctx.writeLine(`document.head.appendChild($parentElement);`);
-                    ctx.indent--;
-                    ctx.writeLine(`}`);
-                }
-            });
-        } else throw 'Wrong tag';
-    }
-
-    const version = '0.6.28';
+    const version = '0.6.27';
 
 
     async function compile(source, config = {}) {
@@ -5624,7 +5596,6 @@
             makeFragment,
             attachFragmentSlot,
             attachFragment,
-            attachHead,
             checkRootName: checkRootName,
 
             inuse: {},

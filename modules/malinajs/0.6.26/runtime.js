@@ -735,9 +735,7 @@ const attachAnchor = ($option, $cd, name, el) => {
 function $$htmlBlock($cd, tag, fn) {
     let lastElement;
     let create = (html) => {
-        let fr;
-        if(tag.parentElement instanceof SVGElement) fr = svgToFragment(html);
-        else fr = $$htmlToFragment(html);
+        let fr = $$htmlToFragment(html);
         lastElement = fr.lastChild;
         insertAfter(tag, fr);
     };
