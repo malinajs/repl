@@ -5621,7 +5621,7 @@
         } else throw 'Wrong tag';
     }
 
-    const version = '0.6.31';
+    const version = 'unstable';
 
 
     async function compile(source, config = {}) {
