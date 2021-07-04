@@ -60,9 +60,14 @@ async function fetchMalina(){
         extversions.push(version);
     });
 
+    let distTags = JSON.parse( await exec('npm view malinajs dist-tags --json') );
+    let stableVersion = distTags.latest;
+    console.log(`[${NAME}] Stable version is ${stableVersion}`);
+
     console.log(`[${NAME}] Fetch MalinaJS versions list...`);
     let versions = JSON.parse( await exec('npm view malinajs versions --json') );
-    let latest = versions[versions.length-1];
+    versions = versions.filter(v => v != stableVersion).concat([stableVersion]);
+    let latest = stableVersion;
     versions = versions.concat(extversions);
     fs.writeFileSync(path.join(MDIR,'versions.json'),JSON.stringify(versions));
     console.log(`[${NAME}] - ${versions.length} versions found.`);
