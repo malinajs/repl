@@ -123,7 +123,10 @@ function langDefinitionMalina(Prism) {
                         'javascript': /[A-Za-z0-9_$]+/
                     }
                 },
-                'attr-name':/\s[a-z0-9-]+/,
+                'attr-name': {
+                    pattern: /(\s)[a-z0-9-]+/,
+                    lookbehind: true
+                },
                                 
                 'punctuation': /=|\/?>$/,
             }
