@@ -37,6 +37,16 @@ function langDefinitionMalina(Prism) {
         }
     }
 
+    const rx = (v) => {
+        for(let r of v) {
+            try {
+                let x = new RegExp(r);
+                console.log(x);
+                return x;
+            } catch (e) {}
+        }
+    }
+
     function getTag(validonly){
 
         return {
@@ -53,7 +63,10 @@ function langDefinitionMalina(Prism) {
                 },
                 'expression':!validonly && expression,
                 'attr-value':{
-                    pattern:/(\=)"[\S\s]*?(?<!\\)"|(\=)"[^"]*|[^"]*"(?=(>|\s))|(\=)'[\S\s]*?(?<!\\)'|(\=)'[^']*|[^']*'(?=(>|\s))/,
+                    //pattern:/(\=)"[\S\s]*?(?<!\\)"|(\=)"[^"]*|[^"]*"(?=(>|\s))|(\=)'[\S\s]*?(?<!\\)'|(\=)'[^']*|[^']*'(?=(>|\s))/,
+                    pattern: rx([
+                        '(\\=)"[\\S\\s]*?(?<!\\\\)"|(\\=)"[^"]*|[^"]*"(?=(>|\\s))' + "|(\\=)'[\\S\\s]*?(?<!\\\\)'|(\\=)'[^']*|[^']*'(?=(>|\\s))",
+                        '(\\=)"[\\S\\s]*"|(\\=)"[^"]*|[^"]*"(?=(>|\\s))' + "|(\\=)'[\\S\\s]*'|(\\=)'[^']*|[^']*'(?=(>|\\s))"]),
                     lookbehind: true,
                     inside:{
                         'punctuation': /^"|^'|"$|'$/
