@@ -16,12 +16,13 @@ export function highlight(syntax,code){
 
 function langDefinitionMalina(Prism) {
 
-    const expression = {            
+    const expression = {
         pattern: /\{[\s\S]*?\}/,
         inside:{
             'punctuation': /\{|\}$/,
             'eachfix':{
-                pattern:/(?<=(each .+ as .+))[a-zA-Z$_0-9]+\s*\(.+\)\s*$/,
+                pattern:/(each .+ as .+)[a-zA-Z$_0-9]+\s*\(.+\)\s*$/,
+                lookbehind: true,
                 inside:{
                     'javascript': /^[a-zA-Z$_0-9]+/
                 }
@@ -52,7 +53,8 @@ function langDefinitionMalina(Prism) {
                 },
                 'expression':!validonly && expression,
                 'attr-value':{
-                    pattern:/(?<=\=)"[\S\s]*?(?<!\\)"|(?<=\=)"[^"]*|[^"]*"(?=(>|\s))|(?<=\=)'[\S\s]*?(?<!\\)'|(?<=\=)'[^']*|[^']*'(?=(>|\s))/,
+                    pattern:/(\=)"[\S\s]*?(?<!\\)"|(\=)"[^"]*|[^"]*"(?=(>|\s))|(\=)'[\S\s]*?(?<!\\)'|(\=)'[^']*|[^']*'(?=(>|\s))/,
+                    lookbehind: true,
                     inside:{
                         'punctuation': /^"|^'|"$|'$/
                     }
@@ -60,14 +62,20 @@ function langDefinitionMalina(Prism) {
                 'ref':!validonly && {
                     pattern:/\s#([A-Za-z0-9_$]+)?/,
                     inside:{
-                        'keyword':/(?<=\s)#/,
+                        'keyword': {
+                            pattern: /(\s)#/,
+                            lookbehind: true
+                        },
                         'javascript': /[A-Za-z0-9_$]+/
                     }
                 },
                 'action':!validonly && {
                     pattern:/\s(\*|use:|use)([A-Za-z0-9_$]+)?=?/,
                     inside:{
-                        'keyword':/(?<=\s)(\*|use:|use)/,
+                        'keyword': {
+                            pattern: /(\s)(\*|use:|use)/,
+                            lookbehind: true
+                        },
                         'punctuation':/=$/,
                         'javascript': /[A-Za-z0-9_$]+/
                     }
@@ -75,21 +83,30 @@ function langDefinitionMalina(Prism) {
                 'event':!validonly && {
                     pattern:/\s(@@|@|on:@?)([A-Za-z0-9_$:|]+)?/,
                     inside:{
-                        'keyword':/(?<=\s)(@@|on:@?|@)/,
+                        'keyword': {
+                            pattern: /(\s)(@@|on:@?|@)/,
+                            lookbehind: true
+                        },
                         'javascript': /:[A-Za-z0-9_$]+/,
                         'attr-name': {
                             pattern: /[A-Za-z0-9|]+/,
                             inside: {
-                                'italic':/(?<=\|)[A-Za-z0-9]+/
+                                'italic': {
+                                    pattern: /(\|)[A-Za-z0-9]+/,
+                                    lookbehind: true
+                                }
                             }
                         }
                     }
                 },
                 'bind':!validonly && [{
-                    pattern:/\s(:|bind:)([A-Za-z0-9_$]+)?=?/,
+                    pattern:/\s(:|bind:)([A-Za-z0-9_$]+)=?/,
                     inside:{
-                        'keyword':/(?<=\s)(:|bind:)/,
-                        'attr-name':/[a-z]+(?=\=)/,
+                        'keyword': {
+                            pattern: /(\s)(:|bind:)/,
+                            lookbehind: true
+                        },
+                        'attr-name':/([a-z]+)=?/,
                         'punctuation':/=$/,
                         'javascript': /[A-Za-z0-9_$]+/
                     }
@@ -97,7 +114,10 @@ function langDefinitionMalina(Prism) {
                 'style':!validonly && {
                     pattern:/\s(class:|style:)([A-Za-z0-9_$]+)?=?/,
                     inside:{
-                        'keyword':/(?<=\s)(class:|style:)/,
+                        'keyword': {
+                            pattern: /(\s)(class:|style:)/,
+                            lookbehind: true
+                        },
                         'attr-name':/[a-z]+(?=\=)/,
                         'punctuation':/=$/,
                         'javascript': /[A-Za-z0-9_$]+/
