@@ -10,9 +10,9 @@ export async function compile(code,name,treeshaked){
         autoSubscribe: true,
         name,
         localConfig: false,
-        injectRuntime: treeshaked ? null : '$runtime.configure({onerror: (e) => {window.malina_onerror && malina_onerror(e)}})'
+        autoimport: (name) => `import ${name} from './${name}.xht';`
     }
-    
+
     try {
         let result =  await malina.compile(code, opts);
         if(result.result) result = result.result;

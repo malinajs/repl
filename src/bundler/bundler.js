@@ -8,7 +8,7 @@ export async function bundle(files){
         checkDependency('rollup');
 
         let bundle = await rollup.rollup({
-            input: "./App.xht",
+            input: "./__entry.js",
             external: false,
             inlineDynamicImports: true,
             treeshake: false,
@@ -63,9 +63,19 @@ function module_resolver_plugin(){
 // Get source from user's components
 function component_plugin(files) {
     
+    const entryFile = `
+        import {configure} from 'malinajs';
+        import App from './App.xht';
+        configure({onerror: (e) => window.malina_onerror?.(e)});
+        if(window.app) window.app.destroy();
+        document.body.innerHTML = '';
+        window.app = App(document.body);
+    `;
+
     return {
         name: 'rollup_plugin_files',
         async load(id) { 
+            if(id == './__entry.js') return entryFile;
             if(!id.startsWith('./')) return null;
             id = id.replace(/^\.\//,'');
             const file = files.find(f=>f.name===id);

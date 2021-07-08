@@ -41,7 +41,6 @@ function langDefinitionMalina(Prism) {
         for(let r of v) {
             try {
                 let x = new RegExp(r);
-                console.log(x);
                 return x;
             } catch (e) {}
         }
