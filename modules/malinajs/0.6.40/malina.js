@@ -166,22 +166,16 @@
                 }
             }
 
-            const isTable = n => ['thead', 'tbody', 'tfoot', 'tr', 'td', 'th'].includes(n.name);
-
             i = 0;
             while(i < body.length) {
                 let node = body[i];
                 if(node.type == 'text' && !node.value.trim()) {
-                    if(parentNode && (parentNode.name == 'table' || isTable(parentNode)) && (i == 0 || i == body.length -1)) {
-                        body.splice(i, 1);
-                        continue;
-                    }
-
                     let prev = getPrev();
                     let next = getNext();
                     if(prev && next) {
                         if(prev.type == 'node' && next.type == 'node') {
-                            if(isTable(prev) && isTable(next) ||
+                            if(prev.name == 'td' && next.name == 'td' ||
+                                prev.name == 'tr' && next.name == 'tr' ||
                                 prev.name == 'li' && next.name == 'li' ||
                                 prev.name == 'div' && next.name == 'div') {
                                     body.splice(i, 1);
@@ -1604,24 +1598,6 @@
                 }
                 return true;
             });
-
-            if(tpl.name == 'table') {
-                let result = [], tbody = null;
-                body.forEach(n => {
-                    if(n.type == 'node' && ['thead', 'tbody', 'tfoot'].includes(n.name)) {
-                        result.push(n);
-                        tbody = null;
-                        return;
-                    }
-
-                    if(!tbody) {
-                        tbody = {type: 'node', name: 'tbody', body: [], attributes: [], classes: new Set()};
-                        result.push(tbody);
-                    }
-                    tbody.body.push(n);
-                });
-                body = result;
-            }
 
             {
                 let i = 1;
@@ -5842,7 +5818,7 @@
         return {event, fn};
     }
 
-    const version = '0.6.41';
+    const version = '0.6.40';
 
 
     async function compile(source, config = {}) {
