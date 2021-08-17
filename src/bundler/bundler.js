@@ -37,7 +37,7 @@ export async function bundle(files){
 
 // Module path resolver
 function module_resolver_plugin(){
-    const localRg = /^\.{1,2}\//;
+    const localRg = /^\.{1,2}\/|^\//;
     const netRg = /^https?:\/\/|^\/\//;
     const malinaRg = /^malinajs\//;
     return {
@@ -46,8 +46,10 @@ function module_resolver_plugin(){
             // Local file
             if(localRg.test(id) && (!importer || localRg.test(importer)) ) return id;
 
-            // Local on UNPKG
+            // Remote file
+            if(netRg.test(id)) return id;
 
+            // Local on remote
             if(localRg.test(id) && netRg.test(importer)) return new URL(id,addSlash(importer)).href;
 
             // MalinaJS Libs
