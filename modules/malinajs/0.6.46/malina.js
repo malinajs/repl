@@ -1286,7 +1286,7 @@
 
         const makeWatch = (n) => {
             function assertExpression(n) {
-                if(['Identifier', 'TemplateLiteral', 'Literal'].includes(n.type)) return;
+                if(n.type == 'Identifier') return;
                 if(n.type.endsWith('Expression')) return;
                 throw 'Wrong expression';
             }
@@ -5883,7 +5883,7 @@
         return {event, fn};
     }
 
-    const version = '0.6.47';
+    const version = '0.6.46';
 
 
     async function compile(source, config = {}) {
