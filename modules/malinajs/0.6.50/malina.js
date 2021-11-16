@@ -4298,7 +4298,6 @@
             let value = prop.value;
             if(name == '@@') {
                 forwardAllEvents = true;
-                this.require('$events');
                 return false;
             } else if(name == 'this') {
                 dynamicComponent = unwrapExp(value);
@@ -5354,7 +5353,7 @@
                 svg: block.svg
             })
         }, (ctx, n) => {
-            ctx.write(true, `function $fragment_${n.name}($cd, $$label, $props, $events, $$fragmentSlot) {\n`);
+            ctx.write(true, `function $fragment_${n.name}($cd, label, $props, $events, $$fragmentSlot) {\n`);
             ctx.indent++;
 
             if(n.props?.length) {
@@ -5369,7 +5368,7 @@
 
             ctx.build(n.template);
             ctx.build(n.source);
-            ctx.writeLine(`$runtime.insertAfter($$label, $parentElement);`);
+            ctx.writeLine(`$runtime.insertAfter(label, $parentElement);`);
 
             ctx.indent--;
             ctx.writeLine('}');
@@ -5492,15 +5491,15 @@
                 ctx.write(missed, ',\n');
                 missed = '';
                 if(n.slot.source) {
-                    ctx.writeLine(`($cd, $$label) => {`);
+                    ctx.writeLine(`($cd, label) => {`);
                     ctx.goIndent(() => {
                         ctx.build(n.slot.template);
                         ctx.build(n.slot.source);
-                        ctx.writeLine(`$runtime.insertAfter($$label, $parentElement);`);
+                        ctx.writeLine(`$runtime.insertAfter(label, $parentElement);`);
                     });
                     ctx.write(true, `}`);
                 } else {
-                    ctx.write(true, `($cd, $$label) => $runtime.insertAfter($$label, `);
+                    ctx.write(true, `($cd, label) => $runtime.insertAfter(label, `);
                     ctx.build(n.slot.template);
                     ctx.write(`)\n`);
                 }
@@ -5891,7 +5890,7 @@
         return {event, fn};
     }
 
-    const version = '0.6.51';
+    const version = '0.6.50';
 
 
     async function compile(source, config = {}) {
