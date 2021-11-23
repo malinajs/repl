@@ -48,9 +48,9 @@ function module_resolver_plugin(){
 
             // Remote file
             if(netRg.test(id)) return id;
-
+            
             // Local on remote
-            if(localRg.test(id) && netRg.test(importer)) return new URL(id,addSlash(importer)).href;
+            if(localRg.test(id) && netRg.test(importer)) return resolvePath(id,importer);
 
             // MalinaJS Libs
             if(id == 'malinajs') return `${DEPS_REPO}/malinajs/${malina ? malina.version : 'latest'}/runtime.js`;
@@ -123,6 +123,9 @@ function malina_plugin() {
 
 
 // ---- Helpers ---- //
+function resolvePath(id,importer){
+    return new URL(id,importer).href
+}
 
 function addSlash(url){
     if(url.slice(-1) === '/') return url;
