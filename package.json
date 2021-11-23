@@ -1,6 +1,6 @@
 {
     "name": "malinajs-repl",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "scripts": {
         "dev": "node esbuild --dev",
         "build": "node esbuild",
