@@ -64,14 +64,15 @@ function module_resolver_plugin(){
 
 // Get source from user's components
 function component_plugin(files) {
-    
+
     const entryFile = `
         import {configure} from 'malinajs';
         import App from './App.xht';
         configure({onerror: (e) => window.malina_onerror?.(e)});
-        if(window.app) window.app.destroy();
+        window.app?.destroy?.();
         document.body.innerHTML = '';
         window.app = App(document.body);
+        if(window.app?.$dom) document.body.appendChild(window.app.$dom);;
     `;
 
     return {
