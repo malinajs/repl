@@ -40,16 +40,7 @@ async function treeshake(code){
 }
 
 function pretify(code){
-    //TODO remove fix when https://github.com/davidbonnet/astring/issues/335 will be resolved
-    //FIX dynamic import in astring
-    code = code.replace(/ import\(/g,' import_dynamic(');
-
     console.log(code);
     let ast = acorn.parse(code, {sourceType: 'module', ecmaVersion:2020});
-    code =  astring.generate(ast);
-    
-    //FIX dynamic import in astring
-    code = code.replace(/ import_dynamic\(/g,' import(');
-
-    return code;
+    return astring.generate(ast);
 }

@@ -8,7 +8,7 @@
     },
     "devDependencies": {
         "acorn": "^8.4.1",
-        "astring": "^1.7.5",
+        "astring": "^1.8.1",
         "cjs2es": "^1.1.0",
         "codejar": "^3.5.0",
         "derver": "^0.4.15",
