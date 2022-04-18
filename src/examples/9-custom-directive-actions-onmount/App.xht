@@ -1,49 +1,48 @@
 <!-- Custom directive, actions, onMount -->
 <script>
-    let colors = ['red', 'blue', 'green', 'deeppink', 'brown'];
-    let list = [
-        {name: 'Linux', n: 0},
-        {name: 'MacOS', n: 1},
-        {name: 'Windows', n: 2},
-        {name: 'Ubuntu', n: 3},
-        {name: 'FreeBSD', n: 4}
-    ];
+  let colors = ['red', 'blue', 'green', 'deeppink', 'brown'];
+  let list = [
+    {name: 'Linux', n: 0},
+    {name: 'MacOS', n: 1},
+    {name: 'Windows', n: 2},
+    {name: 'Ubuntu', n: 3},
+    {name: 'FreeBSD', n: 4}
+  ];
 
-    let div;
+  let div;
 
-    const color = (element, item, n) => {
-        // on mount action
-        function inc() {item.n++;}
-        element.addEventListener('click', inc);
+  const color = (element, item, n) => {
+    // on mount action
+    function inc() {item.n++;}
+    element.addEventListener('click', inc);
+    element.style.color = colors[n];
+
+    return {
+      // on update action
+      update: (item, n) => {
+        if(n < colors.length) {
         element.style.color = colors[n];
-
-        return {
-        
-        // on update action
-        update: (item, n) => {
-            if(n < colors.length) {
-            element.style.color = colors[n];
-            div.style.backgroundColor = colors[n];
-            }
-            else list.splice(list.indexOf(item), 1);
-        },
-        
-        // on destroy action
-        destroy: () => {
-            element.removeEventListener('click', inc);
+        div.style.backgroundColor = colors[n];
         }
-        }
-    }
+        else list.splice(list.indexOf(item), 1);
+      },
 
-    function onMount() {
-        // on mount component
+      // on destroy action
+      destroy: () => {
+        element.removeEventListener('click', inc);
+      }
     }
+  }
+
+  function onMount() {
+    // on mount component
+  }
 </script>
 
 <div use={div=$element}>Run code from html, e.g. save element into variable</div>
 
 <ul style="cursor: pointer; user-select: none;">
-    {#each list as it}
-        <li use:color={it, it.n}>{it.name} - {it.n}</li>
-    {/each}
+  {#each list as it}
+    <li use:color={it, it.n}>{it.name} - {it.n}</li>
+  {/each}
 </ul>

@@ -1,11 +1,11 @@
 <!-- Import packages -->
 <script>
-    import marked from 'marked';
-    
-    let markdown = '';
-    let htmlcode = '';
-    
-    $: htmlcode = marked(markdown);
+  import marked from 'marked';
+  
+  let markdown = '';
+  let htmlcode = '';
+  
+  $: htmlcode = marked(markdown);
 </script>
 
 
@@ -16,9 +16,9 @@
 <div>{@html htmlcode}</div>
 
 <style>
-    textarea,div{
-    	width: 100%;
-    	height: 200px;
-    	border: 1px solid gray;
-    }
+  textarea,div{
+    width: 100%;
+    height: 200px;
+    border: 1px solid gray;
+  }
 </style>

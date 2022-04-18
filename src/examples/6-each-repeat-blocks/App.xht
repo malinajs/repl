@@ -1,29 +1,29 @@
 <!-- Each/Repeat block -->
 <script>
-    let items = [{name: 'first task'}, {name: 'second task'}];
-    let name = '';
+  let items = [{name: 'first task'}, {name: 'second task'}];
+  let name = '';
 
-    const add = () => {
-        items.push({name: name});
-        name = '';
-    };
-    const remove = i => {
-        items.splice(i, 1);
-    }
-    const reverse = (item) => {
-        item.name = item.name.split('').reverse().join('');
-    }
+  const add = () => {
+    items.push({name: name});
+    name = '';
+  };
+  const remove = i => {
+    items.splice(i, 1);
+  }
+  const reverse = (item) => {
+    item.name = item.name.split('').reverse().join('');
+  }
 </script>
 
 Enter text and press enter:
 <input type="text" bind:value={name} on:keydown|enter={add()} />
 
 <ul>
-    {#each items as item}
-    <li>
-        {$index}: {item.name}
-        <a href on:click|preventDefault={reverse(item)}>reverse</a>
-        <a href on:click|preventDefault={remove($index)}>remove</a>
-    </li>
-    {/each}
+  {#each items as item, i}
+  <li>
+    {i}: {item.name}
+    <a href on:click|preventDefault={reverse(item)}>reverse</a>
+    <a href on:click|preventDefault={remove(i)}>remove</a>
+  </li>
+  {/each}
 </ul>
