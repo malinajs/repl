@@ -15,17 +15,17 @@
 </script>
 
 {#if active}
-  Edit: <input type="text" on:keydown|enter={active=null} bind:value={active.name} use={$element.focus()} />
+  Edit: <input type="text" @keydown|enter={active=null} :value={active.name} *{$element.focus()} />
 {:else}
-  <input type="text" on:keydown|enter={add()} bind:value={name} />
+  <input type="text" @keydown|enter={add()} bind:value={name} />
 {/if}
 
 <ul>
   {#each todos as todo, i}
     <li class:active={todo == active} class:inactive={todo.done}>
       <input type="checkbox" bind:checked={todo.done} />
-      <span on:click={active=todo}>{i}:  {todo.name}</span>
-      <a href on:click|preventDefault={remove(i)}>remove</a>
+      <span @click={active=todo}>{i}:  {todo.name}</span>
+      <a href @click|preventDefault={remove(i)}>remove</a>
     </li>
   {/each}
 </ul>

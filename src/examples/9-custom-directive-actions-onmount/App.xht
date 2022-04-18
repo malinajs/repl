@@ -21,10 +21,11 @@
       // on update action
       update: (item, n) => {
         if(n < colors.length) {
-        element.style.color = colors[n];
-        div.style.backgroundColor = colors[n];
+          element.style.color = colors[n];
+          div.style.backgroundColor = colors[n];
+        } else {
+          list.splice(list.indexOf(item), 1);
         }
-        else list.splice(list.indexOf(item), 1);
       },
 
       // on destroy action
@@ -34,15 +35,19 @@
     }
   }
 
-  function onMount() {
+  $onMount(() => {
     // on mount component
-  }
+  });
+
+  $onDestroy(() => {
+    // on destroy component
+  });
 </script>
 
-<div use={div=$element}>Run code from html, e.g. save element into variable</div>
+<div *{div=$element}>Run code from html, e.g. save element into variable</div>
 
 <ul style="cursor: pointer; user-select: none;">
   {#each list as it}
-    <li use:color={it, it.n}>{it.name} - {it.n}</li>
+    <li *color={it, it.n}>{it.name} - {it.n}</li>
   {/each}
 </ul>

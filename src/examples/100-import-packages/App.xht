@@ -1,16 +1,16 @@
 <!-- Import packages -->
 <script>
-  import marked from 'marked';
-  
+  import marked from 'marked@3';
+
   let markdown = '';
   let htmlcode = '';
-  
+
   $: htmlcode = marked(markdown);
 </script>
 
 
 <h3>Markdown text</h3>
-<textarea bind:value={markdown}></textarea>
+<textarea :value={markdown}></textarea>
 
 <h3>Result HTML code</h3>
 <div>{@html htmlcode}</div>

@@ -66,7 +66,7 @@ async function fetchMalina(){
 
     console.log(`[${NAME}] Fetch MalinaJS versions list...`);
     let versions = JSON.parse( await exec('npm view malinajs versions --json') );
-    const ignoreVersions = [stableVersion, '0.7.0-alpha', '0.7.1-alpha'];
+    const ignoreVersions = [stableVersion, '0.7.0-alpha', '0.7.1-alpha', '0.7.0-a2'];
     versions = versions.filter(v => !ignoreVersions.includes(v)).concat([stableVersion]);
     let latest = stableVersion;
     versions = versions.concat(extversions);

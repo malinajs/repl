@@ -16,14 +16,14 @@
 </script>
 
 Enter text and press enter:
-<input type="text" bind:value={name} on:keydown|enter={add()} />
+<input type="text" :value={name} @keydown|enter={add()} />
 
 <ul>
   {#each items as item, i}
   <li>
     {i}: {item.name}
-    <a href on:click|preventDefault={reverse(item)}>reverse</a>
-    <a href on:click|preventDefault={remove(i)}>remove</a>
+    <a href @click|preventDefault={reverse(item)}>reverse</a>
+    <a href @click|preventDefault={remove(i)}>remove</a>
   </li>
   {/each}
 </ul>

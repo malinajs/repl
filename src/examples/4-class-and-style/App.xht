@@ -3,7 +3,7 @@
   let value;
 </script>
 
-<input type="checkbox" bind:checked={value} /> switch
+<input type="checkbox" :checked={value} /> switch
 
 <div class:blue={value} class:red={!value}>Linux</div>
 <div class="{value?'red':'blue'}">MacOS</div>

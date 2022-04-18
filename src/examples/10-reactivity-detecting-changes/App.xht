@@ -17,8 +17,8 @@
 <h1>Hello {header}!</h1>
 <input type="text" bind:value={name} />
 
-<div on:click={div=$element} class:active={div==$element}>Click here</div>
-<div on:click={div=$element} class:active={div==$element}>Click here</div>
+<div @click={div=$element} class:active={div==$element}>Click here</div>
+<div @click={div=$element} class:active={div==$element}>Click here</div>
 
 
 <style>

@@ -8,15 +8,15 @@
 </script>
 
 Enter word and press enter:
-<input bind:value={name} on:keydown|enter={name=''} /> {name}
+<input :value={name} @keydown|enter={name=''} /> {name}
 <br />
-<button on:click={click($event)}>Click!</button>
-<a href on:click|preventDefault={event=$element.textContent}>Click</a>
+<button @click={click($event)}>Click!</button>
+<a href @click|preventDefault={event=$element.textContent}>Click</a>
 {event}
 
 <ul>
   <li>
-    <b>on:event</b> to listen event, available locals: <i>$element, $event</i>
+    <b>@event</b> to listen event, available locals: <i>$element, $event</i>
   </li>  
   <li>
     modifier "preventDefault" to use <i>event.preventDefault()</i>
