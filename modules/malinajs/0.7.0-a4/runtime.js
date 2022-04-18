@@ -1,16 +1,12 @@
 let __app_onerror = console.error;
 
-
 const configure = (option) => {
   __app_onerror = option.onerror;
 };
 
-
 const isFunction = fn => typeof fn == 'function';
 
-
 const isObject = d => typeof d == 'object';
-
 
 const safeCall = fn => {
   try {
@@ -20,42 +16,39 @@ const safeCall = fn => {
   }
 };
 
+const safeGroupCall = list => {
+  try {
+    list.forEach(fn => fn?.());
+  } catch (e) {
+    __app_onerror(e);
+  }
+};
+
+let current_destroyList, current_cd, destroyResults;
+const $onDestroy = fn => fn && current_destroyList.push(fn);
+
 function WatchObject(fn, cb) {
   this.fn = fn;
   this.cb = cb;
+  this.ro = true;
   this.value = NaN;
-  this.ro = false;
   this.cmp = null;
 }
 
-
-const cd_watchObject = (fn, cb, option) => {
-  let w = new WatchObject(fn, cb);
+function $watch(fn, callback, option) {
+  let w = new WatchObject(fn, callback);
   option && Object.assign(w, option);
-  return w;
-};
-
-
-function $watch(cd, fn, callback, w) {
-  w = cd_watchObject(fn, callback, w);
-  cd.watchers.push(w);
+  current_cd.watchers.push(w);
   return w;
 }
 
-function $watchReadOnly(cd, fn, callback) {
-  return $watch(cd, fn, callback, { ro: true });
-}
-
-function addEvent(cd, el, event, callback) {
+function addEvent(el, event, callback) {
   if(!callback) return;
   el.addEventListener(event, callback);
-  cd_onDestroy(cd, () => {
+
+  $onDestroy(() => {
     el.removeEventListener(event, callback);
   });
-}
-
-function cd_onDestroy(cd, fn) {
-  if(fn) cd._d.push(fn);
 }
 
 function $$removeItem(array, item) {
@@ -67,19 +60,8 @@ function $ChangeDetector(parent) {
   this.parent = parent;
   this.children = [];
   this.watchers = [];
-  this._d = [];
   this.prefix = [];
 }
-
-$ChangeDetector.prototype.new = function() {
-  let cd = new $ChangeDetector(this);
-  this.children.push(cd);
-  return cd;
-};
-
-$ChangeDetector.prototype.destroy = function(option) {
-  cd_destroy(this, option);
-};
 
 const cd_component = cd => {
   while(cd.parent) cd = cd.parent;
@@ -88,27 +70,16 @@ const cd_component = cd => {
 
 const cd_new = () => new $ChangeDetector();
 
-const cd_attach = (parent, cd) => {
+const cd_attach2 = (parent, cd) => {
   if(cd) {
     cd.parent = parent;
     parent.children.push(cd);
   }
 };
 
-let destroyResults = null;
+const cd_attach = (cd) => cd_attach2(current_cd, cd);
 
-const cd_destroy = (cd, option) => {
-  if(option !== false && cd.parent) $$removeItem(cd.parent.children, cd);
-  cd.watchers.length = 0;
-  cd.prefix.length = 0;
-  cd._d.forEach(fn => {
-    let p = safeCall(fn);
-    p && destroyResults && destroyResults.push(p);
-  });
-  cd._d.length = 0;
-  cd.children.map(cd => cd.destroy(false));
-  cd.children.length = 0;
-};
+const cd_detach = cd => $$removeItem(cd.parent.children, cd);
 
 const isArray = (a) => Array.isArray(a);
 
@@ -351,7 +322,7 @@ function $tick(fn) {
 
 function $makeEmitter(option) {
   return (name, detail) => {
-    let fn = option.events[name];
+    let fn = option.events?.[name];
     if(!fn) return;
     let e = document.createEvent('CustomEvent');
     e.initCustomEvent(name, false, false, detail);
@@ -378,15 +349,12 @@ function $$addEventForComponent(list, event, fn) {
 
 
 let current_component, $context;
-
-const $onDestroy = fn => current_component._d.push(fn);
 const $onMount = fn => current_component._m.push(fn);
 
 
-const $base = ($component) => {
-  let $cd = cd_new();
-  $cd.component = $component;
-  $onDestroy(() => $cd.destroy());
+const makeApply = () => {
+  let $cd = current_component.$cd = current_cd = cd_new();
+  $cd.component = current_component;
 
   let planned;
   let apply = r => {
@@ -402,35 +370,35 @@ const $base = ($component) => {
     return r;
   };
 
-  $component.$cd = $cd;
-  $component.apply = apply;
-  $component.push = apply;
+  current_component.apply = apply;
+  current_component.push = apply;
   apply();
+  return apply;
 };
 
 
-const makeComponent = (init, $base) => {
+const makeComponent = (init) => {
   return ($option = {}) => {
-    let prev = current_component;
     $context = $option.context || {};
-    let $component = current_component = {
-      $option,
-      destroy: () => $component._d.map(safeCall),
-      context: $context,
-      exported: {},
-      _d: [],
-      _m: []
-    };
-    $base?.($component);
+    let prev_component = current_component,
+      prev_cd = current_cd,
+      $component = current_component = {
+        $option,
+        context: $context,
+        exported: {},
+        _m: []
+      };
+    current_cd = null;
 
     try {
-      $component.$dom = init($option, $component.apply);
+      $component.$dom = init($option);
     } finally {
-      current_component = prev;
+      current_component = prev_component;
       $context = null;
+      current_cd = prev_cd;
     }
 
-    $component._d.push(...$component._m.map(safeCall));
+    $component._m.forEach(fn => $onDestroy(safeCall(fn)));
     return $component;
   };
 };
@@ -438,81 +406,71 @@ const makeComponent = (init, $base) => {
 
 const callComponent = (context, component, option = {}, propFn, cmp, setter, classFn) => {
   option.context = { ...context };
-  let $component, parentWatch, childWatch, cd;
+  let $component, parentWatch, parentCD = current_cd;
 
   if(propFn) {
     if(cmp) {
-      cd = cd_new();
-      parentWatch = $watch(cd, propFn, value => {
+      parentWatch = $watch(propFn, value => {
         option.props = value;
         if($component) {
           $component.push?.();
-          childWatch && (childWatch.idle = true);
           $component.apply?.();
         }
-      }, { ro: true, value: {}, cmp });
+      }, { value: {}, cmp });
       fire(parentWatch);
     } else option.props = propFn();
   }
 
   if(classFn) {
-    cd = cd || cd_new();
-    fire($watch(cd, classFn, value => {
+    fire($watch(classFn, value => {
       option.$class = value;
       $component?.apply?.();
-    }, { ro: true, value: {}, cmp: keyComparator }));
-  }
-
-  let anchors = option.anchor;
-  if(anchors) {
-    for(let name in anchors) {
-      let a = anchors[name];
-      let fn = a.$;
-      if(fn) {
-        cd = cd || cd_new();
-        anchors[name] = el => {
-          let $cd = cd_new();
-          cd_attach(cd, $cd);
-          fn($cd, el);
-          return () => cd_destroy($cd);
-        };
-      }
-    }
+    }, { value: {}, cmp: keyComparator }));
   }
 
   $component = safeCall(() => component(option));
   if(setter && $component?.exportedProps) {
-    childWatch = $watch($component.$cd, $component.exportedProps, value => {
+    let w = new WatchObject($component.exportedProps, value => {
       setter(value);
-      cd_component(cd).apply();
-    }, { ro: true, idle: true, value: parentWatch.value, cmp });
+      cd_component(parentCD).apply();
+      option.props = parentWatch.fn();
+      $component.push();
+    });
+    Object.assign(w, {idle: true, cmp, value: parentWatch.value});
+    $component.$cd.watchers.push(w);
   }
-  return {
-    $cd: cd,
-    $dom: $component.$dom,
-    destroy: $component.destroy,
-    $component
-  };
+
+  return $component;
 };
 
 
-const attachDynComponent = (parentCD, label, exp, bind) => {
-  let active, $cd, $dom, destroy, finalLabel = getFinalLabel(label);
-  cd_onDestroy(parentCD, () => destroy?.());
-  $watch(parentCD, exp, (component) => {
-    destroy?.();
-    if($cd) cd_destroy($cd);
+const attachDynComponent = (label, exp, bind) => {
+  let parentCD = current_cd;
+  let active, destroyList, $cd, $dom, finalLabel = getFinalLabel(label);
+  const destroy = () => destroyList && safeGroupCall(destroyList);
+  $onDestroy(destroy);
+
+  $watch(exp, (component) => {
+    destroy();
+    if($cd) cd_detach($cd);
     if(active) removeElementsBetween(label, finalLabel);
 
     if(component) {
-      ({ $cd, $dom, destroy } = bind(component));
-      cd_attach(parentCD, $cd);
+      destroyList = current_destroyList = [];
+      $cd = current_cd = cd_new();
+      try {
+        $dom = bind(component).$dom;
+      } finally {
+        current_destroyList = null;
+        current_cd = null;
+      }
+      cd_attach2(parentCD, $cd);
       insertAfter(label, $dom);
       active = true;
     } else {
-      destroy = null;
       $cd = null;
       active = false;
+      destroyList = null;
     }
   });
 };
@@ -522,7 +480,7 @@ const autoSubscribe = (...list) => {
   list.forEach(i => {
     if(isFunction(i.subscribe)) {
       let unsub = i.subscribe(current_component.apply);
-      if(isFunction(unsub)) cd_onDestroy(current_component, unsub);
+      if(isFunction(unsub)) $onDestroy(unsub);
     }
   });
 };
@@ -540,32 +498,32 @@ const addStyles = (id, content) => {
 const addClass = (el, className) => el.classList.add(className);
 
 
-const bindClass = (cd, element, fn, className) => {
-  $watch(cd, fn, value => {
+const bindClass = (element, fn, className) => {
+  $watch(fn, value => {
     if(value) addClass(element, className);
     else element.classList.remove(className);
-  }, { ro: true, value: false });
+  }, { value: false });
 };
 
 
 const setClassToElement = (element, value) => bindAttributeBase(element, 'class', value);
 
 
-const bindClassExp = (cd, element, fn) => {
-  $watch(cd, fn, value => setClassToElement(element, value), { ro: true, value: '' });
+const bindClassExp = (element, fn) => {
+  $watch(fn, value => setClassToElement(element, value), { value: '' });
 };
 
 
-const bindText = (cd, element, fn) => {
-  $watchReadOnly(cd, () => '' + fn(), value => {
+const bindText = (element, fn) => {
+  $watch(() => '' + fn(), value => {
     element.textContent = value;
   });
 };
 
 
-const bindStyle = (cd, element, name, fn) => {
-  $watchReadOnly(cd, fn, (value) => {
-    element.style[name] = value;
+const bindStyle = (element, name, fn) => {
+  $watch(fn, (value) => {
+    element.style.setProperty(name, value);
   });
 };
 
@@ -576,41 +534,40 @@ const bindAttributeBase = (element, name, value) => {
 };
 
 
-const bindAttribute = (cd, element, name, fn) => {
-  $watchReadOnly(cd, () => {
+const bindAttribute = (element, name, fn) => {
+  $watch(() => {
     let v = fn();
     return v == null ? v : '' + v;
   }, value => bindAttributeBase(element, name, value));
 };
 
 
-const bindAction = (cd, element, action, fn, subscribe) => {
-  $tick(() => {
-    let handler, value;
-    if(fn) {
-      value = fn();
-      handler = action.apply(null, [element].concat(value));
-    } else handler = action(element);
-    cd_onDestroy(cd, handler?.destroy);
-    subscribe?.(cd, fn, handler, value);
-  });
+const bindAction = (element, action, fn, subscribe) => {
+  let handler, value;
+  if(fn) {
+    value = fn();
+    handler = action.apply(null, [element].concat(value));
+  } else handler = action(element);
+  $onDestroy(handler?.destroy);
+  subscribe?.(fn, handler, value);
+  handler.init && $tick(handler.init);
 };
 
 
-const __bindActionSubscribe = (cd, fn, handler, value) => {
+const __bindActionSubscribe = (fn, handler, value) => {
   if(handler?.update && fn) {
-    $watch(cd, fn, args => {
+    $watch(fn, args => {
       handler.update.apply(handler, args);
-    }, { cmp: $$deepComparator(1), value: cloneDeep(value, 1) });
+    }, { ro: false, cmp: $$deepComparator(1), value: cloneDeep(value, 1) });
   }
 };
 
 
-const bindInput = (cd, element, name, get, set) => {
-  let w = $watchReadOnly(cd, name == 'checked' ? () => !!get() : get, value => {
+const bindInput = (element, name, get, set) => {
+  let w = $watch(name == 'checked' ? () => !!get() : get, value => {
     element[name] = value == null ? '' : value;
   });
-  addEvent(cd, element, 'input', () => {
+  addEvent(element, 'input', () => {
     set(w.value = element[name]);
   });
 };
@@ -651,7 +608,8 @@ const makeClassResolver = ($option, classMap, metaClass, mainName) => {
 };
 
 
-const makeExternalProperty = ($component, name, getter, setter) => {
+const makeExternalProperty = (name, getter, setter) => {
+  let $component = current_component;
   Object.defineProperty($component, name, {
     get: getter,
     set: v => { setter(v); $component.apply(); }
@@ -662,13 +620,27 @@ const makeExternalProperty = ($component, name, getter, setter) => {
 const eachDefaultKey = (item, index, array) => isObject(array[0]) ? item : index;
 
 
-const attachAnchor = ($option, $cd, el, name) => {
-  let fn = $option.anchor?.[name || 'default'];
-  if(fn) cd_onDestroy($cd, fn(el));
+const attachAnchor = ($option, el, name) => {
+  $option.anchor?.[name || 'default']?.(el);
 };
 
 
-const spreadAttributes = (cd, el, fn) => {
+const makeAnchor = (fn) => {
+  let parentCD = current_cd;
+  return ($dom) => {
+    let prev = current_cd, $cd = current_cd = cd_new();
+    cd_attach2(parentCD, $cd);
+    $onDestroy(() => cd_detach($cd));
+    try {
+      fn($dom);
+    } finally {
+      current_cd = prev;
+    }
+  }
+};
+
+
+const spreadAttributes = (el, fn) => {
   const props = Object.getOwnPropertyDescriptors(el.__proto__);
   let prev = {};
   const set = (k, v) => {
@@ -691,7 +663,7 @@ const spreadAttributes = (cd, el, fn) => {
       }
     }
   };
-  $watch(cd, fn, apply, {
+  $watch(fn, apply, {
     cmp: (_, state) => {
       apply(state);
       return 0;
@@ -701,47 +673,48 @@ const spreadAttributes = (cd, el, fn) => {
 
 
 const callExportedFragment = (childComponent, name, slot, events, props, cmp) => {
-  let $cd, r;
+  let push, $dom;
   if(cmp) {
-    $cd = cd_new();
-    let fn = props, result;
-    props = () => result;
-    let w = $watch($cd, fn, (props) => {
-      result = props;
-      r?.push();
+    let result;
+    let w = $watch(props, (value) => {
+      result = value;
+      push?.();
     }, { value: {}, cmp });
     fire(w);
+    props = () => result;
   }
   let fn = childComponent.exported[name];
-  r = fn(props, events, slot);
-  r.$cd = $cd;
-  return r;
+  ([$dom, push] = fn(props, events, slot));
+  return $dom;
 };
 
 
-const exportFragment = (childCD, name, fn) => {
+const exportFragment = (name, fn) => {
+  let childCD = current_cd;
   cd_component(childCD).exported[name] = (props, events, slot) => {
-    let { $cd, $dom } = fn(props, events || {}, slot);
-    cd_attach(childCD, $cd);
+    let prev = current_cd, $cd = current_cd = cd_new();
+    cd_attach2(childCD, $cd);
+    $onDestroy(() => cd_detach($cd));
     let apply = cd_component(childCD).apply;
-    return {
-      $dom,
-      destroy: () => $cd.destroy(),
-      push: () => apply?.()
-    };
+    apply();
+    try {
+      return [fn(props, events || {}, slot), apply];
+    } finally {
+      current_cd = prev;
+    }
   };
 };
 
 
-const prefixPush = ($cd, fn) => {
-  $cd.prefix.push(fn);
+const prefixPush = fn => {
+  current_cd.prefix.push(fn);
   fn();
 };
 
 
-const unwrapProps = (cd, props, fn) => {
+const unwrapProps = (props, fn) => {
   if(props) {
-    if(isFunction(props)) prefixPush(cd, () => fn(props()));
+    if(isFunction(props)) prefixPush(() => fn(props()));
     else fn(props);
   }
 };
@@ -749,47 +722,38 @@ const unwrapProps = (cd, props, fn) => {
 
 const makeBlock = (fr, fn) => {
   return (v) => {
-    let $dom = fr.cloneNode(true), $cd = cd_new();
-    fn($cd, $dom, v);
-    return { $cd, $dom };
-  };
-};
-
-
-const makeBlockBound = (parentCD, fr, fn) => {
-  return () => {
-    let $dom = fr.cloneNode(true), $cd = cd_new();
-    fn($cd, $dom);
-    cd_attach(parentCD, $cd);
-    return {
-      $dom,
-      destroy: () => cd_destroy($cd)
-    };
-  };
-};
-
-
-const makeStaticBlock = (fr, fn) => {
-  return () => {
     let $dom = fr.cloneNode(true);
-    fn?.($dom);
-    return { $dom };
+    fn?.($dom, v);
+    return $dom;
   };
 };
 
-const attachBlock = (cdo, label, block) => {
-  if(!block) return;
-  cd_onDestroy(cdo, block.destroy);
-  cd_attach(cdo, block.$cd);
-  insertAfter(label, block.$dom);
+
+const makeBlockBound = (fr, fn) => {
+  let parentCD = current_cd;
+  return () => {
+    let $dom = fr.cloneNode(true), prev = current_cd, $cd = current_cd = cd_new();
+    cd_attach2(parentCD, $cd);
+    $onDestroy(() => cd_detach($cd));
+    try {
+      fn($dom);
+      return $dom;
+    } finally {
+      current_cd = prev;
+    }
+  }
 };
 
+
+const attachBlock = (label, $dom) => {
+  if(!$dom) return;
+  insertAfter(label, $dom.$dom || $dom);
+};
 
 const mergeEvents = (...callbacks) => {
   callbacks = callbacks.filter(i => i);
   return (e) => callbacks.forEach(cb => cb(e));
 };
-
 
 const makeRootEvent = (root) => {
   let events = {}, nodes = [];
@@ -825,50 +789,90 @@ const makeRootEvent = (root) => {
   };
 };
 
-function $$htmlBlock($cd, tag, fn) {
-  let lastElement;
-  let create = (html) => {
-    let fr;
-    if(tag.parentElement instanceof SVGElement) fr = svgToFragment(html);
-    else fr = $$htmlToFragment(html, 3);
-    lastElement = fr.lastChild;
-    insertAfter(tag, fr);
+const mount = (label, component, option) => {
+  let app, first, last, destroyList = current_destroyList = [];
+  try {
+    app = component(option);
+    let $dom = app.$dom;
+    delete app.$dom;
+    if($dom.nodeType == 11) {
+      first = $dom.firstChild;
+      last = $dom.lastChild;
+    } else first = last = $dom;
+    label.appendChild($dom);
+  } finally {
+    current_destroyList = null;
+  }
+  app.destroy = () => {
+    safeGroupCall(destroyList);
+    $$removeElements(first, last);
   };
+  return app;
+};
+
+let create = (tag, html) => {
+  let fr;
+  if(tag.parentElement instanceof SVGElement) {
+    let t = document.createElement('template');
+    t.innerHTML = '<svg>' + html + '</svg>';
+    fr = t.content[firstChild];
+  } else {
+    let t = document.createElement('template');
+    t.innerHTML = html;
+    fr = t.content;
+  }
+  let lastElement = fr.lastChild;
+  insertAfter(tag, fr);
+  return lastElement;
+};
+
+function $$htmlBlock(tag, fn) {
+  let lastElement;
   let destroy = () => {
     if(!lastElement) return;
     $$removeElements(tag.nextSibling, lastElement);
     lastElement = null;
   };
-  if($cd) {
-    $watch($cd, fn, (html) => {
-      destroy();
-      if(html) create(html);
-    }, { ro: true });
-  } else create(fn());
+  $watch(fn, (html) => {
+    destroy();
+    if(html) lastElement = create(tag, html);
+  });
 }
 
-function ifBlock(parentCD, label, fn, build, buildElse) {
-  let first, last, $cd, destroy;
-  cd_onDestroy(parentCD, () => destroy?.());
+function $$htmlBlockStatic(tag, value) {
+  create(tag, value);
+}
+
+function ifBlock(label, fn, build, buildElse, parentLabel) {
+  let first, last, $cd, destroyList, parentCD = current_cd;
+  $onDestroy(() => safeGroupCall(destroyList));
 
   function createBlock(builder) {
     let $dom;
-    ({ $cd, destroy, $dom } = builder());
-    cd_attach(parentCD, $cd);
+    destroyList = current_destroyList = [];
+    $cd = current_cd = cd_new();
+    try {
+      $dom = builder();
+    } finally {
+      current_destroyList = null;
+      current_cd = null;
+    }
+    cd_attach2(parentCD, $cd);
     if($dom.nodeType == 11) {
       first = $dom[firstChild];
       last = $dom.lastChild;
     } else first = last = $dom;
-    insertAfter(label, $dom);
+    if(parentLabel) label.appendChild($dom);
+    else insertAfter(label, $dom);
   }
 
   function destroyBlock() {
     if(!first) return;
     destroyResults = [];
-    destroy?.();
-    destroy = null;
+    safeGroupCall(destroyList);
+    destroyList.length = 0;
     if($cd) {
-      cd_destroy($cd);
+      cd_detach($cd);
       $cd = null;
     }
     if(destroyResults.length) {
@@ -881,7 +885,7 @@ function ifBlock(parentCD, label, fn, build, buildElse) {
     destroyResults = null;
   }
 
-  $watch(parentCD, fn, (value) => {
+  $watch(fn, (value) => {
     if(value) {
       destroyBlock();
       createBlock(build);
@@ -893,27 +897,26 @@ function ifBlock(parentCD, label, fn, build, buildElse) {
 }
 
 
-function ifBlockReadOnly(component, label, fn, build, buildElse) {
+function ifBlockReadOnly(label, fn, build, buildElse) {
   function createBlock(builder) {
-    let { destroy, $dom } = builder();
-    cd_onDestroy(component, destroy);
-    insertAfter(label, $dom);
+    insertAfter(label, builder());
   }
 
   if(fn()) createBlock(build);
   else if(buildElse) createBlock(buildElse);
 }
 
-function $$awaitBlock(parentCD, label, relation, fn, build_main, build_then, build_catch) {
-  let first, last, $cd, destroy, promise, status = 0;
-  cd_onDestroy(parentCD, () => destroy?.());
+function $$awaitBlock(label, relation, fn, build_main, build_then, build_catch) {
+  let parentCD = current_cd, first, last, $cd, promise, destroyList, status = 0;
+  $onDestroy(() => safeGroupCall(destroyList));
 
   function destroyBlock() {
     if(!first) return;
-    destroy?.();
-    destroy = null;
+
+    safeGroupCall(destroyList);
+    destroyList.length = 0;
     if($cd) {
-      cd_destroy($cd);
+      cd_detach($cd);
       $cd = null;
     }
     $$removeElements(first, last);
@@ -923,9 +926,16 @@ function $$awaitBlock(parentCD, label, relation, fn, build_main, build_then, bui
   function render(builder, value) {
     destroyBlock();
 
+    destroyList = current_destroyList = [];
+    $cd = current_cd = cd_new();
     let $dom;
-    ({ $cd, destroy, $dom } = builder(value));
-    cd_attach(parentCD, $cd);
+    try {
+      $dom = builder(value);
+    } finally {
+      current_destroyList = null;
+      current_cd = null;
+    }
+    cd_attach2(parentCD, $cd);
     if($dom.nodeType == 11) {
       first = $dom[firstChild];
       last = $dom.lastChild;
@@ -934,7 +944,7 @@ function $$awaitBlock(parentCD, label, relation, fn, build_main, build_then, bui
     cd_component(parentCD).apply();
   }
 
-  $watch(parentCD, relation, () => {
+  $watch(relation, () => {
     let p = fn();
     if(status !== 1) render(build_main);
     status = 1;
@@ -950,23 +960,13 @@ function $$awaitBlock(parentCD, label, relation, fn, build_main, build_then, bui
         render(build_catch, value);
       });
     }
-  }, { ro: true, value: [], cmp: keyComparator });
+  }, { value: [], cmp: keyComparator });
 }
 
 const makeEachBlock = (fr, fn) => {
   return (item, index) => {
-    let $dom = fr.cloneNode(true), $cd = cd_new();
-    let rebind = fn($cd, $dom, item, index);
-    return { $cd, $dom, rebind };
-  };
-};
-
-
-const makeStaticEachBlock = (fr, fn) => {
-  return (item, index) => {
     let $dom = fr.cloneNode(true);
-    let rebind = fn($dom, item, index);
-    return { $dom, rebind };
+    return [$dom, fn($dom, item, index)];
   };
 };
 
@@ -974,20 +974,26 @@ const makeStaticEachBlock = (fr, fn) => {
 const makeEachSingleBlock = (fn) => {
   return (item, index) => {
     let [rebind, component] = fn(item, index);
-    let { $cd, destroy, $dom } = component;
-    return { $cd, destroy, $dom, rebind };
+    return [component.$dom, rebind];
   };
 };
 
 
-function $$eachBlock($parentCD, label, onlyChild, fn, getKey, bind) {
+function $$eachBlock(label, onlyChild, fn, getKey, bind) {
   let eachCD = cd_new();
-  cd_attach($parentCD, eachCD);
+  cd_attach(eachCD);
 
   let mapping = new Map();
-  let lastNode, vi = 0;
+  let lastNode, vi = 0, p_promise = 0, p_destroy = 0;
 
-  $watch(eachCD, fn, (array) => {
+  const destroyAll = () => {
+    p_destroy && safeCall(() => mapping.forEach(ctx => ctx.d?.forEach(fn => fn())));
+    mapping.clear();
+  };
+
+  $onDestroy(destroyAll);
+
+  $watch(fn, (array) => {
     if(!array) array = [];
     if(typeof (array) == 'number') array = [...Array(array)].map((_, i) => i + 1);
     else if(!isArray(array)) array = [];
@@ -1015,12 +1021,11 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, bind) {
 
       if(!count && lastNode) {
         destroyResults = [];
-        eachCD.children.forEach(cd => cd_destroy(cd, false));
         eachCD.children.length = 0;
-        mapping.forEach(ctx => ctx.destroy?.());
-        mapping.clear();
+        destroyAll();
 
         if(destroyResults.length) {
+          p_promise = 1;
           let removedNodes = [];
           iterNodes(onlyChild ? label.firstChild : label.nextSibling, lastNode, n => {
             n.$$removing = true;
@@ -1042,15 +1047,13 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, bind) {
             ctx.$cd && eachCD.children.push(ctx.$cd);
             return;
           }
-          ctx.$cd && cd_destroy(ctx.$cd, false);
-          ctx.destroy?.();
-          iterNodes(ctx.first, ctx.last, n => {
-            n.$$removing = true;
-            removedNodes.push(n);
-          });
+          ctx.d && safeGroupCall(ctx.d);
+          iterNodes(ctx.first, ctx.last, n => removedNodes.push(n));
         });
 
         if(destroyResults.length) {
+          p_promise = 1;
+          removedNodes.forEach(n => n.$$removing = true);
           Promise.allSettled(destroyResults).then(() => removedNodes.forEach(n => n.remove()));
         } else {
           removedNodes.forEach(n => n.remove());
@@ -1069,7 +1072,7 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, bind) {
       } else ctx = mapping.get(key);
       if(ctx) {
         nextEl = i == 0 && onlyChild ? parentNode[firstChild] : prevNode.nextSibling;
-        while(nextEl && nextEl.$$removing) nextEl = nextEl.nextSibling;
+        if(p_promise) while(nextEl && nextEl.$$removing) nextEl = nextEl.nextSibling;
         if(nextEl != ctx.first) {
           let insert = true;
 
@@ -1092,11 +1095,21 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, bind) {
             }
           }
         }
-        ctx.rebind?.(i, item);
+        ctx.rebind?.(item, i);
       } else {
-        let $dom;
-        ({ $dom, ...ctx } = bind(item, i));
-        cd_attach(eachCD, ctx.$cd);
+        let $dom, rebind,
+          d = current_destroyList = [],
+          $cd = current_cd = cd_new();
+        try {
+          ([ $dom, rebind ] = bind(item, i));
+        } finally {
+          current_destroyList = null;
+          current_cd = null;
+        }
+        if(d.length) p_destroy = 1;
+        else d = null;
+        ctx = {$cd, d, rebind};
+        cd_attach2(eachCD, $cd);
         if($dom.nodeType == 11) {
           ctx.first = $dom[firstChild];
           ctx.last = $dom.lastChild;
@@ -1109,7 +1122,7 @@ function $$eachBlock($parentCD, label, onlyChild, fn, getKey, bind) {
     lastNode = prevNode;
     mapping.clear();
     mapping = newMapping;
-  }, { ro: true, cmp: $$compareArray });
+  }, { cmp: $$compareArray });
 }
 
 const invokeSlotBase = ($component, slotName, $context, props, placeholder) => {
@@ -1117,34 +1130,32 @@ const invokeSlotBase = ($component, slotName, $context, props, placeholder) => {
   return $slot ? $slot($component, $context, props) : placeholder?.();
 };
 
-
 const invokeSlot = ($component, slotName, $context, propsFn, placeholder, cmp) => {
   let $slot = $component.$option.slots?.[slotName || 'default'];
 
   if($slot) {
-    let push, w, result;
-    w = cd_watchObject(propsFn, value => push?.(value), { ro: true, value: {}, cmp });
+    let push, $dom,
+      w = new WatchObject(propsFn, value => push(value));
+    Object.assign(w, {value: {}, cmp, idle: true});
     fire(w);
-    ({ push, ...result } = $slot($component, $context, w.value));
-    if(push) {
-      result.$cd = cd_new();
-      result.$cd.watchers.push(w);
-    }
-    return result;
+    ([$dom, push] = $slot($component, $context, w.value));
+    if(push) current_cd.watchers.push(w);
+    return $dom;
   } else return placeholder?.();
 };
 
-
-const makeSlot = (parentCD, fr, fn) => {
+const makeSlot = (fr, fn) => {
+  let parentCD = current_cd;
   return (callerComponent, $context, props) => {
-    let $dom = fr.cloneNode(true), $cd = cd_new();
-    cd_attach(parentCD, $cd);
-    return {
-      $dom,
-      destroy: () => cd_destroy($cd),
-      push: fn($cd, $dom, $context, callerComponent, props)
-    };
+    let $dom = fr.cloneNode(true), prev = current_cd, $cd = current_cd = cd_new();
+    cd_attach2(parentCD, $cd);
+    $onDestroy(() => cd_detach($cd));
+    try {
+      return [$dom, fn($dom, $context, callerComponent, props)];
+    } finally {
+      current_cd = prev;
+    }
   };
 };
 
-export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$htmlBlock, $$htmlToFragment, $$htmlToFragmentClean, $$removeElements, $$removeItem, $base, $context, $digest, $makeEmitter, $onDestroy, $onMount, $tick, $watch, $watchReadOnly, __app_onerror, __bindActionSubscribe, addClass, addEvent, addStyles, attachAnchor, attachBlock, attachDynComponent, autoSubscribe, bindAction, bindAttribute, bindAttributeBase, bindClass, bindClassExp, bindInput, bindStyle, bindText, callComponent, callExportedFragment, cd_attach, cd_component, cd_destroy, cd_new, cd_onDestroy, cd_watchObject, childNodes, cloneDeep, configure, createTextNode, current_component, destroyResults, eachDefaultKey, exportFragment, fire, firstChild, getFinalLabel, ifBlock, ifBlockReadOnly, insertAfter, invokeSlot, invokeSlotBase, isArray, isFunction, iterNodes, keyComparator, makeBlock, makeBlockBound, makeClassResolver, makeComponent, makeEachBlock, makeEachSingleBlock, makeExternalProperty, makeRootEvent, makeSlot, makeStaticBlock, makeStaticEachBlock, mergeEvents, noop, prefixPush, removeElementsBetween, setClassToElement, spreadAttributes, svgToFragment, unwrapProps };
+export { $$addEventForComponent, $$awaitBlock, $$cloneDeep, $$compareArray, $$compareDeep, $$deepComparator, $$eachBlock, $$htmlBlock, $$htmlBlockStatic, $$htmlToFragment, $$htmlToFragmentClean, $$removeElements, $$removeItem, $context, $digest, $makeEmitter, $onDestroy, $onMount, $tick, $watch, WatchObject, __app_onerror, __bindActionSubscribe, addClass, addEvent, addStyles, attachAnchor, attachBlock, attachDynComponent, autoSubscribe, bindAction, bindAttribute, bindAttributeBase, bindClass, bindClassExp, bindInput, bindStyle, bindText, callComponent, callExportedFragment, cd_attach, cd_attach2, cd_component, cd_detach, cd_new, childNodes, cloneDeep, configure, createTextNode, current_cd, current_component, current_destroyList, destroyResults, eachDefaultKey, exportFragment, fire, firstChild, getFinalLabel, ifBlock, ifBlockReadOnly, insertAfter, invokeSlot, invokeSlotBase, isArray, isFunction, iterNodes, keyComparator, makeAnchor, makeApply, makeBlock, makeBlockBound, makeClassResolver, makeComponent, makeEachBlock, makeEachSingleBlock, makeExternalProperty, makeRootEvent, makeSlot, mergeEvents, mount, noop, prefixPush, removeElementsBetween, setClassToElement, spreadAttributes, svgToFragment, unwrapProps };

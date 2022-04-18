@@ -1,1 +1,1 @@
-{"name":"Hello World","files":[{"name":"App.xht","body":"<script>\n    let name = 'world';\n</script>\n\n<h1>Hello {name.toUpperCase()}!</h1>"}]}
+{"name":"Hello World","files":[{"name":"App.xht","body":"<script>\n  let name = 'world';\n</script>\n\n<h1>Hello {name.toUpperCase()}!</h1>"}]}
