@@ -66,13 +66,17 @@ function module_resolver_plugin(){
 function component_plugin(files) {
 
     const entryFile = `
-        import {configure} from 'malinajs';
+        import * as malina from 'malinajs';
         import App from './App.xht';
-        configure({onerror: (e) => window.malina_onerror?.(e)});
+        malina.configure({onerror: (e) => window.malina_onerror?.(e)});
         window.app?.destroy?.();
         document.body.innerHTML = '';
-        window.app = App(document.body);
-        if(window.app?.$dom) document.body.appendChild(window.app.$dom);;
+        if(malina.mount) {
+            window.app = malina.mount(document.body, App);
+        } else {
+            window.app = App(document.body);
+            if(window.app?.$dom) document.body.appendChild(window.app.$dom);
+        }
     `;
 
     return {

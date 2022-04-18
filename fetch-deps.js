@@ -66,7 +66,8 @@ async function fetchMalina(){
 
     console.log(`[${NAME}] Fetch MalinaJS versions list...`);
     let versions = JSON.parse( await exec('npm view malinajs versions --json') );
-    versions = versions.filter(v => v != stableVersion).concat([stableVersion]);
+    const ignoreVersions = [stableVersion, '0.7.0-alpha', '0.7.1-alpha'];
+    versions = versions.filter(v => !ignoreVersions.includes(v)).concat([stableVersion]);
     let latest = stableVersion;
     versions = versions.concat(extversions);
     fs.writeFileSync(path.join(MDIR,'versions.json'),JSON.stringify(versions));
