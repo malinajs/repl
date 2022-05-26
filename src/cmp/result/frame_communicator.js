@@ -67,7 +67,7 @@ export function getSrcdoc() {
 								function resize(e) {
 									const dy = m_pos - e.y;
 									m_pos = e.y;
-									const newHeight = Math.max(Math.min((parseInt(getComputedStyle(root.firstChild.firstChild, '').height) + dy), 650), 55);
+									const newHeight = Math.max(Math.min((parseInt(getComputedStyle(root.firstChild.firstChild, '').height) + dy), 650), 40);
 									panel.style.setProperty('--height', newHeight + 'px');
 								}
 								header.addEventListener(
