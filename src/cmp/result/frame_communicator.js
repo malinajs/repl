@@ -47,15 +47,49 @@ export function getSrcdoc(){
 <html>
 
     <head>
-        <meta charset='utf-8'>
-        <base href='/' />
+        <meta charset="UTF-8" />
+        <script src="/eruda.js"></script>
+        <script type="module">
+            eruda.init({
+                    tool: ["console"]
+            });
+            eruda.show();
+            let m_pos;
+            const root = document.lastChild.lastChild.shadowRoot;
+            const panel = root.firstChild.firstChild;
+            const header = panel.firstChild.firstChild.firstChild.firstChild;
+            function resize(e) {
+                const dy = m_pos - e.y;
+                m_pos = e.y;
+                const newHeight = Math.max(Math.min((parseInt(getComputedStyle(root.firstChild.firstChild, '').height) + dy), 650), 40);
+                panel.style.setProperty('--height', newHeight + 'px');
+            }
+            header.addEventListener(
+            "mousedown",
+            function (e) {
+                m_pos = e.y;
+                document.addEventListener("mousemove", resize, false);
+            },
+            false,
+            );
+            
+            document.addEventListener(
+            "mouseup",
+            function () {
+                    document.removeEventListener("mousemove", resize, false);
+            },
+            false,
+            );
+        </script>
     </head>
 
-    <scr`+`ipt>
+    <script>
         (${frame_inner.toString()})();
-    </scr`+`ipt>
+    </script>
 
-    <body></body>
+    <body>
+        <div id="app"></div>
+    </body>
 </html>    
 `;
 }
@@ -108,6 +142,7 @@ function frame_inner(){
     }
 
     on('bundle',bundle => {
+        console.clear();
         if(!bundle) return;
         for(let style of document.querySelectorAll('style[id]')) style.parentNode.removeChild(style);
         eval(bundle);
