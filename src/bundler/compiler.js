@@ -41,6 +41,6 @@ async function treeshake(code){
 
 function pretify(code){
     console.log(code);
-    let ast = acorn.parse(code, {sourceType: 'module', ecmaVersion:2020});
+    let ast = acorn.parse(code, {sourceType: 'module', ecmaVersion: 'latest'});
     return astring.generate(ast);
 }
