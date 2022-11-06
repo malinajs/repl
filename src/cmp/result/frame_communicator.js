@@ -48,12 +48,11 @@ export function getSrcdoc(){
 
     <head>
         <meta charset="UTF-8" />
-        <script src="/repl/eruda.js"></script>
+        <script src="/eruda.js"></script>
         <script type="module">
             eruda.init({
                     tool: ["console"]
             });
-            eruda.show();
             let m_pos;
             const root = document.lastChild.lastChild.shadowRoot;
             const panel = root.firstChild.firstChild;
