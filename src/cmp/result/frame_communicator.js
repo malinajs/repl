@@ -53,7 +53,6 @@ export function getSrcdoc(){
             eruda.init({
                     tool: ["console"]
             });
-            eruda.show();
             let m_pos;
             const root = document.lastChild.lastChild.shadowRoot;
             const panel = root.firstChild.firstChild;
