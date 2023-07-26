@@ -41,11 +41,18 @@ async function fetchMalina(){
     const MDIR = path.join(DIR,'malinajs');
     const LATEST_DIR = path.join(MDIR,'latest');
 
+    fs.mkdirpSync(MDIR);
     console.log(`[${NAME}] Fetch MalinaJS versions list...`);
     let versions = JSON.parse( await exec('npm view malinajs versions --json') );
 
     let lastVersion = {};
-    versions.sort().forEach(v => {
+    versions.sort((a, b) => {
+        a = a.split('.').map(v => parseInt(v));
+        b = b.split('.').map(v => parseInt(v));
+        if (a[0] != b[0]) return a[0] - b[0];
+        if (a[1] != b[1]) return a[1] - b[1];
+        return a[2] - b[2];
+    }).forEach(v => {
         let r = v.match(/^(\d+\.\d+)\.\d+$/);
         if (!r) return;
         lastVersion[r[1]] = v;
