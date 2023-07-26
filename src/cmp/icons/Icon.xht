@@ -5,6 +5,7 @@
     export let size = 24;
     export let rotate = 0;
     export let speed = 200;
+    export let box = '0 0 24 24';
 </script>
 
 
@@ -13,7 +14,7 @@
     style:height={size + 'px'} 
     style:transition={`${speed}ms`} 
     style:transform={`rotate(${rotate}deg)`} 
-    viewBox="0 0 24 24"
+    viewBox={box}
 >
     <path fill="currentColor" d={ icons[name] || '' }></path>
 </svg>
