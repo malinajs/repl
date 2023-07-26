@@ -110,7 +110,7 @@ function bundleStore(){
             emit('init', {malinaVersion: router.version()});
         });
     }
-    
+
     let self = {
         requireVersion: null,
         subscribe: output.subscribe,

@@ -61,7 +61,7 @@ async function fetchMalina(){
     lastVersion = [lastVersion['0.6'], lastVersion['0.7']];
 
     versions = versions.filter(v => !lastVersion.includes(v));
-    versions = [...versions, ...lastVersion];
+    versions = [...versions, ...lastVersion].reverse();
 
     fs.writeFileSync(path.join(MDIR,'versions.json'),JSON.stringify(versions));
     console.log(`[${NAME}] - ${versions.length} versions found.`);
@@ -87,6 +87,7 @@ async function fetchMalina(){
         }
     }
 
+    console.log(`[${NAME}] Save latest version ${latest}`);
     fs.removeSync(LATEST_DIR);
     fs.copySync(path.join(MDIR,latest),LATEST_DIR);
 }
