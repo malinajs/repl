@@ -39,37 +39,23 @@ function fetchDependencies(){
 
 async function fetchMalina(){
     const MDIR = path.join(DIR,'malinajs');
-    const UNSTABLE_SRC_DIR = path.join('node_modules','malinajs');
     const LATEST_DIR = path.join(MDIR,'latest');
-    const UNSTABLE_DIR = path.join(MDIR,'unstable');
-    const UNSTABLE_MALINA = path.join(UNSTABLE_DIR,'malina.js');
-    
-    
-    console.log(`[${NAME}] Copy MalinaJS unstable version`);
-    copyMalina(UNSTABLE_SRC_DIR,UNSTABLE_DIR);
-    fs.writeFileSync(UNSTABLE_MALINA,fs.readFileSync(UNSTABLE_MALINA,'utf-8').replace(
-        /const version \= \'\d+\.\d+\.\d+\'\;/g,
-        "const version = 'unstable';"
-    ));
-
-    let extversions = [];
-    const extDir = path.join('extversion');
-    fs.existsSync(extDir) && fs.readdirSync(extDir).forEach(version => {
-        console.log(`  * ${version}`);
-        fs.copySync(path.join('extversion', version), path.join(MDIR, version));
-        extversions.push(version);
-    });
-
-    let distTags = JSON.parse( await exec('npm view malinajs dist-tags --json') );
-    let stableVersion = distTags.latest;
-    console.log(`[${NAME}] Stable version is ${stableVersion}`);
 
     console.log(`[${NAME}] Fetch MalinaJS versions list...`);
     let versions = JSON.parse( await exec('npm view malinajs versions --json') );
-    const ignoreVersions = [stableVersion, '0.7.0-alpha', '0.7.1-alpha', '0.7.0-a2'];
-    versions = versions.filter(v => !ignoreVersions.includes(v)).concat([stableVersion]);
-    let latest = stableVersion;
-    versions = versions.concat(extversions);
+
+    let lastVersion = {};
+    versions.sort().forEach(v => {
+        let r = v.match(/^(\d+\.\d+)\.\d+$/);
+        if (!r) return;
+        lastVersion[r[1]] = v;
+        latest = v;
+    });
+    lastVersion = [lastVersion['0.6'], lastVersion['0.7']];
+
+    versions = versions.filter(v => !lastVersion.includes(v));
+    versions = [...versions, ...lastVersion];
+
     fs.writeFileSync(path.join(MDIR,'versions.json'),JSON.stringify(versions));
     console.log(`[${NAME}] - ${versions.length} versions found.`);
 
@@ -79,11 +65,10 @@ async function fetchMalina(){
         console.log(`[${NAME}] Downloading archive from REPL repository...`);
         await downloadMalinaFromRepo();
     }
-    
+
 
     console.log(`[${NAME}] Downloading missing versions from NPM...`);
-    
-    
+
     for(let ver of versions){
         const dest_dir = path.join(MDIR,ver)
         if(fs.existsSync(dest_dir)) continue;
