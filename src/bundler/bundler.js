@@ -1,11 +1,14 @@
 import {checkDependency} from './deps';
-import {compile} from './compiler';
+import {compile, compileConfig} from './compiler';
 import {DEPS_REPO, MODULES_REPO} from './../config';
 
+
 export async function bundle(files){
-    
     try {
         checkDependency('rollup');
+
+        let configFn, configFile = files.filter(f => f.name == 'malina.config.js')[0];
+        if (configFile?.body) configFn = await compileConfig(configFile.body);
 
         let bundle = await rollup.rollup({
             input: "./__entry.js",
@@ -16,7 +19,7 @@ export async function bundle(files){
                 module_resolver_plugin(),
                 component_plugin(files),
                 download_plugin(),
-                malina_plugin()
+                malina_plugin(configFn)
             ]
         });
 
@@ -30,7 +33,6 @@ export async function bundle(files){
     } catch (err) {
         throw err;
     }
-
 }
 
 // ---- Rollup plugins ---- //
@@ -114,14 +116,14 @@ function download_plugin() {
 
 
 // Compiling Malina's components
-function malina_plugin() {
+function malina_plugin(configFn) {
     return {
         name: 'rollup_plugin_malina',
 
         async transform(code, id) {
             const name = id.match(/([^/]+).(html|ma|xht)$/);
             if(!name) return null;
-            return {code: await compile(code,name[1])};
+            return {code: await compile(code, name[1], null, configFn)};
         }
     }
 }

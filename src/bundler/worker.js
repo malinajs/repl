@@ -1,6 +1,6 @@
 import {getMessageEventsFunctions} from './../lib/messages';
 import {loadDependencies,loadMalina} from './deps';
-import {compile} from './compiler';
+import {compile, compileConfig} from './compiler';
 import {bundle} from './bundler';
 
 const {on,emit} = getMessageEventsFunctions();
@@ -36,11 +36,12 @@ try{
     });
 
     on('compile', async data => {
-        try{
-            let result =  await compile(data.code,data.name,true);
+        try {
+            let config = data.config ? await compileConfig(data.config) : null;
+            let result =  await compile(data.code, data.name, true, config);
             if(result.result) result = result.result;
             emit('compile',result);
-        }catch(err){
+        } catch(err) {
             console.error(err);
             emit('error',err.message);
             emit('compile','');

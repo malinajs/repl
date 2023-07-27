@@ -57,9 +57,10 @@ function bundleStore(){
                     setOutput({component:'/* Choose component to see its compiled version */'});
                     resolve(true);
                 }else{
-                    emit('compile',{
-                        code: file.body, 
-                        name: filenameParts.join('.')
+                    emit('compile', {
+                        code: file.body,
+                        name: filenameParts.join('.'),
+                        config: file.config
                     }); 
                 }
             }));
@@ -97,13 +98,18 @@ function bundleStore(){
                     
                 if( mode.get() === 'application' ) 
                     thBundle(sources);
-                else
-                    thCompile(files.current.get())  
+                else {
+                    let config = files.get().filter(f => f.name == 'malina.config.js')[0]?.body;
+                    thCompile({...files.current.get(), config});
+                }
             });
 
             files.current.subscribe(async file => {
                 if(!output.get().ready) return;
-                if( mode.get() === 'component' ) thCompile(file)       
+                if( mode.get() === 'component' ) {
+                    let config = files.get().filter(f => f.name == 'malina.config.js')[0]?.body;
+                    thCompile({...file, config});
+                }
             });
             
             setOutput({ready: false});
