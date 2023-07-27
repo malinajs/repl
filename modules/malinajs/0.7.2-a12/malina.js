@@ -19,7 +19,7 @@
     let prev = current_context;
     try {
       current_context = context;
-      return fn();
+      fn();
     } finally {
       current_context = prev;
     }
@@ -1315,33 +1315,27 @@
     assert(step == 0, 'Wrong expression: ' + source);
     let staticText = null;
     if(!parts.some(p => p.type == 'exp')) staticText = parts.map(p => p.type == 'text' ? p.value : '').join('');
-
-    let pe = {
+    let result = [];
+    parts.forEach(p => {
+      if(p.type == 'js') return;
+      if(p.type == 'exp') result.push(p);
+      else {
+        let l = last(result);
+        if(l?.type == 'text') l.value += p.value;
+        else result.push({ ...p });
+      }
+    });
+    result = '`' + result.map(p => p.type == 'text' ? Q(p.value) : '${' + p.value + '}').join('') + '`';
+    return {
+      result,
       parts,
       staticText,
-      binding: parts.length == 1 && parts[0].type == 'exp' ? parts[0].value : null,
-      getResult() {
-        let result = [];
-        this.parts.forEach(p => {
-          if(p.type == 'js') return;
-          if(p.type == 'exp') result.push(p);
-          else {
-            let l = last(result);
-            if(l?.type == 'text') l.value += p.value;
-            else result.push({ ...p });
-          }
-        });
-
-        return '`' + result.map(p => p.type == 'text' ? Q(p.value) : '${' + p.value + '}').join('') + '`';
-      }
+      binding: parts.length == 1 && parts[0].type == 'exp' ? parts[0].value : null
     };
-    pe.result = pe.getResult();
-    return pe;
   }
 
 
-  const parseBinding = (source) => {
-    const reader = new Reader(source);
+  const parseBinding = (reader) => {
     let start = reader.index;
 
     assert(reader.read() === '{', 'Bind error');
@@ -1384,7 +1378,7 @@
       const raw = reader.sub(start);
       return {
         raw,
-        value: raw.substring(1, raw.length - 1).trim(),
+        value: raw.substring(1, raw.length - 1),
       };
     }
   };
@@ -2224,8 +2218,7 @@
               let bindText = xNode('bindText', {
                 $wait: ['apply'],
                 el: textNode.bindName(),
-                exp: pe.result,
-                parsedExpression: pe
+                exp: pe.result
               }, (ctx, n) => {
                 if(this.inuse.apply) {
                   ctx.writeLine(`$runtime.bindText(${n.el}, () => ${n.exp});`);
@@ -2663,7 +2656,7 @@
         each: option.each,
         parentElement: option.parentElement
       }, (ctx, n) => {
-        if(n.each) {
+        if(n.each && !ctx.isEmpty(n.innerBlock)) {
           ctx.write('$runtime.makeEachBlock(');
         } else {
           ctx.write('$runtime.makeBlock(');
@@ -6617,34 +6610,42 @@
     name = toCamelCase(name);
     if(name == 'class') name = '_class';
 
-    let statical = false;
+    let rawValue, statical = false;
 
     if(value && value.includes('{')) {
-      const pe = parseBinding(value);
-      const v = pe.value;
-      this.detectDependency(v);
+      const pe = this.parseText(value);
+      this.detectDependency(pe);
 
-      if(isNumber(v)) {
-        value = v;
-        statical = true;
-      } else if(v == 'true' || v == 'false') {
-        value = v;
-        statical = true;
-      } else if(v == 'null') {
-        value = 'null';
-        statical = true;
-      } else {
-        value = v;
+      if(pe.parts.length == 1 && pe.parts[0].type == 'exp') {
+        let v = pe.parts[0].value;
+
+        if(isNumber(v)) {
+          value = v;
+          rawValue = Number(v);
+          statical = true;
+        } else if(v == 'true' || v == 'false') {
+          value = v;
+          rawValue = v == 'true';
+          statical = true;
+        } else if(v == 'null') {
+          value = 'null';
+          rawValue = null;
+          statical = true;
+        }
       }
+
+      if(!statical) value = pe.result;
     } else if(value) {
+      rawValue = value;
       value = '`' + Q(value) + '`';
       statical = true;
     } else {
+      rawValue = true;
       value = 'true';
       statical = true;
     }
 
-    return { name, value, static: statical, mod };
+    return { name, value, rawValue, static: statical, mod };
   }
 
   function attachPortal(node) {
@@ -6865,7 +6866,7 @@
     });
   }
 
-  const version = '0.7.6';
+  const version = '0.7.2-a12';
 
 
   async function compile(source, config = {}) {
@@ -7046,7 +7047,7 @@
   async function hook(ctx, name) {
     for(let i = 0; i < ctx.config.plugins.length; i++) {
       const fn = ctx.config.plugins[i][name];
-      if(fn) await use_context(ctx, () => fn(ctx));
+      if(fn) await fn(ctx);
     }
   }
 

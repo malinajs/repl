@@ -12,21 +12,23 @@
     let svgElements = {};
     _svgElements.split(',').forEach(k => svgElements[k] = true);
 
+    const last = a => a[a.length - 1];
+
     function assert(x, info) {
         if(!x) throw info || (new Error('AssertError'));
     }
 
-    function replace(s, from, to, count) {
-        let d = s.split(from);
-        if(count) assert(d.length === count + 1, 'Replace multi-entry');
-        return d.join(to);
+    function toCamelCase(name) {
+        assert(name[name.length - 1] !== '-', 'Wrong name');
+        return name.replace(/(\-\w)/g, function(part) {
+            return part[1].toUpperCase();
+        });
     }
-
     function Q(s) {
-        return s.replace(/`/g, '\\`');
+        return s.replace(/`/g, '\\`').replace(/\\/g, '\\\\');
     }
     function Q2(s) {
-        return s.replace(/`/g, '\\`').replace(/\n/g, '\\n');
+        return s.replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
     }
     function unwrapExp(e) {
         assert(e, 'Empty expression');
@@ -36,10 +38,17 @@
     }
     function isSimpleName(name) {
         if(!name) return false;
-        if(!name.match(/^([\w\$_][\w\d\$_\.]*)$/)) return false;
+        if(!name.match(/^([a-zA-Z\$_][\w\d\$_\.]*)$/)) return false;
         if(name[name.length - 1] == '.') return false;
         return true;
     }
+
+    const isNumber = (value) => {
+        if(typeof value == 'number') return true;
+        if(!value) return false;
+        if(typeof value != 'string') return false;
+        return !isNaN(value);
+    };
 
     function detectExpressionType(name) {
         if(isSimpleName(name)) return 'identifier';
@@ -70,21 +79,499 @@
             return true;
         }
 
+        function checkFunctionCall(body) {
+            if(body.length != 1) return;
+            if(body[0].type != 'ExpressionStatement') return;
+            let obj = body[0].expression;
+            if(obj.type != 'CallExpression') return;
+            if(obj.callee?.type == 'Identifier') return obj.callee.name;
+        }
+
         if(checkIdentificator(ast.body)) return 'identifier';
         if(checkMemberIdentificator(ast.body)) return 'identifier';
         if(checkFunction(ast.body)) return 'function';
 
-        return;
+        let fn = checkFunctionCall(ast.body);
+        if(fn) return {type: 'function-call', name: fn};
     }
 
     function checkRootName(name) {
         let rx = name.match(/^([\w\$_][\w\d\$_]*)/);
-        if(!rx) return this.config.warning({message: 'Error name: ' + name});
+        if(!rx) return this.warning({message: 'Error name: ' + name});
         let root = rx[1];
 
         if(this.script.rootVariables[root] || this.script.rootFunctions[root]) return true;
-        this.config.warning({message:'No name: ' + name});
+        this.warning({message:'No name: ' + name});
     }
+
+    function trimEmptyNodes(srcNodes) {
+        let nodes = srcNodes.slice();
+        while(nodes.length) {
+            let n = nodes[0];
+            if(n.type == 'text' && !n.value.trim()) nodes.shift();
+            else break;
+        }
+        while(nodes.length) {
+            let n = last(nodes);
+            if(n.type == 'text' && !n.value.trim()) nodes.pop();
+            else break;
+        }
+        return nodes;
+    }
+
+
+    const genId = () => {
+        let id = Math.floor(Date.now() * Math.random()).toString(36);
+        if(id.length > 6) id = id.substring(id.length - 6);
+        return 'm' + id;
+    };
+
+
+    const extractKeywords = (exp) => {
+        let ast = acorn.parse(exp, {sourceType: 'module', ecmaVersion: 12});
+
+        const keys = new Set();
+        const rec = (n) => {
+            let self;
+            if(n.type) {
+                self = n;
+                if(n.type == 'Identifier' && (n._parent.type != 'MemberExpression' || n._parent.property !== n)) {
+                    let name = [n.name];
+                    let i = n._parent;
+                    while(i?.type == 'MemberExpression') {
+                        if(i.property.type == 'Identifier') name.push('.' + i.property.name);
+                        else if(i.property.type == 'Literal') name.push(`[${i.property.raw}]`);
+                        else throw `Wrong member type: ${i.property.type}`;
+                        i = i._parent;
+                    }
+                    keys.add(name.join(''));
+                }
+            }
+
+            for(let k in n) {
+                if(k == '_parent') continue;
+                let v = n[k];
+                if(typeof(v) != 'object') continue;
+                if(Array.isArray(v)) v.forEach(i => {
+                    i._parent = self || n._parent;
+                    rec(i);
+                });
+                else {
+                    v._parent = self || n._parent;
+                    rec(v);
+                }
+            }
+        };
+        rec(ast);
+
+        return [...keys];
+    };
+
+
+    const replaceElementKeyword = (exp, fn) => {
+        let changed = false;
+        let r = parseJS(exp, (n, pk) => {
+            if(n.type != 'Identifier') return;
+            if(pk == 'property' || pk == 'params') return;
+            if(n.name != '$element') return;
+            n.name = fn();
+            changed = true;
+        });
+        return changed ? r.build().trim() : exp;
+    };
+
+
+    const parseJS = (exp, fn) => {
+        let result = {};
+        let ast = result.ast = acorn.parse(exp, {sourceType: 'module', ecmaVersion: 12});
+
+        const rec = (n, pk) => {
+            let self;
+            if(n.type) {
+                self = n;
+                fn?.(n, pk);
+            }
+
+            for(let k in n) {
+                if(k == '_parent') continue;
+                let v = n[k];
+                if(v == null || typeof(v) != 'object') continue;
+                if(Array.isArray(v)) {
+                    v.forEach(i => {
+                        i._parent = self || n._parent;
+                        rec(i, k);
+                    });
+                } else {
+                    v._parent = self || n._parent;
+                    rec(v, k);
+                }
+            }
+        };
+        rec(ast, null);
+
+        result.build = (data) => {
+            return astring.generate(data || ast);
+        };
+        return result;
+    };
+
+    function I(value = 0) {
+        this.$indent = value;
+    }
+
+
+    function xWriter(ctx, node) {
+        this._ctx = ctx;
+        this.inuse = ctx.inuse;
+
+        this.indent = 0;
+        this.write = function(...args) {
+            for(let i of args) {
+                if(i === true) node.$result.push(new I(this.indent));
+                else node.$result.push(i);
+            }
+        };
+        this.writeLine = function(s) {this.write(true, s);};
+        this.writeIndent = function() {this.write(true);};
+        this.goIndent = fn => {
+            this.indent++;
+            fn();
+            this.indent--;
+        };
+
+        this.add = this.build = function(n) {
+            if(n === null) return;
+            assert(n instanceof xNode);
+            assert(!n.$inserted, 'already inserted');
+            node.$result.push({node: n, indent: this.indent});
+            n.$inserted = true;
+        };
+
+        this.isEmpty = function(n) {
+            if(n == null) return true;
+            assert(n.$done, 'Node is not built');
+            return !n.$result.some(r => {
+                if(typeof(r) == 'string') return true;
+                else if(r.node instanceof xNode) return !this.isEmpty(r.node);
+                else if(r instanceof I) return true;
+                else {
+                    console.error('Type', r);
+                    throw 'error type';
+                }
+            });
+        };
+    }
+
+    function xBuild(ctx, node) {
+        let pending = 0;
+        const resolve = n => {
+            n.$compile?.forEach(c => {
+                c != null && resolve(c);
+            });
+            if(!n.$done) {
+                let ready = true;
+                if(n.$deps?.length) {
+                    if(n.$deps.some(i => i != null && !i.$done)) {
+                        pending++;
+                        ready = false;
+                    }
+                }
+                if(ready) {
+                    let w = new xWriter(ctx, n);
+                    n.$handler(w, n);
+                    n.$done = true;
+                }
+            }
+
+            if(n.$done) {
+                n.$result.forEach(r => {
+                    if(r?.node instanceof xNode) resolve(r.node);
+                });
+            } else pending++;
+        };
+        let depth;
+        for(depth=10;depth > 0;depth--) {
+            pending = 0;
+            resolve(node);
+            if(!pending) break;
+        }
+        if(!depth) throw new Error('xNode: Circular dependency');
+
+        let result = [];
+
+        const asm = (n, baseIndent) => {
+            if(!n.$done) {
+                console.log('not resolved', n);
+                throw 'node is not resolved';
+            }
+            n.$result.forEach(r => {
+                if(typeof(r) == 'string') result.push(r);
+                else if(r.node instanceof xNode) {
+                    asm(r.node, r.indent + baseIndent);
+                }
+                else if(r instanceof I) {
+                    r.$indent += baseIndent;
+                    result.push(r);
+                } else {
+                    console.error('Type', r);
+                    throw 'error type';
+                }
+            });
+        };
+        asm(node, 0);
+
+        for(let i = 0; i < result.length; i++) {
+            let r = result[i];
+            let next = result[i+1];
+
+            if(r instanceof I) {
+                if(next instanceof I) {
+                    result[i] = '';
+                } else {
+                    let s = '\n';
+                    let j = r.$indent;
+                    while(j--) {
+                        s += '  ';
+                    }
+                    result[i] = s;
+                }
+            }
+        }
+
+        return result.join('');
+    }
+
+
+    const noop = () => {};
+
+
+    function xNode(_type, _data, _handler) {
+        /*
+            xNode(type, data, handler)
+            xNode(type, handler)
+            xNode(data, handler)
+            xNode(handler)
+        */
+        if(!(this instanceof xNode)) return new xNode(_type, _data, _handler);
+
+        let type, data, handler;
+        if(typeof _type == 'string') {
+            type = _type;
+            if(_data === false && !_handler) {
+                handler = noop;
+                data = null;
+            } else if(typeof _data == 'function') {
+                assert(!_handler);
+                handler = _data;
+            } else {
+                data = _data;
+                handler = _handler;
+            }
+        } else if(typeof _type == 'function') {
+            assert(!_data && !_handler);
+            handler = _type;
+        } else {
+            assert(typeof _type == 'object');
+            data = _type;
+            handler = _data;
+        }
+
+        if(!handler) handler = xNode.init[type];
+        assert(handler);
+
+        if(data) Object.assign(this, data);
+        if(handler.init) {
+            handler.init(this);
+            handler = handler.handler;
+            assert(handler);
+        }
+
+        this.$type = type;
+        this.$handler = handler;
+        this.$done = false;
+        this.$inserted = false;
+        this.$result = [];
+        this.$depends = function(n) {
+            assert(!this.$done, 'Attempt to add dependecy, but node is already resolved');
+            if(!this.$deps) this.$deps = [];
+            this.$deps.push(n);
+        };
+        this.$value = function(value) {
+            assert(!this.$done, 'Attempt to set active, depends node is already resolved');
+            this.value = value === undefined ? true : value;
+        };
+        return this;
+    }
+
+    xNode.init = {
+        raw: (ctx, node) => {
+            ctx.writeLine(node.value);
+        },
+        block: {
+            init: (node) => {
+                if(!node.body) node.body = [];
+                node.push = function(child) {
+                    assert(arguments.length == 1, 'Wrong xNode');
+                    if(typeof child == 'string') child = xNode('raw', {value: child});
+                    this.body.push(child);
+                };
+            },
+            handler: (ctx, node) => {
+                if(node.scope) {
+                    ctx.writeLine('{');
+                    ctx.indent++;
+                }
+                node.body.forEach(n => {
+                    if(n == null) return;
+                    if(typeof n == 'string') {
+                        if(n) ctx.writeLine(n);
+                    } else ctx.build(n);
+                });
+                if(node.scope) {
+                    ctx.indent--;
+                    ctx.writeLine('}');
+                }
+            }
+        },
+        function: {
+            init: (node) => {
+                if(!node.args) node.args = [];
+                xNode.init.block.init(node);
+            },
+            handler: (ctx, node) => {
+                if(!node.inline) ctx.write(true);
+
+                if(node.arrow) {
+                    if(node.name) ctx.write(`let ${node.name} = `);
+                } else {
+                    ctx.write('function');
+                    if(node.name) ctx.write(' ' + node.name);
+                }
+                ctx.write(`(${node.args.join(', ')}) `);
+                if(node.arrow) ctx.write('=> ');
+                ctx.write(`{`, true);
+                ctx.indent++;
+                xNode.init.block.handler(ctx, node);
+                ctx.indent--;
+                if(node.inline) ctx.write(true, '}');
+                else ctx.writeLine('}');
+            }
+        },
+        node: {
+            init: (node) => {
+                node.children = [];
+                node.attributes = [];
+                node.class = new Set();
+                node.voidTag = false;
+
+                node.bindName = xNode.init.node.bindName;
+                node.getLast = () => last(node.children);
+                node.push = function(n) {
+                    if(typeof n == 'string') {
+                        let p = last(this.children);
+                        if(p && p.$type == 'node:text') {
+                            p.value += n;
+                            return p;
+                        }
+                        n = xNode('node:text', {value: n});
+                    }
+                    assert(n instanceof xNode);
+                    this.children.push(n);
+                    n._ctx = this._ctx;
+                    return n;
+                };
+            },
+            handler: (ctx, node) => {
+                if(node.inline) {
+                    node.children.forEach(n => ctx.build(n));
+                } else {
+                    assert(node.name, 'No node name');
+                    ctx.write(`<${node.name}`);
+
+                    if(node.attributes.length) {
+                        node.attributes.forEach(p => {
+                            if(p.name == 'class') {
+                                if(p.value) p.value.split(/\s+/).forEach(name => node.class.add(name));
+                                return;
+                            }
+
+                            if(p.value) ctx.write(` ${p.name}="${p.value}"`);
+                            else ctx.write(` ${p.name}`);
+                        });
+                    }
+
+                    let className = {};
+                    node.class.forEach(sel => {
+                        if(sel.$selector) sel = ctx._ctx.css.resolve(sel);
+                        className[sel] = true;
+                    });
+                    className = Object.keys(className).join(' ');
+                    if(className) ctx.write(` class="${className}"`);
+
+                    if(node.children.length) {
+                        ctx.write('>');
+                        node.children.forEach(n => ctx.build(n));
+                        ctx.write(`</${node.name}>`);
+                    } else {
+                        if(node.voidTag) ctx.write(`/>`);
+                        else ctx.write(`></${node.name}>`);
+                    }
+                }
+            },
+            bindName: function() {
+                if(!this._boundName) this._boundName = `el${this._ctx.uniqIndex++}`;
+                return this._boundName;
+            }
+        },
+        'node:text': {
+            init: (node) => {
+                node.bindName = xNode.init.node.bindName;
+            },
+            handler: (ctx, node) => {
+                ctx.write(node.value);
+            }
+        },
+        'node:comment': {
+            init: (node) => {
+                node.bindName = xNode.init.node.bindName;
+            },
+            handler: (ctx, node) => {
+                if(ctx._ctx.config.debug && ctx._ctx.config.debugLabel) ctx.write(`<!-- ${node.value} -->`);
+                else ctx.write(`<!---->`);
+            }
+        },
+        template: (ctx, node) => {
+            let template = ctx._ctx.xBuild(node.body);
+            let convert, cloneNode = node.cloneNode;
+            if(node.svg) {
+                convert = '$runtime.svgToFragment';
+                cloneNode = false;
+            } else if(!template.match(/[<>]/) && !node.requireFragment) {
+                convert = '$runtime.createTextNode';
+                cloneNode = false;
+            } else {
+                convert = '$$htmlToFragment';
+                template = template.replace(/<!---->/g, '<>');
+            }
+            if(node.raw) {
+                ctx.write(ctx._ctx.Q(template));
+            } else if(node.inline) {
+                ctx.write(`${convert}(\`${ctx._ctx.Q(template)}\``);
+                if(cloneNode || node.requireFragment) {
+                    let opt = (cloneNode ? 1 : 0) + (node.requireFragment ? 2 : 0);
+                    ctx.write(`, ${opt})`);
+                } else ctx.write(')');
+            } else {
+                assert(node.name);
+                ctx.write(true, `const ${node.name} = ${convert}(\`${ctx._ctx.Q(template)}\``);
+                if(cloneNode || node.requireFragment) {
+                    let opt = (cloneNode ? 1 : 0) + (node.requireFragment ? 2 : 0);
+                    ctx.write(`, ${opt});`);
+                } else ctx.write(');');
+            }
+        }
+    };
+
     function compactDOM() {
         let data = this.DOM;
         const details = {
@@ -140,16 +627,33 @@
                 }
             }
 
+            const isTable = n => ['thead', 'tbody', 'tfoot', 'tr', 'td', 'th'].includes(n.name);
+
             i = 0;
             while(i < body.length) {
                 let node = body[i];
                 if(node.type == 'text' && !node.value.trim()) {
+                    if(parentNode && (parentNode.name == 'table' || isTable(parentNode)) && (i == 0 || i == body.length -1)) {
+                        body.splice(i, 1);
+                        continue;
+                    }
+
                     let prev = getPrev();
                     let next = getNext();
+
+                    if(next?.type == 'node' && ['br', 'div'].includes(next.name)) {
+                        body.splice(i, 1);
+                        continue;
+                    }
+
+                    if(prev?.type == 'node' && ['br', 'div'].includes(prev.name)) {
+                        body.splice(i, 1);
+                        continue;
+                    }
+
                     if(prev && next) {
                         if(prev.type == 'node' && next.type == 'node') {
-                            if(prev.name == 'td' && next.name == 'td' ||
-                                prev.name == 'tr' && next.name == 'tr' ||
+                            if(isTable(prev) && isTable(next) ||
                                 prev.name == 'li' && next.name == 'li' ||
                                 prev.name == 'div' && next.name == 'div') {
                                     body.splice(i, 1);
@@ -180,6 +684,10 @@
                             body.splice(i, 1);
                             continue;
                         }
+                        if(parentNode.type == 'node' && parentNode.name == 'button' && (!p || !n)) {
+                            body.splice(i, 1);
+                            continue;
+                        }
                     }
                 }
                 i++;
@@ -187,13 +695,38 @@
 
         }
 
+        function trimNodes(srcNodes) {
+            let nodes = srcNodes.slice();
+            let ex = [];
+            while(nodes.length) {
+                let n = nodes[0];
+                if(n.type == 'fragment' || n.type == 'comment') {
+                    ex.push(n);
+                    nodes.shift();
+                    continue;
+                }
+                if(n.type == 'text' && !n.value.trim()) nodes.shift();
+                else break;
+            }
+            nodes = [...ex, ...nodes];
+            ex = [];
+            while(nodes.length) {
+                let n = last(nodes);
+                if(n.type == 'fragment' || n.type == 'comment') {
+                    ex.push(n);
+                    nodes.pop();
+                    continue;
+                }
+                if(n.type == 'text' && !n.value.trim()) nodes.pop();
+                else break;
+            }
+            return [...nodes, ...ex];
+        }
+
+        data.body = trimNodes(data.body);
+
         go(data.body);
     }
-    const genId = () => {
-        let id = Math.floor(Date.now() * Math.random()).toString(36);
-        if(id.length > 6) id = id.substring(id.length - 6);
-        return 'm' + id;
-    };
 
     function parse() {
         let source = this.source;
@@ -211,7 +744,6 @@
             let attributes = [];
             let begin = true;
             let name = '';
-            let bind = 0;
             let eq, attr_start;
             let elArg = null;
 
@@ -253,15 +785,9 @@
                     continue;
                 }
                 if(a == '{') {
-                    bind++;
-                    continue;
-                }
-                if(bind) {
-                    if(a == '}') {
-                        bind--;
-                        if(bind > 0) continue;
-                        flush(1);
-                    }
+                    index--;
+                    readBinding();
+                    flush(1);
                     continue;
                 }
                 if(a == '}') error('Wrong attr');
@@ -273,7 +799,7 @@
                 }
                 if(a == '>') {
                     flush();
-                    const voidTags = ['fragment', 'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
+                    const voidTags = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
                     let voidTag = voidTags.indexOf(name) >= 0;
                     let closedTag = voidTag || source[index-2] == '/';
                     return {
@@ -289,7 +815,7 @@
                     }
                 }
                 if(begin) {
-                    if(a.match(/[\da-zA-Z]/)) {
+                    if(a.match(/[\da-zA-Z^]/)) {
                         name += a;
                         continue;
                     } else {
@@ -343,19 +869,30 @@
         const readBinding = () => {
             let start = index;
             assert(readNext() === '{', 'Bind error');
-            let q;
+            let a = null, p, q;
             let bkt = 1;
 
             while(true) {
-                let a = readNext();
+                p = a;
+                a = readNext();
 
                 if(q) {
                     if(a != q) continue;
+                    if(p == '\\') continue;
                     q = null;
                     continue
                 }
-                if(a == '"' || a == '\'' || a == '`') {
+                if(a == '"' || a == "'" || a == '`') {
                     q = a;
+                    continue;
+                }
+                if(a == '*' && p == '/') {
+                    // comment block
+                    while(true) {
+                        p = a;
+                        a = readNext();
+                        if(a == '/' && p == '*') break;
+                    }
                     continue;
                 }
 
@@ -413,7 +950,11 @@
                             if(a === '>') break;
                             name += a;
                         }
-                        assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
+                        name = name.trim();
+                        if(name) {
+                            name = name.split(':')[0];
+                            assert(name === parent.name, 'Wrong close-tag: ' + parent.name + ' - ' + name);
+                        }
                         return;
                     }
 
@@ -525,7 +1066,7 @@
                         } else if(bind.value == '/slot') {
                             assert(parent.type === 'slot', 'Slot error: /slot');
                             return;
-                        } else if(bind.value.match(/^\#fragment\W/)) {
+                        } else if(bind.value.startsWith('#fragment:')) {
                             let tag = {
                                 type: 'fragment',
                                 value: bind.value,
@@ -569,6 +1110,7 @@
         let q;
         let len = source.length;
         let parts = [];
+        let depth = 0;
         while(i < len) {
             let a = source[i++];
             if(step == 1) {
@@ -582,18 +1124,25 @@
                     exp += a;
                     continue;
                 }
-                if(a === '}') {
-                    step = 0;
-                    exp = exp.trim();
-                    if(!exp) throw 'Wrong expression';
-                    parts.push({value: exp, type: 'exp'});
-                    exp = '';
-                    continue;
+                if(a === '{') depth++;
+                else if(a === '}') {
+                    depth--;
+                    if(!depth) {
+                        step = 0;
+                        let js = exp[0] == '*';
+                        if(js) exp = exp.substring(1);
+                        exp = exp.trim();
+                        if(!exp) throw 'Wrong expression';
+                        parts.push({value: exp, type: js ? 'js' : 'exp'});
+                        exp = '';
+                        continue;
+                    }
                 }
                 exp += a;
                 continue;
             }
             if(a === '{') {
+                depth++;
                 if(text) {
                     parts.push({value: text, type: 'text'});
                     text = '';
@@ -605,13 +1154,20 @@
         }
         if(text) parts.push({value: text, type: 'text'});
         assert(step == 0, 'Wrong expression: ' + source);
-        let result;
-        if(parts.length == 1 && parts[0].type == 'exp' && parts[0].value == '$class') {
-            result = "''+$class";
-        } else {
-            result = parts.map(p => p.type == 'text' ? '`' + this.Q(p.value) + '`' : '(' + p.value + ')').join('+');
-        }
-        return {result, parts};
+        let staticText = null;
+        if(!parts.some(p => p.type == 'exp')) staticText = parts.map(p => p.type == 'text' ? p.value : '').join('');
+        let result = [];
+        parts.forEach(p => {
+            if(p.type == 'js') return;
+            if(p.type == 'exp') result.push(p);
+            else {
+                let l = last(result);
+                if(l?.type == 'text') l.value += p.value;
+                else result.push({...p});
+            }
+        });
+        result = result.map(p => p.type == 'text' ? '`' + this.Q(p.value) + '`' : '(' + p.value + ')').join('+');
+        return {result, parts, staticText};
     }
 
     function parse$1() {
@@ -623,17 +1179,31 @@
             importedNames: [],
             props: [],
             rootVariables: {},
-            rootFunctions: {}
+            rootFunctions: {},
+            readOnly: false,
+            autoimport: {}
         };
         if(source) {
-            source = source.split(/\n/).map(line => {
-                let rx = line.match(/^(\s*)\/\/(.*)$/);
-                if(!rx) return line;
-                let code = rx[2].trim();
-                if(code != '!no-check') return line;
-                return rx[1] + '$$_noCheck;';
-            }).join('\n');
+            this.script.readOnly = this.scriptNodes.some(n => n.attributes.some(a => a.name == 'read-only'));
+
+            if(!this.script.readOnly) {
+                source = source.split(/\n/).map(line => {
+                    let rx = line.match(/^(\s*)\/\/(.*)$/);
+                    if(!rx) return line;
+                    let code = rx[2].trim();
+                    if(code != '!no-check') return line;
+                    return rx[1] + '$$_noCheck;';
+                }).join('\n');
+            }
             this.script.ast = acorn.parse(source, {sourceType: 'module', ecmaVersion: 12});
+
+            if(source.includes('$props')) this.require('$props');
+            if(source.includes('$attributes')) this.require('$attributes');
+            if(source.includes('$emit')) this.require('$emit');
+            if(source.includes('$onDestroy')) this.require('$onDestroy');
+            if(source.includes('$onMount')) this.require('$onMount');
+            if(source.includes('$context')) this.require('$context');
+            if(source.includes('$component')) this.require('$component');
         } else {
             this.script.ast = {
                 body: [],
@@ -662,7 +1232,6 @@
 
         result.onMount = rootFunctions.onMount;
         result.onDestroy = rootFunctions.onDestroy;
-        let insertOnDestroy = !(rootFunctions.$onDestroy || rootVariables.$onDestroy);
 
         const funcTypes = {
             FunctionDeclaration: 1,
@@ -670,7 +1239,8 @@
             ArrowFunctionExpression: 1
         };
 
-        function applyBlock() {
+        const applyBlock = () => {
+            this.require('apply');
             return {
                 _apply: true,
                 type: 'ExpressionStatement',
@@ -682,9 +1252,10 @@
                     type: 'CallExpression'
                 }
             }
-        }
+        };
 
-        function returnApplyBlock(a) {
+        const returnApplyBlock = (a) => {
+            this.require('apply');
             return {
                 _apply: true,
                 callee: {
@@ -694,7 +1265,7 @@
                 type: 'CallExpression',
                 arguments: [a]
             }
-        }
+        };
 
         function isInLoop(node) {
             if(!node._parent || node._parent.type != 'CallExpression') return false;
@@ -708,7 +1279,7 @@
         }
         function transformNode(node) {
             if(funcTypes[node.type] && node.body.body && node.body.body.length) {
-                if(insertOnDestroy && node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
+                if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
                 for(let i=0; i<node.body.body.length; i++) {
                     let n = node.body.body[i];
                     if(!isNoCheck(n)) continue;
@@ -719,16 +1290,9 @@
                     node.body.body.unshift(applyBlock());
                 }
             } else if(node.type == 'ArrowFunctionExpression') {
-                if(insertOnDestroy && node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
-                if(node.body.type != 'BlockStatement' && !isInLoop(node)) {
-                    node.body = {
-                        type: 'BlockStatement',
-                        body: [{
-                            type: 'ReturnStatement',
-                            argument: node.body
-                        }]
-                    };
-                    transformNode(node);
+                if(node._parent.type == 'CallExpression' && node._parent.callee.name == '$onDestroy') return 'stop';
+                if(node.body.type != 'BlockStatement' && node.body.type != 'ArrowFunctionExpression' && !isInLoop(node)) {
+                    node.body = returnApplyBlock(node.body);
                 }
             } else if(node.type == 'AwaitExpression') {
                 let n = node, p;
@@ -773,7 +1337,7 @@
                     walk(child, forParent, fn);
                 }
             }
-        }    walk(ast, null, transformNode);
+        }    if(!this.script.readOnly) walk(ast, null, transformNode);
 
         function makeVariable(name) {
             return {
@@ -790,7 +1354,7 @@
             }
         }
 
-        function makeWatch(n) {
+        const makeWatch = (n) => {
             function assertExpression(n) {
                 if(n.type == 'Identifier') return;
                 if(n.type.endsWith('Expression')) return;
@@ -809,7 +1373,7 @@
                 } else throw 'Error';
                 assertExpression(ex.right);
                 const exp = source.substring(ex.right.start, ex.right.end);
-                result.watchers.push(`$cd.prefix.push(() => {${target} = ${exp};});`);
+                result.watchers.push(`$runtime.prefixPush($cd, () => {${target} = ${exp};});`);
             } else if(n.body.expression.type == 'SequenceExpression') {
                 const ex = n.body.expression.expressions;
                 const handler = ex[ex.length - 1];
@@ -823,18 +1387,20 @@
                 if(ex.length == 2) {
                     assertExpression(ex[0]);
                     let exp = source.substring(ex[0].start, ex[0].end);
-                    result.watchers.push(`$watch($cd, () => (${exp}), ${callback}, {cmp: $runtime.$$deepComparator(0)});`);
+                    if(this.config.immutable) result.watchers.push(`$watch($cd, () => (${exp}), ${callback});`);
+                    else result.watchers.push(`$watch($cd, () => (${exp}), ${callback}, {cmp: $runtime.$$deepComparator(0)});`);
                 } else if(ex.length > 2) {
                     for(let i = 0;i<ex.length-1;i++) assertExpression(ex[i]);
                     let exp = source.substring(ex[0].start, ex[ex.length-2].end);
                     result.watchers.push(`$watch($cd, () => [${exp}], ($args) => { (${callback}).apply(null, $args); }, {cmp: $runtime.$$deepComparator(1)});`);
                 } else throw 'Error';
             } else throw 'Error';
-        }
+        };
 
         let imports = [];
         let resultBody = [];
         let lastPropIndex = null;
+        let constantProps = true;
 
         ast.body.forEach(n => {
             if(n.type == 'ImportDeclaration') {
@@ -847,34 +1413,20 @@
                 });
                 return;
             } else if(n.type == 'ExportNamedDeclaration') {
+                if(n.declaration.kind != 'const') constantProps = false;
                 assert(n.declaration.type == 'VariableDeclaration', 'Wrong export');
                 n.declaration.declarations.forEach(d => {
                     assert(d.type == 'VariableDeclarator', 'Wrong export');
-                    result.props.push(d.id.name);
-                    resultBody.push({
-                        type: 'VariableDeclaration',
-                        kind: 'let',
-                        declarations: [{
-                            type: 'VariableDeclarator',
-                            id: {
-                                type: 'ObjectPattern',
-                                properties: [{
-                                    type: 'Property',
-                                    method: false,
-                                    shorthand: true,
-                                    computed: false,
-                                    kind: 'init',
-                                    key: d.id,
-                                    value: d.init ? {
-                                        type: 'AssignmentPattern',
-                                        left: d.id,
-                                        right: d.init
-                                    } : d.id
-                                }]
-                            },
-                            init: {type: 'Identifier', name: '$props'}
-                        }]
-                    });
+                    let p = {name: d.id.name};
+                    if(d.init) {
+                        if(d.init.type == 'Literal') {
+                            p.value = d.init.raw;
+                        } else {
+                            p.value = astring.generate(d.init);
+                        }
+                    }
+                    result.props.push(p);
+                    this.require('$props:no-deps');
                     lastPropIndex = resultBody.length;
                 });
                 return;
@@ -891,82 +1443,112 @@
             resultBody.push(n);
         });
 
+        this.glob.component.$handler = (ctx, n) => {
+            if(this.inuse.$component || n.value) ctx.writeLine('const $component = $runtime.current_component;');
+        };
+        this.module.head.push(this.glob.component);
+
         let header = [];
-        header.push(rawNode('const $component = $runtime.$$makeComponent($element, $option);'));
-        header.push(rawNode('const $$apply = $component.apply;'));
-        header.push(rawNode('$$runtimeHeader();'));
+        header.push(rawNode(() => {
+            if(this.inuse.$events) return 'const $events = $option.events || {};';
+        }));
 
         if(lastPropIndex != null) {
-            header.push(rawNode('const $props = $option.props;'));
-            resultBody.splice(lastPropIndex, 0,
-                rawNode(`let $$skipAttrs = {${result.props.map(n => n + ':1').join(',')}};`, {_name: '$attributes'}),
-                rawNode('let $attributes = $runtime.recalcAttributes($props, $$skipAttrs);', {_name: '$attributes'}),
-                rawNode(`$runtime.completeProps($component, () => {
-                ({${result.props.join(',')}} = $props);`),
-                rawNode('$attributes = $runtime.recalcAttributes($props, $$skipAttrs);', {_name: '$attributes'}),
-                rawNode(`}, {${result.props.map(n => n + ': () => '+n).join(',')}});`)
-            );
+            header.push(rawNode(() => {
+                if(this.inuse.$props) return 'let $props = $option.props || {};';
+            }));
+
+            if(!constantProps && !this.script.readOnly) this.require('apply');
+
+            resultBody.splice(lastPropIndex, 0, rawNode(() => {
+                let code = [];
+                if(this.inuse.$attributes) {
+                    let pa = result.props.map(p => {
+                        if(p.value === void 0) return `${p.name}`;
+                        return `${p.name}=${p.value}`;
+                    }).join(', ');
+                    code.push(`let {${pa}, ...$attributes} = $props;`);
+
+                    if(!this.script.readOnly && !constantProps) {
+                        code.push(`$runtime.current_component.push = () => ({${result.props.map(p => p.name+'='+p.name).join(', ')}, ...$attributes} = $props = $option.props || {});`);
+                        code.push(`$runtime.current_component.exportedProps = () => ({${result.props.map(p => p.name).join(', ')}});`);
+                    }
+                } else if(this.inuse.$props) {
+                    let pa = result.props.map(p => {
+                        if(p.value === void 0) return `${p.name}`;
+                        return `${p.name}=${p.value}`;
+                    }).join(', ');
+                    code.push(`let {${pa}} = $props;`);
+
+                    if(!this.script.readOnly && !constantProps) {
+                        code.push(`$runtime.current_component.push = () => ({${result.props.map(p => p.name+'='+p.name).join(', ')}} = $props = $option.props || {});`);
+                        code.push(`$runtime.current_component.exportedProps = () => ({${result.props.map(p => p.name).join(', ')}});`);
+                    }
+                }
+                return code;
+            }));
         } else {
-            header.push(rawNode('const $props = $option.props;', {_name: '$props'}));
-            header.push(rawNode('let $attributes = $props;', {_name: '$attributes'}));
+            header.push(rawNode(() => {
+                let code = [];
+                if(this.inuse.$props && this.inuse.$attributes) {
+                    code.push('let $props = $option.props || {}, $attributes = $props;');
+                    if(!constantProps && !this.script.readOnly) code.push(`$runtime.current_component.push = () => $props = $option.props || {}, $attributes = $props;`);
+                } else if(this.inuse.$props) {
+                    code.push('let $props = $option.props || {};');
+                    if(!constantProps && !this.script.readOnly) code.push(`$runtime.current_component.push = () => $props = $option.props || {};`);
+                } else if(this.inuse.$attributes) {
+                    code.push('let $attributes = $option.props || {};');
+                    if(!constantProps && !this.script.readOnly) code.push(`$runtime.current_component.push = () => $attributes = $option.props || {};`);
+                }
+                return code;
+            }));
         }
-        header.push(rawNode('const $context = $component.context;', {_name: '$context'}));
+
+        header.push(rawNode(() => {
+            if(this.inuse.$context) return 'const $context = $runtime.$context;';
+        }));
+
+
+        imports.push(rawNode(() => {
+            if(this.inuse.$onMount) return `import {$onMount} from 'malinajs/runtime.js';`;
+        }));
+
+        header.push(rawNode(() => {
+            if(this.inuse.$onDestroy) return `const $onDestroy = fn => $component._d.push(fn);`;
+        }));
 
         if(this.config.autoSubscribe) {
-            result.importedNames.forEach(name => {
-                header.push(rawNode(`$runtime.autoSubscribe($component, ${name});`));
-            });
+            let names = result.importedNames.filter(name => name[0].toLowerCase() == name[0]);
+            if(names.length) {
+                if(!this.script.readOnly) this.require('$cd', 'apply');
+                header.push(rawNode(() => {
+                    if(this.inuse.apply) return `$runtime.autoSubscribe(${names.join(', ')});`;
+                }));
+            }
         }
 
-        if(!rootFunctions.$emit) header.push(rawNode('const $emit = $runtime.$makeEmitter($option);', {_name: '$emit'}));
-        if(insertOnDestroy) header.push(rawNode('function $onDestroy(fn) {$runtime.cd_onDestroy($component.$cd, fn);};'));
-        while(header.length) {
-            resultBody.unshift(header.pop());
+        if(!rootFunctions.$emit) {
+            header.push(rawNode(() => {
+                if(this.inuse.$emit) return 'const $emit = $runtime.$makeEmitter($option);';
+            }));
         }
 
         if(this.scriptNodes[0] && this.scriptNodes[0].attributes.some(a => a.name == 'property')) {
-            result.props.forEach(name => {
-                resultBody.push(rawNode(`$runtime.makeExternalProperty($component, '${name}', () => ${name}, _${name} => ${name} = _${name});`));
+            result.props.forEach(p => {
+                this.require('$cd');
+                resultBody.push(rawNode(`$runtime.makeExternalProperty($component, '${p.name}', () => ${p.name}, _${p.name} => ${p.name} = _${p.name});`));
             });
         }
 
-        resultBody.push(rawNode('$$runtime();'));
         this.script.rootLevel = resultBody;
 
-        let widgetFunc = {
-            body: {
-                type: 'BlockStatement',
-                body: resultBody
-            },
-            id: {
-                type: 'Identifier"',
-                name: this.config.name
-            },
-            params: [{
-                type: 'Identifier',
-                name: '$element'
-            }, {
-                type: 'AssignmentPattern',
-                left: {
-                    type: 'Identifier',
-                    name: '$option'
-                },
-                right: {
-                    type: 'ObjectExpression',
-                    properties: []
-                }
-            }],
-            type: 'FunctionDeclaration'
-        };
+        this.module.top.push(xNode('autoimport', (ctx) => {
+            Object.values(this.script.autoimport).forEach(l => ctx.writeLine(l));
+        }));
 
-        if(this.config.exportDefault) {
-            widgetFunc = {
-                type: 'ExportDefaultDeclaration',
-                declaration: widgetFunc
-            };
-        }
-        ast.body = [widgetFunc];
-        ast.body.unshift.apply(ast.body, imports);
+        this.module.top.push(xNode('ast', {body: imports}));
+        this.module.head.push(xNode('ast', {body: header}));
+        this.module.code.push(xNode('ast', {body: resultBody}));
     }
     function build() {
         const generator = Object.assign({
@@ -990,46 +1572,114 @@
         return n;
     }
 
+
+    const generator = Object.assign({
+        ImportExpression: function(node, state) {
+            state.write('import(');
+            this[node.source.type](node.source, state);
+            state.write(')');
+        },
+        Raw: function(node, state) {
+            let value = typeof node.value == 'function' ? node.value() : node.value;
+            if(value) {
+                var indent = state.indent.repeat(state.indentLevel);
+                if(!Array.isArray(value)) value = [value];
+                value.forEach(v => {
+                    state.write(indent + v + state.lineEnd);
+                });
+            }
+        },
+        CustomBlock: function(node, state) {
+            var indent = state.indent.repeat(state.indentLevel);
+            var lineEnd = state.lineEnd;
+
+            var statements = node.body;
+            var length = statements.length;
+
+            for (var i = 0; i < length; i++) {
+                var statement = statements[i];
+
+                if(statement.type != 'Raw') state.write(indent);
+                this[statement.type](statement, state);
+                if(statement.type != 'Raw') state.write(lineEnd);
+            }
+        }
+    }, astring.baseGenerator);
+
+
+    xNode.init.ast = (ctx, node) => {
+        if(!node.body.length) return;
+        let code = astring.generate({
+            type: 'CustomBlock',
+            body: node.body
+        }, {generator, startingIndentLevel: 0});
+        code.split(/\n/).forEach(s => {
+            if(s) ctx.write(true, s);
+        });
+    };
+
     function buildRuntime() {
-        let runtime = [`
-        return (function() {
-            let $cd = $component.$cd;
-    `];
+        let runtime = xNode('block', {scope: true, $compile: []});
 
-        let bb = this.buildBlock(this.DOM);
+        let rootCD = this.glob.rootCD;
+        rootCD.$handler = (ctx, n) => {
+            n.$value(!!n.$deps[0].value);
+            if(n.value) {
+                ctx.writeLine('let $cd = $component.$cd;');
+                this.glob.component.$value(true);
+            }
+        };
+        runtime.push(rootCD);
+        this.glob.component.$depends(rootCD);
 
-        let rootTemplate = bb.tpl;
+        let bb = this.buildBlock(this.DOM, {
+            inline: true,
+            template: {
+                name: '$parentElement',
+                cloneNode: true
+            }
+        });
+        bb.requireCD && rootCD.$depends(bb.requireCD);
+        runtime.push(bb.template);
+        runtime.push(xNode('root-event', (ctx) => {
+            if(!this.inuse.rootEvent) return;
+            ctx.write(true, `const $$addRootEvent = $runtime.makeRootEvent($parentElement);`);
+        }));
         runtime.push(bb.source);
 
-        if(bb.svg) {
-            runtime.push(`const rootTemplate = $runtime.svgToFragment(\`${this.Q(rootTemplate)}\`);`);
-        } else {
-            runtime.push(`const rootTemplate = $$htmlToFragment(\`${this.Q(rootTemplate)}\`);`);
-        }
-        runtime.push(`
-        ${bb.name}($cd, rootTemplate);
-        $component.$$render(rootTemplate);
-    `);
-        if(this.script.onMount) runtime.push(`
-        if($option.noMount) $component.onMount = onMount;
-        else $tick(onMount);
-    `);
-        if(this.script.onDestroy) runtime.push(`$runtime.cd_onDestroy($cd, onDestroy);`);
+        if(this.script.onMount) runtime.push(`$runtime.$onMount(onMount);`);
+        if(this.script.onDestroy) runtime.push(`$runtime.$onDestroy(onDestroy);`);
         if(this.script.watchers.length) {
-            runtime.push(this.script.watchers.join('\n'));
+            this.script.watchers.forEach(n => runtime.push(n));
         }
 
-        if(this.css) runtime.push(`
-        $runtime.addStyles('${this.css.id}', \`${this.Q(this.css.getContent())}\`);
-    `);
+        runtime.push(xNode('addStyle', ctx => {
+            if(!this.css.active()) return;
+            let style = this.css.getContent();
+            if(!style) return;
+            let config = ctx._ctx.config;
+            if(config.css) {
+                if(typeof config.css == 'function') config.css(style, config.path, ctx._ctx, ctx);
+                else ctx.writeLine(`$runtime.addStyles('${this.css.id}', \`${this.Q(style)}\`);`);
+            } else {
+                ctx._ctx.css.result = style;
+            }
+        }));
 
-        runtime.push(`
-            $$apply();
-            return $component;
-        })();`);
+        runtime.push(xNode('bind-component-element', {
+            $deps: [this.glob.componentFn]
+        }, (ctx) => {
+            if(this.glob.componentFn.value == 'thin') ctx.writeLine(`return {$dom: $parentElement};`);
+            else ctx.writeLine('return $parentElement;');
+        }));
 
-        if(this.use.resolveClass) {
-            if(this.css) {
+        this.module.body.push(runtime);
+
+        if(!this.script.readOnly && this.css.active() && this.css.containsExternal()) this.require('apply', '$cd');
+
+        this.module.head.push(xNode('resolveClass', (ctx) => {
+            if(!this.inuse.resolveClass) return;
+            if(this.css.active()) {
                 let {classMap, metaClass, main} = this.css.getClassMap();
                 if(main) main = `'${main}'`;
                 else main = 'null';
@@ -1038,56 +1688,50 @@
                     let value = i[1] === true ? 'true' : `'${i[1]}'`;
                     return `'${i[0]}': ${value}`;
                 }).join(', ');
-                this.runtime.componentHeader.push(`
-                const $$resolveClass = $runtime.makeClassResolver(
-                    $option, {${classMap}}, {${metaClass}}, ${main}
-                );
-            `);
-            } else {
-                this.runtime.componentHeader.push(`
-                const $$resolveClass = $runtime.noop;
-            `);
-            }
-        }
 
-        this.runtime.header = this.runtime.componentHeader.join('\n');
-        this.runtime.body = runtime.join('\n');
+                ctx.writeLine(`const $$resolveClass = $runtime.makeClassResolver(`);
+                ctx.indent++;
+                ctx.writeLine(`$option, {${classMap}}, {${metaClass}}, ${main}`);
+                ctx.indent--;
+                ctx.writeLine(`);`);
+            } else {
+                ctx.writeLine(`const $$resolveClass = $runtime.noop;`);
+            }
+        }));
     }
 
 
-    function buildBlock(data, option) {
-        let tpl = [];
-        let lvl = [];
-        let binds = [];
-        let DN = {};
+    function buildBlock(data, option={}) {
+        let rootTemplate = xNode('node', {inline: true, _ctx: this});
+        let rootSVG = false, requireFragment = option.template?.requireFragment;
+        let binds = xNode('block');
         let result = {};
-        let lastTag = false;
+        let requireCD = result.requireCD = xNode('require-cd', false);
+        let inuse = Object.assign({}, this.inuse);
 
-        const go = (level, data, isRoot) => {
-            let index = 0;
-            const setLvl = () => {lvl[level] = index++;};
+        if(!option.parentElement) option.parentElement = '$parentElement';
 
-            const getElementName = (shift) => {
-                let cl;
-                if(shift) cl = lvl.slice(0, lvl.length + shift);
-                else cl = lvl.slice();
+        if(option.each?.blockPrefix) binds.push(option.each.blockPrefix);
 
-                let d = DN;
-                cl.forEach(n => {
-                    if(d[n] == null) d[n] = {};
-                    d = d[n];
-                });
-                if(!d.name) d.name = `el${this.uniqIndex++}`;
-                return d.name;
-            };
+        if(option.allowSingleBlock && data.body.length == 1) {
+            let n = data.body[0];
+            if(n.type == 'node' && n.name.match(/^[A-Z]/)) {
+                let component = this.makeComponent(n, requireCD);
+                return {
+                    requireCD,
+                    singleBlock: component.bind
+                }
+            }
+        }
 
+        const go = (data, isRoot, tpl) => {
             let body = data.body.filter(n => {
                 if(n.type == 'script' || n.type == 'style' || n.type == 'slot') return false;
                 if(n.type == 'comment' && !this.config.preserveComments) return false;
                 if(n.type == 'fragment') {
                     try {
-                        let b = this.makeFragment(n);
-                        binds.push(b.source);
+                        let f = this.makeFragment(n, requireCD);
+                        f && binds.push(f);
                     } catch (e) {
                         wrapException(e, n);
                     }
@@ -1096,6 +1740,34 @@
                 return true;
             });
 
+            if(tpl.name == 'table') {
+                let result = [], tbody = null;
+                body.forEach(n => {
+                    if(n.type == 'node' && ['thead', 'tbody', 'tfoot'].includes(n.name)) {
+                        result.push(n);
+                        tbody = null;
+                        return;
+                    }
+
+                    if(!tbody) {
+                        tbody = {type: 'node', name: 'tbody', body: [], attributes: [], classes: new Set()};
+                        result.push(tbody);
+                    }
+                    tbody.body.push(n);
+                });
+                body = result;
+            }
+
+            {
+                let i = 1;
+                while(body[i]) {
+                    if(body[i].type == 'text' && body[i-1].type == 'text') {
+                        body[i-1].value += body[i].value;
+                        body.splice(i, 1);
+                    } else i++;
+                }
+            }
+
             if(isRoot) {
                 let svg = false, other = false;
                 body.some(node => {
@@ -1103,145 +1775,237 @@
                     if(svgElements[node.name]) svg = true;
                     else return other = true;
                 });
-                if(svg && !other) result.svg = true;
+                if(svg && !other) rootSVG = true;
             }
 
-            {
-                let i = 0;
-                while(i < body.length - 1) {
-                    let node = body[i];
-                    let next = body[i + 1];
-                    if(node.type == 'text' && next.type == 'text') {
-                        node.value += next.value;
-                        body.splice(i + 1, 1);
-                        continue;
-                    }
-                    i++;
+            let lastStatic;
+
+            const placeLabel = name => {
+                let el;
+                if(lastStatic) {
+                    el = lastStatic;
+                    el.label = true;
+                    lastStatic = null;
+                } else {
+                    el = xNode('node:comment', {label: true, value: name});
+                    tpl.push(el);
                 }
-            }
+                return el;
+            };
 
-            let lastText;
             const bindNode = (n) => {
                 if(n.type === 'text') {
-                    assert(lastText !== tpl.length);
-                    setLvl();
+                    let prev = tpl.getLast();
+                    if(prev?.$type == 'node:text' && prev._boundName) tpl.push(xNode('node:comment', {label: true}));
+
                     if(n.value.indexOf('{') >= 0) {
-                        tpl.push(' ');
-                        let exp = this.parseText(n.value).result;
-                        binds.push(`$runtime.bindText($cd, ${getElementName()}, () => ${exp});`);
-                    } else tpl.push(n.value);
-                    lastText = tpl.length;
+                        const pe = this.parseText(n.value);
+                        this.detectDependency(pe);
+
+                        let textNode;
+                        if(pe.staticText != null) {
+                            textNode = tpl.push(pe.staticText);
+                        } else {
+                            textNode = tpl.push(' ');
+                            let bindText = xNode('bindText', {
+                                $deps: [this.glob.apply],
+                                el: textNode.bindName(),
+                                exp: pe.result
+                            }, (ctx, n) => {
+                                if(this.glob.apply.value) {
+                                    requireCD.$value(true);
+                                    ctx.writeLine(`$runtime.bindText($cd, ${n.el}, () => ${n.exp});`);
+                                } else ctx.writeLine(`${n.el}.textContent = ${n.exp};`);
+                            });
+                            binds.push(bindText);
+                            requireCD.$depends(bindText);
+                        }
+
+                        pe.parts.forEach(p => {
+                            if(p.type != 'js') return;
+                            let exp = p.value;
+                            if(!exp.endsWith(';')) exp += ';';
+                            binds.push(xNode('block', {body: [
+                                replaceElementKeyword(exp, () => textNode.bindName())
+                            ]}));
+                        });
+
+                        lastStatic = textNode;
+                    } else {
+                        lastStatic = tpl.push(n.value);
+                    }
                 } else if(n.type === 'template') {
-                    setLvl();
+                    lastStatic = null;
                     tpl.push(n.openTag);
                     tpl.push(n.content);
                     tpl.push('</template>');
                 } else if(n.type === 'node') {
-                    setLvl();
+                    if(n.name == 'malina' && !option.malinaElement) {
+                        let b;
+                        if(n.elArg == 'portal') b = this.attachPortal(n, requireCD);
+                        else b = this.attachHead(n, requireCD);
+                        b && binds.push(b);
+                        return;
+                    }
                     if(n.name == 'component' || n.name.match(/^[A-Z]/)) {
-                        // component
-                        if(this.config.hideLabel) tpl.push(`<!---->`);
-                        else tpl.push(`<!-- ${n.name} -->`);
-                        let b = this.makeComponent(n, getElementName);
-                        binds.push(b.bind);
-                        lastTag = true;
+                        if(n.name == 'component' || !n.elArg) {
+                            // component
+                            if(isRoot) requireFragment = true;
+                            let el = placeLabel(n.name);
+
+                            if(n.name == 'component') {
+                                // dyn-component
+                                binds.push(this.makeComponentDyn(n, requireCD, el));
+                            } else {
+                                let component = this.makeComponent(n, requireCD);
+                                binds.push(xNode('attach-component', {
+                                    component: component.bind,
+                                    el: el.bindName()
+                                }, (ctx, n) => {
+                                    ctx.write(true, `$runtime.attachBlock($cd, ${n.el}, `);
+                                    ctx.add(n.component);
+                                    ctx.write(')');
+                                }));
+                            }
+                        } else {
+                            let el = placeLabel(`exported ${n.elArg}`);
+                            let b = this.attchExportedFragment(n, el, n.name, requireCD);
+                            b && binds.push(b);
+                        }
                         return;
                     }
                     if(n.name == 'slot') {
-                        let slotName = n.elArg || 'default';
-                        if(this.config.hideLabel) tpl.push(`<!---->`);
-                        else tpl.push(`<!-- Slot ${slotName} -->`);
-                        let b = this.attachSlot(slotName, getElementName(), n);
-                        binds.push(b.source);
-                        lastTag = true;
+                        let slotName = n.elArg;
+                        if(!slotName) {
+                            if(option.context == 'fragment') {
+                                let el = placeLabel('fragment-slot');
+                                binds.push(this.attachFragmentSlot(el, requireCD));
+                                return;
+                            } else slotName = 'default';
+                        }
+
+                        let el = placeLabel(slotName);
+                        let slot = this.attachSlot(slotName, n, requireCD);
+
+                        binds.push(xNode('attach-slot', {
+                            $deps: [requireCD],
+                            $compile: [slot],
+                            el: el.bindName(),
+                            slot,
+                            requireCD
+                        }, (ctx, n) => {
+                            if(n.requireCD.value) ctx.write(true, `$runtime.attachBlock($cd, ${n.el}, `);
+                            else ctx.write(true, `$runtime.attachBlock($component, ${n.el}, `);
+                            ctx.add(n.slot);
+                            ctx.write(');', true);
+                        }));
                         return;
                     }
                     if(n.name == 'fragment') {
-                        if(this.config.hideLabel) tpl.push(`<!---->`);
-                        else tpl.push(`<!-- Fragment ${n.name} -->`);
-                        let b = this.attachFragment(n, getElementName());
-                        binds.push(b.source);
-                        lastTag = true;
+                        requireCD.$value(true);
+                        assert(n.elArg, 'Fragment name is required');
+                        let el = placeLabel(`fragment ${n.elArg}`);
+                        binds.push(xNode('attach-fragment', {
+                            el: el.bindName(),
+                            fragment: this.attachFragment(n)
+                        }, (ctx, n) => {
+                            ctx.write(true, `$runtime.attachBlock($cd, ${n.el}, `);
+                            ctx.add(n.fragment);
+                            ctx.write(`)`);
+                        }));
                         return;
                     }
 
-                    let el = ['<' + n.name];
-                    if(n.attributes.some(a => a.name.startsWith('{...'))) {
-                        n.spreadObject = 'spread' + (this.uniqIndex++);
-                        if(this.css) n.classes.add(this.css.id);
-                        binds.push(`
-                        let ${n.spreadObject} = $runtime.$$makeSpreadObject($cd, ${getElementName()}, '${this.css && this.css.id}');
-                    `);
-                    }
-                    n.attributes.forEach(p => {
-                        let b = this.bindProp(p, getElementName, n);
-                        if(b.prop) el.push(b.prop);
-                        if(b.bind) binds.push(b.bind);
-                    });
-                    let className = Array.from(n.classes).join(' ');
-                    if(className) el.push(`class="${className}"`);
-
-                    el = el.join(' ');
-                    if(n.closedTag) {
-                        el += n.voidTag ? '/>' : `></${n.name}>`;
-                    } else el += '>';
+                    let el = xNode('node', {name: n.name});
+                    if(option.oneElement) el._boundName = option.oneElement;
                     tpl.push(el);
+                    lastStatic = el;
 
+                    if(n.attributes.some(a => a.name.startsWith('{...'))) {
+                        n.spreading = [];
+                        requireCD.$value(true);
+                        binds.push(xNode('spread-to-element', {
+                            el: el.bindName(),
+                            props: n.spreading
+                        }, (ctx, n) => {
+                            ctx.writeLine(`$runtime.spreadAttributes($cd, ${n.el}, () => ({${n.props.join(', ')}}));`);
+                        }));
+                    }
+                    let bindTail = [];
+                    n.attributes.forEach(p => {
+                        let b = this.bindProp(p, n, el, requireCD);
+                        if(b) {
+                            if(b.bind) binds.push(b.bind);
+                            if(b.bindTail) bindTail.push(b.bindTail);
+                        }
+                    });
+                    n.classes.forEach(n => el.class.add(n));
+
+                    if(option.bindAttributes && (el.attributes.length || el.class.size)) {
+                        el.bindName();
+                        binds.push(xNode('bindAttributes', {el}, (ctx, n) => {
+                            let elName = n.el.bindName();
+                            n.el.attributes.forEach(a => {
+                                ctx.writeLine(`${elName}.setAttribute('${a.name}', \`${this.Q(a.value)}\`);`);
+                            });
+                        }));
+                        binds.push(xNode('bindClasses', {el}, (ctx, n) => {
+                            let el = n.el;
+                            let elName = el.bindName();
+                            if(el.class.size) {
+                                let className = Array.from(el.class.values()).join(' ');
+                                ctx.writeLine(`${elName}.className += ' ${className}';`);
+                            }
+                        }));
+                    }
+                    bindTail.forEach(b => binds.push(b));
+
+                    el.voidTag = n.voidTag;
                     if(!n.closedTag) {
-                        go(level + 1, n);
-                        tpl.push(`</${n.name}>`);
+                        go(n, false, el);
                     }
                 } else if(n.type === 'each') {
-                    setLvl();
+                    requireCD.$value(true);
                     if(data.type == 'node' && data.body.length == 1) {
+                        lastStatic = null;
                         let eachBlock = this.makeEachBlock(n, {
-                            elName: getElementName(-1),
+                            elName: tpl.bindName(),
                             onlyChild: true
                         });
                         binds.push(eachBlock.source);
                         return;
                     } else {
-                        if(this.config.hideLabel) tpl.push(`<!---->`);
-                        else tpl.push(`<!-- ${n.value} -->`);
-                        let eachBlock = this.makeEachBlock(n, {elName: getElementName()});
+                        if(isRoot) requireFragment = true;
+                        let element = placeLabel(n.value);
+                        let eachBlock = this.makeEachBlock(n, {elName: element.bindName()});
                         binds.push(eachBlock.source);
-                        lastTag = true;
                         return;
                     }
                 } else if(n.type === 'if') {
-                    setLvl();
-                    if(this.config.hideLabel) tpl.push(`<!---->`);
-                    else tpl.push(`<!-- ${n.value} -->`);
-                    let ifBlock = this.makeifBlock(n, getElementName());
-                    binds.push(ifBlock.source);
-                    lastTag = true;
+                    if(isRoot) requireFragment = true;
+                    binds.push(this.makeifBlock(n, placeLabel(n.value), requireCD));
                     return;
                 } else if(n.type === 'systag') {
-                    let r = n.value.match(/^@(\w+)\s+(.*)$/);
+                    let r = n.value.match(/^@(\w+)\s+(.*)$/s);
                     let name = r[1];
                     let exp = r[2];
 
                     if(name == 'html') {
-                        setLvl();
-                        if(this.config.hideLabel) tpl.push(`<!---->`);
-                        else tpl.push(`<!-- html -->`);
-                        binds.push(this.makeHtmlBlock(exp, getElementName()));
-                        lastTag = true;
+                        if(isRoot) requireFragment = true;
+                        let el = placeLabel('html');
+                        binds.push(this.makeHtmlBlock(exp, el, requireCD));
                         return;
                     } else throw 'Wrong tag';
                 } else if(n.type === 'await') {
-                    setLvl();
-                    if(this.config.hideLabel) tpl.push(`<!---->`);
-                    else tpl.push(`<!-- ${n.value} -->`);
-                    let block = this.makeAwaitBlock(n, getElementName());
-                    binds.push(block.source);
-                    lastTag = true;
+                    if(isRoot) requireFragment = true;
+                    requireCD.$value(true);
+                    let el = placeLabel(n.value);
+                    let r = this.makeAwaitBlock(n, el);
+                    r && binds.push(r);
                     return;
                 } else if(n.type === 'comment') {
-                    setLvl();
-                    tpl.push(n.content);
+                    lastStatic = tpl.push(n.content);
                 }
-                lastTag = false;
             };
             body.forEach(node => {
                 try {
@@ -1250,45 +2014,117 @@
                     wrapException(e, node);
                 }
             });
-
-            lvl.length = level;
         };
-        go(0, data, true);
-        if(lastTag && option && option.protectLastTag) tpl.push('<!---->');
+        go(data, true, rootTemplate);
+        if(option.protectLastTag) {
+            let l = rootTemplate.getLast();
+            if(l?.label) {
+                rootTemplate.push(xNode('node:comment', {value: ''}));
+            }
+        }
 
-        let source = [];
-        result.tpl = this.Q(tpl.join(''));
+        let innerBlock = null;
+        if(binds.body.length) {
+            binds.push(requireCD);
+            innerBlock = xNode('block');
+            if(!option.oneElement) {
+                innerBlock.push(xNode('bindNodes', {
+                    tpl: rootTemplate,
+                    root: option.parentElement,
+                    single: rootTemplate.children.length == 1 && !requireFragment
+                }, (ctx, n) => {
+        
+                    const gen = (parent, parentName) => {
+                        for(let i=0; i < parent.children.length; i++) {
+                            let node = parent.children[i];
+                            let diff = i == 0 ? '[$runtime.firstChild]' : `[$runtime.childNodes][${i}]`;
+        
+                            if(node._boundName) ctx.write(true, `let ${node._boundName} = ${parentName() + diff};`);
+                            if(node.children) gen(node, () => {
+                                if(node._boundName) return node._boundName;
+                                return parentName() + diff;
+                            });
+                        }
+                    };
+                    if(n.single) {
+                        let node = n.tpl.children[0];
+                        if(node._boundName) ctx.write(true, `let ${node._boundName} = ${n.root};`);
+                        if(node.children) gen(node, () => n.root);
+                    } else {
+                        gen(n.tpl, () => n.root);
+                    }
+                }));
+            }
+            innerBlock.push(binds);
 
-        if(binds.length) {
-            result.name = '$$build' + (this.uniqIndex++);
-            
-            let args = ['$cd', '$parentElement'];
-            if(data.args) args.push.apply(args, data.args);
-            source.push(`function ${result.name}(${args.join(', ')}) {\n`);
-
-            const buildNodes = (d, lvl) => {
-                let keys = Object.keys(d).filter(k => k != 'name');
-                if(keys.length > 1 && !d.name) d.name = 'el' + (this.uniqIndex++);
-
-                if(d.name) {
-                    let line = lvl.join('');
-                    source.push(`let ${d.name} = ${line};\n`);
-                    lvl = [d.name];
-                }
-
-                keys.forEach(k => {
-                    const p = k == 0 ? `[$runtime.firstChild]` : `[$runtime.childNodes][${k}]`;
-                    buildNodes(d[k], lvl.concat([p]));
-                });
-            };
-            buildNodes(DN, ['$parentElement']);
-
-            source.push(binds.join('\n'));
-            source.push(`};`);
-            result.source = source.join('');
+            if(option.inline) {
+                result.source = innerBlock;
+            }
         } else {
+            result.requireCD.$done = true;
             result.name = '$runtime.noop';
-            result.source = '';
+            result.source = null;
+        }
+
+        if(!option.inline) {
+            let template = xNode('template', {
+                body: rootTemplate,
+                svg: rootSVG,
+                requireFragment
+            });
+            if(option.template) Object.assign(template, option.template);
+            else template.inline = true;
+
+            result.block = xNode('block', {
+                $compile: [innerBlock, requireCD],
+                $deps: [requireCD],
+                requireCD,
+                innerBlock,
+                tpl: template,
+                each: option.each,
+                parentElement: option.parentElement
+            }, (ctx, n) => {
+                if(n.each && !ctx.isEmpty(n.innerBlock)) {
+                    if(n.requireCD.value) ctx.write(`$runtime.makeEachBlock(`);
+                    else ctx.write(`$runtime.makeStaticEachBlock(`);
+                } else {
+                    if(n.requireCD.value) ctx.write(`$runtime.makeBlock(`);
+                    else ctx.write(`$runtime.makeStaticBlock(`);
+                }
+                ctx.add(n.tpl);
+                if(!ctx.isEmpty(n.innerBlock)) {
+                    if(n.each) {
+                        if(n.requireCD.value) ctx.write(`, ($cd, ${n.parentElement}, ${n.each.itemName}, ${n.each.indexName}) => {`, true);
+                        else ctx.write(`, (${n.parentElement}, ${n.each.itemName}, ${n.each.indexName}) => {`, true);
+                    } else {
+                        let extra = option.extraArguments ? ', ' + option.extraArguments.join(', ') : '';
+                        if(n.requireCD.value) ctx.write(`, ($cd, ${n.parentElement}${extra}) => {`, true);
+                        else ctx.write(`, (${n.parentElement}${extra}) => {`, true);
+                    }
+                    ctx.indent++;
+                    ctx.add(n.innerBlock);
+                    if(n.each?.rebind) {
+                        ctx.write(true, `return `);
+                        ctx.add(n.each.rebind);
+                        ctx.write(`;`, true);
+                    }                ctx.indent--;
+                    ctx.write(true, `}`);
+                }
+                ctx.write(`)`);
+            });
+        } else {
+            result.template = xNode('template', {
+                body: rootTemplate,
+                svg: rootSVG,
+                requireFragment
+            });
+            if(option.template) Object.assign(result.template, option.template);
+            else result.template.inline = true;
+        }
+
+        result.inuse = {};
+        for(let k in this.inuse) {
+            result.inuse[k] = this.inuse[k] - (inuse[k] || 0);
         }
         return result;
     }
@@ -3130,13 +3966,13 @@
 
     function processCSS() {
         let styleNodes = this.styleNodes;
-        if(!styleNodes.length) return;
         const genId$1 = () => this.config.cssGenId ? this.config.cssGenId() : genId();
 
         let self = this.css = {id: genId$1(), externalMainName: null};
         let astList = [];
         let selectors = {};
         let removeBlocks = [];
+        let active = false;
 
         const selector2str = (sel) => {
             if(!sel.children) sel = {type: 'Selector', children: sel};
@@ -3159,13 +3995,12 @@
             return convertAst(ast, null);
         };
 
-        const last = a => a[a.length - 1];
-
         const isKeyframes = (name) => name == 'keyframes' || name == '-webkit-keyframes' || name == '-moz-keyframes' || name == '-o-keyframes';
 
         styleNodes.forEach(transform);
 
         function transform(styleNode) {
+            active = true;
             let external = false;
             let globalBlock = false;
             styleNode.attributes.forEach(a => {
@@ -3264,7 +4099,8 @@
                                 cleanSelector,
                                 isSimple,
                                 source: [],
-                                fullyGlobal: origin.every(i => i.global)
+                                fullyGlobal: origin.every(i => i.global),
+                                hashedSelectors: []
                             };
                         }
 
@@ -3272,17 +4108,18 @@
                             assert(sobj.isSimple);
                             if(!sobj.external) sobj.external = emptyBlock ? true : genId$1();
                         } else if(!sobj.local) {
-                            if(sobj.isSimple) sobj.local = genId$1();
-                            else sobj.local = self.id;
+                            sobj.local = true;
                         }
 
-                        let hash = external ? sobj.external : sobj.local;
                         if(emptyBlock) fullSelector.emptyBlock = true;
                         sobj.source.push(fullSelector);
 
                         let hashed = origin.slice();
+                        hashed._external = external;
+                        sobj.hashedSelectors.push(hashed);
+
                         const insert = (i) => {
-                            hashed.splice(i, 0, {type: "ClassSelector", loc: null, name: hash, __hash: true});
+                            hashed.splice(i, 0, {type: "ClassSelector", loc: null, name: null, __hash: true});
                         };
 
                         for(let i=hashed.length-1;i>=0;i--) {
@@ -3307,13 +4144,59 @@
             return sobj && sobj.external;
         };
 
+        self.markAsExternal = (name) => {
+            let sobj = selectors['.' + name];
+            if(!sobj) selectors['.' + name] = sobj = {isSimple: true, cleanSelector: '.' + name};
+            assert(!sobj.resolved);
+            if(!sobj.external) sobj.external = true;
+            active = true;
+        };
+
+        self.active = () => active;
+
+        self.containsExternal = () => {
+            return Object.values(selectors).some(sel => {
+                if(!sel.isSimple) return;
+                return sel.external;
+            });
+        };
+
+        let _hashesResolved = false;
+        const resolveHashes = () => {
+            if(_hashesResolved) return;
+            _hashesResolved = true;
+            Object.values(selectors).forEach(sel => {
+                if(!sel.hashedSelectors) return;
+                if(sel.resolved) return;
+                sel.resolved = true;
+                if(sel.external) {
+                    if(sel.local === true) {
+                        if(self.passingClass) sel.local = genId$1();
+                        else sel.local = self.id;
+                    }            } else {
+                    assert(sel.local === true);
+                    if(self.passingClass) sel.local = genId$1();
+                    else sel.local = self.id;
+                }
+                sel.hashedSelectors.forEach(hashed => {
+                    let hash = hashed._external ? sel.external : sel.local;
+                    assert(hash);
+                    hashed.forEach(n => {
+                        if(!n.__hash) return;
+                        n.name = hash;
+                    });
+                });
+            });
+        };
+
         self.getClassMap = () => {
+            resolveHashes();
             let classMap = {};
             let metaClass = {};
             Object.values(selectors).forEach(sel => {
                 if(!sel.isSimple) return;
 
-                let className = sel.source[0].children[0].name;
+                let className = sel.source ? sel.source[0].children[0].name : sel.cleanSelector.substring(1);
                 if(sel.external) {
                     metaClass[className] = sel.external;
                 }
@@ -3332,6 +4215,7 @@
             });
 
             Object.values(selectors).forEach(sel => {
+                sel.$selector = true;
                 if(sel.fullyGlobal || !sel.local) return;
                 let selected;
                 try {
@@ -3342,10 +4226,21 @@
                     throw e;
                 }
                 selected.forEach(s => {
-                    s.node.__node.classes.add(sel.local);
-                    s.lvl.forEach(l => l.__node.classes.add(sel.local));
+                    s.node.__node.classes.add(sel);
+                    s.lvl.forEach(l => l.__node.classes.add(sel));
                 });
             });
+        };
+
+        self.resolve = sel => {
+            resolveHashes();
+            assert(sel.resolved);
+            if(sel.external) {
+                assert(sel.external !== true);
+                return sel.external;
+            }
+            assert(sel.local && sel.local !== true);
+            return sel.local;
         };
 
         self.getContent = function() {
@@ -3353,6 +4248,8 @@
                 let i = node.parent.children.indexOf(node);
                 if(i>=0) node.parent.children.splice(i, 1);
             });
+            resolveHashes();
+
             return astList.map(ast => csstree.generate(ast)).join('');
         };
     }
@@ -3459,146 +4356,151 @@
         return result;
     };
 
-    function shaking() {
-        let src = this.runtime.header + this.runtime.body + (this.script.source || '');
+    function makeComponent(node, requireCD) {
+        this.require('apply');
 
-        const remove = (name) => {
-            let root = this.script.rootLevel;
-            for(let i=root.length - 1; i >= 0; i--) {
-                if(root[i]._name == name) {
-                    root.splice(i, 1);
-                }
-            }
-        };
-
-        if(src.indexOf('$attributes') < 0) {
-            remove('$attributes');
-            if(src.indexOf('$props') < 0) {
-                remove('$props');
-            }
-        }
-
-        if(src.indexOf('$emit') < 0) {
-            remove('$emit');
-        }
-
-        if(src.indexOf('$context') < 0) {
-            remove('$context');
-        }
-    }
-
-    function makeComponent(node, makeEl) {
         let propList = node.attributes;
-        let binds = [];
-        let head = [];
-        let forwardAllEvents = false;
-        let options = ['$$: $component'];
-        let dynamicComponent;
 
-        let propLevel = 0, propLevelType;
+        this.require('$context');
+        requireCD.$value(true);  // FIX
 
-        if(node.name == 'component') {
-            assert(node.elArg);
-            dynamicComponent = node.elArg[0] == '{' ? unwrapExp(node.elArg) : node.elArg;
+        let reference = null;
+        let propsFn = [], propsSetter = [], $class=[], staticProps = true;
+        let slotBlocks = [];
+        let anchorBlocks = [];
+
+        let componentName = node.name;
+        if(componentName != 'component' && this.config.autoimport) {
+            let imported = this.script.autoimport[componentName] || this.script.importedNames.includes(componentName)
+                || this.script.rootVariables[componentName] || this.script.rootFunctions[componentName];
+
+            if(!imported) {
+                let r = this.config.autoimport(componentName, this.config.path, this);
+                if(r) this.script.autoimport[componentName] = r;
+            }
         }
 
-        let passOption = {};
+        // events
+        let forwardAllEvents = false;
+        let events = {};
+        const passEvent = (name, bind) => {
+            if(!events[name]) events[name] = [];
+            events[name].push(bind);
+        };
 
         if(node.body && node.body.length) {
             let slots = {};
+            let anchors = [];
             let defaultSlot = {
                 name: 'default',
                 type: 'slot'
             };
-            defaultSlot.body = node.body.filter(n => {
+            defaultSlot.body = trimEmptyNodes(node.body.filter(n => {
+                if(n.type == 'node' && n.name[0] == '^') {
+                    anchors.push(n);
+                    return false;
+                }
                 if(n.type != 'slot') return true;
                 let rx = n.value.match(/^\#slot:(\S+)/);
                 if(rx) n.name = rx[1];
                 else n.name = 'default';
                 assert(!slots[n], 'double slot');
                 slots[n.name] = n;
-            });
+            }));
 
-            if(!slots.default) slots.default = defaultSlot;
-            // TODO: (else) check if defaultSlot is empty
+            if(!slots.default && defaultSlot.body.length) slots.default = defaultSlot;
 
             Object.values(slots).forEach(slot => {
+                if(!slot.body.length) return;
                 assert(isSimpleName(slot.name));
-                let args = '', setters = '';
+
+                let props;
                 let rx = slot.value && slot.value.match(/^#slot\S*\s+(.*)$/);
                 if(rx) {
-                    let props = rx[1].trim().split(/\s*,\s*/);
+                    props = rx[1].trim().split(/[\s,]+/);
+                    assert(props.length);
                     props.forEach(n => {
                         assert(isSimpleName(n), 'Wrong prop for slot');
                     });
-                    args = `let ${props.join(', ')};`;
-                    setters = ',' + props.map(name => {
-                        return `set_${name}: (_${name}) => {${name} = _${name}; $$apply();}`;
-                    }).join(',\n');
                 }
 
-                passOption.slots = true;
-                let block = this.buildBlock(slot);
-                const convert = block.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-                head.push(`
-                slots.${slot.name} = function($label, $component) {
-                    let $childCD = $cd.new();
-                    let $tpl = ${convert}(\`${this.Q(block.tpl)}\`);
-
-                    ${args}
-
-                    ${block.source};
-                    ${block.name}($childCD, $tpl);
-                    $label.parentNode.insertBefore($tpl, $label.nextSibling);
-
-                    return {
-                        destroy: () => {
-                            $childCD.destroy();
-                        }
-                        ${setters}
+                let contentNodes = trimEmptyNodes(slot.body);
+                if(contentNodes.length == 1 && contentNodes[0].type == 'node' && contentNodes[0].name == 'slot') {
+                    let parentSlot = contentNodes[0];
+                    if(!parentSlot.body || !parentSlot.body.length) {
+                        slotBlocks.push(xNode('empty-slot', {
+                            childName: slot.name,
+                            parentName: parentSlot.elArg || 'default'
+                        }, (ctx, n) => {
+                            ctx.writeLine(`slots.${n.childName} = $option.slots?.${n.parentName};`);
+                        }));
+                        return;
                     }
                 }
-            `);
+
+                if(props) this.require('apply');
+                requireCD.$value(true);  // FIXME
+
+                let block = this.buildBlock(slot, {inline: true});
+
+                slotBlocks.push(xNode('slot', {
+                    $deps: [this.glob.apply],
+                    name: slot.name,
+                    template: block.template,
+                    bind: block.source,
+                    componentName,
+                    props
+                }, (ctx, n) => {
+                    if(n.bind) {
+                        ctx.write(true, `${n.name}: $runtime.makeSlot($cd, `);
+                        ctx.add(n.template);
+                        ctx.write(`, ($cd, $parentElement, $context, $instance_${n.componentName}`);
+                        if(n.props) ctx.write(`, $localProps`);
+                        ctx.write(`) => {`, true);
+                        ctx.indent++;
+                        if(n.props) ctx.write(true, `let {${n.props.join(', ')}} = $localProps;`);
+                        ctx.add(n.bind);
+
+                        if(n.props && this.glob.apply.value) ctx.write(true, `return ($localProps) => ({${n.props.join(', ')}} = $localProps, $$apply());`);
+                        ctx.indent--;
+                        ctx.writeLine(`})`);
+                    } else {
+                        ctx.write(true, `${n.name}: $runtime.makeStaticBlock(`);
+                        ctx.add(n.template);
+                        ctx.write(')');
+                    }
+                }));
+            });
+
+            anchors.forEach(n => {
+                let bb = this.buildBlock({body: [n]}, {inline: true, oneElement: 'el', bindAttributes: true});
+                let block = bb.source;
+                let name = n.name.slice(1) || 'default';
+                assert(isSimpleName(name));
+
+                anchorBlocks.push(xNode('anchor', {
+                    $compile: [block],
+                    $deps: [bb.requireCD],
+                    name,
+                    block
+                }, (ctx, n) => {
+                    let useCD = n.$deps[0].value;
+                    if(useCD) ctx.write(`${n.name}: {$: ($cd, el) => {`);
+                    else ctx.write(`${n.name}: (el) => {`);
+                    ctx.indent++;
+                    ctx.build(n.block);
+                    ctx.indent--;
+                    if(useCD) ctx.write(true, `}}`);
+                    else ctx.write(true, `}`);
+                }));
             });
         }
 
-        let boundEvents = {};
-        propList = propList.filter(prop => {
-            let name = prop.name;
-            let value = prop.value;
+        propList = propList.filter(({name}) => {
             if(name == '@@') {
                 forwardAllEvents = true;
                 return false;
-            } else if(name[0] == ':' || name.startsWith('bind:')) {
-                let inner, outer;
-                if(name[0] == ':') inner = name.substring(1);
-                else inner = name.substring(5);
-                if(value) outer = unwrapExp(value);
-                else outer = inner;
-                assert(isSimpleName(inner), `Wrong property: '${inner}'`);
-                assert(detectExpressionType(outer) == 'identifier', 'Wrong bind name: ' + outer);
-
-                let watchName = '$$w' + (this.uniqIndex++);
-                propLevelType = 'binding';
-                passOption.props = true;
-                passOption.push = true;
-                head.push(`
-                const ${watchName} = $watch($cd, () => (${outer}), _${inner} => {
-                    props.${inner} = _${inner};
-                    ${watchName}.pair && ${watchName}.pair(${watchName}.value);
-                    $$push();
-                }, {ro: true, cmp: $runtime.$$compareDeep});
-                $runtime.fire(${watchName});
-            `);
-                binds.push(`
-                $runtime.bindPropToComponent($child, '${inner}', ${watchName}, _${outer} => {
-                    ${outer} = _${outer};
-                    $$apply();
-                });
-            `);
-                return false;
             } else if(name == 'this') {
-                dynamicComponent = unwrapExp(value);
                 return false;
             }
             return true;
@@ -3609,76 +4511,63 @@
             let value = prop.value;
             if(name[0] == '#') {
                 assert(!value, 'Wrong ref');
-                let name = name.substring(1);
+                name = name.substring(1);
                 assert(isSimpleName(name), name);
                 this.checkRootName(name);
-                binds.push(`${name} = $child;`);
+                reference = name;
+                return;
+            } else if(name[0] == ':' || name.startsWith('bind:')) {
+                let inner, outer;
+                if(name[0] == ':') inner = name.substring(1);
+                else inner = name.substring(5);
+                if(value) outer = unwrapExp(value);
+                else outer = inner;
+                assert(isSimpleName(inner), `Wrong property: '${inner}'`);
+                assert(detectExpressionType(outer) == 'identifier', 'Wrong bind name: ' + outer);
+                this.detectDependency(outer);
+
+                if(this.script.readOnly) this.warning('Conflict: read-only and 2-way binding to component');
+                this.require('apply');
+                staticProps = false;
+
+                if(inner == outer) propsFn.push(`${inner}`);
+                else propsFn.push(`${inner}: ${outer}`);
+                propsSetter.push(`${inner}: ${outer} = ${outer}`);
+
                 return;
             } else if(name[0] == '{') {
                 value = name;
                 name = unwrapExp(name);
                 if(name.startsWith('...')) {
-                    if(propLevelType) propLevel++;
-                    propLevelType = 'spreading';
-
                     name = name.substring(3);
                     assert(detectExpressionType(name) == 'identifier', 'Wrong prop');
-                    passOption.push = true;
-                    let propObject = propLevel ? `$$lvl[${propLevel}]` : 'props';
-                    head.push(`
-                    $runtime.fire($watch($cd, () => (${name}), (value) => {
-                        $runtime.spreadObject(${propObject}, value);
-                        $$push();
-                    }, {ro: true, cmp: $runtime.$$deepComparator(0)}));
-                `);
+                    this.detectDependency(name);
+                    staticProps = false;
+                    propsFn.push(`...${name}`);
                     return;
                 }            assert(detectExpressionType(name) == 'identifier', 'Wrong prop');
             } else if(name[0] == '@' || name.startsWith('on:')) {
-                if(name[0] == '@') name = name.substring(1);
-                else name = name.substring(3);
-                let arg = name.split(/[\|:]/);
-                let exp, handler, isFunc, event = arg.shift();
-                assert(event);
-
-                if(value) exp = unwrapExp(value);
-                else {
-                    if(!arg.length) {
-                        // forwarding
-                        passOption.events = true;
-                        if(forwardAllEvents || boundEvents[event]) head.push(`$runtime.$$addEventForComponent(events, '${event}', $option.events.${event});`);
-                        else head.push(`events.${event} = $option.events.${event};`);
-                        boundEvents[event] = true;
-                        return;
-                    }
-                    handler = arg.pop();
-                }
-                assert(arg.length == 0);
-                assert(!handler ^ !exp);
-
-                if(exp) {
-                    let type = detectExpressionType(exp);
-                    if(type == 'identifier') {
-                        handler = exp;
-                        exp = null;
-                    } else isFunc = type == 'function';
+                if(name.startsWith('@@')) {
+                    let event = name.substring(2);
+                    assert(!value);
+                    this.require('$events');
+                    passEvent(event, xNode('forwardEvent', {
+                        event
+                    }, (ctx, n) => {
+                        ctx.write(`$events.${n.event}`);
+                    }));
+                    return;
                 }
 
-                let callback;
-                if(isFunc) {
-                    callback = exp;
-                } else if(handler) {
-                    this.checkRootName(handler);
-                    callback = handler;
-                } else {
-                    callback = `($event) => {${this.Q(exp)}}`;
-                }
+                let {event, fn} = this.makeEventProp(prop);
 
-                passOption.events = true;
-                if(forwardAllEvents || boundEvents[event]) head.push(`$runtime.$$addEventForComponent(events, '${event}', ${callback});`);
-                else head.push(`events.${event} = ${callback};`);
-                boundEvents[event] = true;
+                passEvent(event, xNode('passEvent', {
+                    fn
+                }, (ctx, n) => {
+                    ctx.add(n.fn);
+                }));
                 return;
-            } else if(name == 'class' || name.startsWith('class:')) {
+            } else if(this.config.passClass && (name == 'class' || name.startsWith('class:'))) {
                 let metaClass, args = name.split(':');
                 if(args.length == 1) {
                     metaClass = '$$main';
@@ -3688,147 +4577,185 @@
                     assert(metaClass);
                 }
                 assert(value);
+                this.css.passingClass = true;
 
                 const parsed = this.parseText(prop.value);
+                this.detectDependency(parsed);
                 let exp = parsed.result;
-                let funcName = `$$pf${this.uniqIndex++}`;
-                head.push(`
-                const ${funcName} = () => $$resolveClass(${exp});
-                $class['${metaClass}'] = ${funcName}();
+                $class.push(`${metaClass}: $$resolveClass(${exp})`);
 
-                $watch($cd, ${funcName}, (result) => {
-                    $class['${metaClass}'] = result;
-                    $$push();
-                }, {ro: true, value: $class['${metaClass}']});
-            `);
-                passOption.class = true;
-                passOption.push = true;
-                this.use.resolveClass = true;
+                this.require('resolveClass');
                 return;
             }
-            assert(isSimpleName(name), `Wrong property: '${name}'`);
-            if(value && value.indexOf('{') >= 0) {
-                let exp = this.parseText(value).result;
 
-                if(propLevelType == 'spreading') propLevel++;
-                propLevelType = 'prop';
-                let propObject = propLevel ? `$$lvl[${propLevel}]` : 'props';
-
-                passOption.props = true;
-                passOption.push = true;
-                head.push(`
-                $runtime.fire($watch($cd, () => (${exp}), _${name} => {
-                    ${propObject}.${name} = _${name};
-                    $$push();
-                }, {ro: true, cmp: $runtime.$$compareDeep}));
-            `);
-            } else {
-                if(value) value = '`' + this.Q(value) + '`';
-                else value = 'true';
-
-                if(propLevelType == 'spreading') propLevel++;
-                propLevelType = 'attr';
-
-                let propObject = propLevel ? `$$lvl[${propLevel}]` : 'props';
-                head.push(`
-                ${propObject}.${name} = ${value};
-            `);
-            }
+            let ip = this.inspectProp(prop);
+            if(ip.name == ip.value) propsFn.push(`${ip.name}`);
+            else propsFn.push(`${ip.name}: ${ip.value}`);
+            if(!ip.static) staticProps = false;
         });
 
-        let rootHead = [];
-        if(passOption.push) {
-            rootHead.push(`let $$push = $runtime.noop;`);
-            binds.push(`$$push = $child.push;`);
-        }
 
-        if(passOption.class) {
-            rootHead.push(`let $class = {}`);
-            options.push('$class');
-        }
+        if(Object.keys(events).length == 0) events = null;
 
-        if(passOption.slots) {
-            rootHead.push('let slots = {};');
-            options.push('slots');
-        }
+        let result = xNode('component', {
+            componentName,
+            staticProps,
+            props: propsFn,
+            propsSetter,
+            reference,
+            $class,
+            forwardAllEvents,
+            events,
+            slots: slotBlocks.length ? slotBlocks : null,
+            anchors: anchorBlocks.length ? anchorBlocks : null
+        }, (ctx, n) => {
+            if(n.reference) throw 'not implemented';  // FIXME
+            let comma = false;
+            ctx.write(`$runtime.callComponent($context, ${n.componentName}, {`);
 
-        if(propLevel || propLevelType) {
-            if(propLevel) rootHead.push(`let $$lvl = [], props = $runtime.makeTree(${propLevel}, $$lvl);`);
-            else rootHead.push('let props = {};');
-            options.push('props');
-        }
-
-        if(forwardAllEvents) {
-            rootHead.push('let events = Object.assign({}, $option.events);');
-            options.push('events');
-        } else if(passOption.events) {
-            rootHead.push('let events = {};');
-            options.push('events');
-        }
-
-        const makeSrc = (componentName, brackets) => {
-            let scope = false;
-            let result = '';
-            if(rootHead.length || head.length) {
-                scope = true;
-                result = `
-                ${rootHead.join('\n')};
-                ${head.join('\n')};
-            `;
+            if(n.props.length && n.staticProps) {
+                ctx.write(`props: {${n.props.join(', ')}}`);
+                comma = true;
+                n.props = [];
             }
-            if(binds.length) {
-                scope = true;
-                result += `
-                let $child = $runtime.callComponent($cd, ${componentName}, ${makeEl()}, {${options.join(', ')}});
-                if($child) {
-                    ${binds.join('\n')};
-                }
-            `;
-            } else {
-                result += `
-                $runtime.callComponent($cd, ${componentName}, ${makeEl()}, {${options.join(', ')}});
-            `;
+            ctx.indent++;
+            if(n.forwardAllEvents && !n.events) {
+                if(comma) ctx.write(', ');
+                comma = true;
+                ctx.write('events: $events');
+            } else if(n.events && !n.forwardAllEvents) {
+                if(comma) ctx.write(',', true);
+                comma = true;
+                ctx.write('events: {');
+                ctx.indent++;
+                ctx.write(true);
+                Object.entries(n.events).forEach(([event, list], index) => {
+                    if(index) ctx.write(',', true);
+                    ctx.write(event + ': ');
+                    if(list.length == 1) ctx.add(list[0]);
+                    else {
+                        ctx.write('$runtime.mergeEvents(');
+                        list.forEach((b, i) => {
+                            if(i) ctx.write(', ');
+                            ctx.add(b);
+                        });
+                        ctx.write(')');
+                    }
+                });
+                ctx.indent--;
+                ctx.write(true, '}');
+            } else if(n.events && n.forwardAllEvents) {
+                throw 'not implemented';  // FIXME
             }
-            if(brackets && scope) return '{' + result + '}';
-            return result;
-        };
+            if(n.slots) {
+                if(comma) ctx.write(', ');
+                comma = true;
+                ctx.write('slots: {');
+                ctx.indent++;
+                n.slots.forEach((slot, i) => {
+                    if(i) ctx.write(',');
+                    ctx.write(true);
+                    ctx.add(slot);
+                });
+                ctx.indent--;
+                ctx.write(true, '}');
+            }
+            if(n.anchors) {
+                if(comma) ctx.write(', ');
+                comma = true;
+                ctx.write('anchor: {');
+                ctx.indent++;
+                n.anchors.forEach((anchor, i) => {
+                    if(i) ctx.write(',');
+                    ctx.write(true);
+                    ctx.add(anchor);
+                });
+                ctx.indent--;
+                ctx.write(true, '}');
+            }
+            ctx.write('}');
 
-        if(!dynamicComponent) {
-            return {bind: `${makeSrc(node.name, true)}`};
+            let other = '';
+            if(n.props.length) ctx.write(`,\n`, true, `() => ({${n.props.join(', ')}})`);
+            else other = ', null';
+
+            if(ctx.inuse.apply && n.props.length) {
+                if(other) ctx.write(other);
+                other = '';
+                ctx.write(`,`);
+                if(n.props.length) ctx.write('\n', true);
+                if(this.config.immutable) ctx.write(`$runtime.keyComparator`);
+                else ctx.write(`$runtime.$$compareDeep`);
+            } else other += ', null';
+
+            if(n.propsSetter.length) {
+                if(other) ctx.write(other);
+                other = '';
+                ctx.write(`,\n`, true, `($$_value) => ({${n.propsSetter.join(', ')}} = $$_value)`);
+            } else other += ', null';
+
+            if(n.$class.length) {
+                if(other) ctx.write(other);
+                other = '';
+                ctx.write(`,\n`, true, `() => ({${n.$class.join(', ')}})`);
+            } else other += ', null';
+
+            ctx.indent--;
+            ctx.write(true, `)`);
+        });
+
+        return {bind: result};
+    }
+    function makeComponentDyn(node, requireCD, element) {
+        let dynamicComponent;
+
+        if(node.elArg) {
+            dynamicComponent = node.elArg[0] == '{' ? unwrapExp(node.elArg) : node.elArg;
         } else {
-            let componentName = '$$comp' + (this.uniqIndex++);
-            return {bind: `
-        {
-            const ${componentName} = ($cd, $ComponentConstructor) => {
-                ${makeSrc('$ComponentConstructor')}
-            };
-            let childCD, finalLabel = $runtime.getFinalLabel(${makeEl()});
-            $watch($cd, () => (${dynamicComponent}), ($ComponentConstructor) => {
-                if(childCD) {
-                    childCD.destroy();
-                    $runtime.removeElementsBetween(${makeEl()}, finalLabel);
-                }
-                childCD = null;
-                if($ComponentConstructor) {
-                    childCD = $cd.new();
-                    ${componentName}(childCD, $ComponentConstructor);
+            node.props.some(({name, value}) => {
+                if(name == 'this') {
+                    dynamicComponent = unwrapExp(value);
+                    return true;
                 }
             });
-        }`};
         }
+
+        assert(dynamicComponent);
+        this.detectDependency(dynamicComponent);
+        requireCD.$value(true);
+
+        let component = this.makeComponent(node, requireCD).bind;
+
+        component.componentName = '$ComponentConstructor';
+        return xNode('dyn-component', {
+            el: element.bindName(),
+            exp: dynamicComponent,
+            component
+        }, (ctx, n) => {
+            ctx.write(true, `$runtime.attachDynComponent($cd, ${n.el}, () => ${n.exp}, ($ComponentConstructor) => `);
+            ctx.add(n.component);
+            ctx.write(')');
+        });
     }
 
-    function bindProp(prop, makeEl, node) {
+    function bindProp(prop, node, element, requireCD) {
         let name, arg;
-        if(prop.name[0] == '@') {
-            arg = prop.name.substring(1);
-            name = 'on';
+
+        if(prop.content.startsWith('{*')) {
+            const pe = this.parseText(prop.content);
+            assert(pe.parts[0].type == 'js');
+            let exp = pe.parts[0].value;
+            if(!exp.endsWith(';')) exp += ';';
+            return {bind: xNode('block', {body: [
+                replaceElementKeyword(exp, () => element.bindName())
+            ]})};
         }
-        if(!name && prop.name[0] == ':') {
+
+        if(prop.name[0] == '@' || prop.name.startsWith('on:')) name = 'event';
+        else if(prop.name[0] == ':') {
             name = 'bind';
             arg = prop.name.substring(1);
-        }
-        if(!name && prop.name[0] == '*') {
+        } else if(prop.name[0] == '*') {
             let rx = prop.name.match(/^\*\{.*\}$/);
             if(rx) {
                 assert(prop.value == null, 'wrong binding: ' + prop.content);
@@ -3838,8 +4765,7 @@
                 name = 'use';
                 arg = prop.name.substring(1);
             }
-        }
-        if(!name && prop.value == null) {
+        } else if(prop.value == null) {
             let rx = prop.name.match(/^\{(.*)\}$/);
             if(rx) {
                 name = rx[1];
@@ -3847,9 +4773,7 @@
                     // spread operator
                     name = name.substring(3);
                     assert(detectExpressionType(name) == 'identifier');
-                    return {bind: `
-                    ${node.spreadObject}.spread(() => ${name});
-                `};
+                    return node.spreading.push(`...${name}`);
                 } else {
                     prop.value = prop.name;
                 }
@@ -3863,110 +4787,66 @@
             } else name = prop.name;
         }
 
-        function getExpression() {
+        const isExpression = s => s[0] == '{' && last(s) == '}';
+
+        const getExpression = () => {
             let exp = prop.value.match(/^\{(.*)\}$/)[1];
             assert(exp, prop.content);
             return exp;
-        }
+        };
 
         if(name[0] == '#') {
             let target = name.substring(1);
             assert(isSimpleName(target), target);
             this.checkRootName(target);
-            return {bind: `${target}=${makeEl()};`};
-        } else if(name == 'on') {
-            if(arg == '@') {
+            return {bind: `${target}=${element.bindName()};`};
+        } else if(name == 'event') {
+            if(prop.name.startsWith('@@')) {
                 assert(!prop.value);
-                return {bind: `
-                {
-                    for(let event in $option.events) {
-                        $runtime.addEvent($cd, ${makeEl()}, event, $option.events[event]);
-                    }
+                requireCD.$value(true);
+                this.require('$events');
+                if(prop.name == '@@') {
+                    return {bind: xNode('forwardAllEvents', {
+                        el: element.bindName()
+                    }, (ctx, data) => {
+                        ctx.writeLine(`for(let event in $events)`);
+                        ctx.goIndent(() => {
+                            ctx.writeLine(`$runtime.addEvent($cd, ${data.el}, event, $events[event]);`);
+                        });
+                    })};
                 }
-            `};
+
+                return {bind: xNode('forwardEvent', {
+                    event: prop.name.substring(2),
+                    el: element.bindName()
+                }, (ctx, n) => {
+                    ctx.writeLine(`$events.${n.event} && $runtime.addEvent($cd, ${n.el}, '${n.event}', $events.${n.event});`);
+                })};
             }
-            let mod = '', opts = arg.split(/[\|:]/);
-            let event = opts.shift();
-            let exp, handler, funcName;
-            if(prop.value) {
-                exp = getExpression();
-            } else {
-                if(!opts.length) {
-                    // forwarding
-                    return {bind: `
-                    $runtime.addEvent($cd, ${makeEl()}, "${event}", ($event) => {
-                        const fn = $option.events.${event};
-                        if(fn) fn($event);
-                    });\n`
-                    };
-                }
-                handler = opts.pop();
-            }        assert(event, prop.content);
-            assert(!handler ^ !exp, prop.content);
 
-            let needPrevent, preventInserted;
-            opts.forEach(opt => {
-                if(opt == 'preventDefault') {
-                    if(preventInserted) return;
-                    mod += '$event.preventDefault();';
-                    preventInserted = true;
-                } else if(opt == 'stopPropagation') {
-                    mod += '$event.stopPropagation();';
-                } else if(opt == 'enter') {
-                    mod += 'if($event.keyCode != 13) return;';
-                    needPrevent = true;
-                } else if(opt == 'escape') {
-                    mod += 'if($event.keyCode != 27) return;';
-                    needPrevent = true;
-                } else throw 'Wrong modificator: ' + opt;
-            });
-            if(needPrevent && !preventInserted) mod += '$event.preventDefault();';
+            let {event, fn, rootModifier} = this.makeEventProp(prop, () => element.bindName());
+            if(rootModifier) this.require('rootEvent');
+            else requireCD.$value(true);
 
-            if(exp) {
-                let type = detectExpressionType(exp);
-                if(type == 'identifier') {
-                    handler = exp;
-                    exp = null;
-                } else if(type == 'function') {
-                    funcName = 'fn' + (this.uniqIndex++);
-                }        }
-
-            if(funcName) {
-                let bind;
-                if(exp.indexOf('$element') >= 0) {
-                    bind = `{
-                    let $element=${makeEl()};
-                    const ${funcName} = ${exp};
-                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} ${funcName}($event); $$apply();});
-                }`;
-                } else {
-                    bind = `
-                    const ${funcName} = ${exp};
-                    $runtime.addEvent($cd, ${makeEl()}, "${event}", ($event) => { ${mod} ${funcName}($event); $$apply();});
-                `;
-                }
-                return {bind};
-            } else if(handler) {
-                this.checkRootName(handler);
-                return {bind: `
-                    $runtime.addEvent($cd, ${makeEl()}, "${event}", ($event) => { ${mod} ${handler}($event); $$apply();});
-                `
-                };
-            } else {
-                let bind;
-                if(exp.indexOf('$element') >= 0) {
-                    bind = `{
-                    let $element=${makeEl()};
-                    $runtime.addEvent($cd, $element, "${event}", ($event) => { ${mod} ${this.Q(exp)}; $$apply(); });
-                }`;
-                } else {
-                    bind = `
-                    $runtime.addEvent($cd, ${makeEl()}, "${event}", ($event) => { ${mod} ${this.Q(exp)}; $$apply(); });
-                `;
-                }
-                return {bind};
-            }
+            return {bind: xNode('bindEvent', {
+                event,
+                fn,
+                el: element.bindName(),
+                rootModifier
+            }, (ctx, n) => {
+                if(n.rootModifier) ctx.write(true, `$$addRootEvent(${n.el}, '${n.event}', `);
+                else ctx.write(true, `$runtime.addEvent($cd, ${n.el}, '${n.event}', `);
+                ctx.build(n.fn);
+                ctx.write(`);`);
+            })};
         } else if(name == 'bind') {
+            if(this.script.readOnly) {
+                this.warning('script read-only conflicts with bind: ' + node.openTag);
+                return;
+            }
+
+            requireCD.$value(true);
+            this.require('apply');
             let exp;
             arg = arg.split(/[\:\|]/);
             let attr = arg.shift();
@@ -3991,61 +4871,127 @@
             assert(arg.length == 0);
             assert(detectExpressionType(exp) == 'identifier', 'Wrong bind name: ' + prop.content);
             if(attr == 'value' && ['number', 'range'].includes(inputType)) attr = 'valueAsNumber';
-
-            let spreading = '';
-            if(node.spreadObject) spreading = `${node.spreadObject}.except(['${attr}']);`;
+            this.detectDependency(exp);
 
             let argName = 'a' + (this.uniqIndex++);
 
-            return {bind: `
-            ${spreading}
-            $runtime.bindInput($cd, ${makeEl()}, '${attr}', () => ${exp}, ${argName} => {${exp} = ${argName}; $$apply();});
-        `};
+            return {bind: xNode('bindInput', {
+                el: element.bindName()
+            }, (ctx, n) => {
+                ctx.writeLine(`$runtime.bindInput($cd, ${n.el}, '${attr}', () => ${exp}, ${argName} => {${exp} = ${argName}; $$apply();});`);
+            })};
         } else if(name == 'style' && arg) {
-            let styleName = arg;
-            let exp = prop.value ? getExpression() : styleName;
-            if(exp.indexOf('$element') >= 0) {
-                return {bind: `{
-                    let $element = ${makeEl()};
-                    $runtime.bindStyle($cd, $element, '${styleName}', () => (${exp}));
-                }`};
+            let styleName = toCamelCase(arg);
+            let exp;
+            if(prop.value) {
+                if(isExpression(prop.value)) {
+                    exp = getExpression();
+                    this.detectDependency(exp);
+                } else {
+                    if(prop.value.includes('{')) {
+                        const parsed = this.parseText(prop.value);
+                        this.detectDependency(parsed);
+                        exp = parsed.result;
+                    } else {
+                        return {bind: xNode('staticStyle', {
+                            el: element.bindName(),
+                            name: styleName,
+                            value: prop.value
+                        }, (ctx, n) => {
+                            ctx.writeLine(`${n.el}.style.${n.name} = \`${this.Q(n.value)}\`;`);
+                        })};
+                    }
+                }
             } else {
-                return {bind: `
-                $runtime.bindStyle($cd, ${makeEl()}, '${styleName}', () => (${exp}));
-            `};
+                exp = styleName;
             }
+
+            let hasElement = exp.includes('$element');
+            return {bind: xNode('block', {
+                scope: hasElement,
+                body: [xNode('bindStyle', {
+                    el: element.bindName(),
+                    styleName,
+                    exp,
+                    hasElement
+                }, (ctx, n) => {
+                    if(n.hasElement) ctx.writeLine(`let $element=${n.el};`);
+                    if(ctx.inuse.apply) {
+                        ctx.writeLine(`$runtime.bindStyle($cd, ${n.el}, '${n.styleName}', () => (${n.exp}));`);
+                    } else {
+                        ctx.writeLine(`${n.el}.style.${n.styleName} = ${n.exp};`);
+                    }
+                })]
+            })};
         } else if(name == 'use') {
             if(arg) {
+                requireCD.$value(true);
                 assert(isSimpleName(arg), 'Wrong name: ' + arg);
                 this.checkRootName(arg);
                 let args = prop.value ? `, () => [${getExpression()}]` : '';
-                return {bind: `$runtime.bindAction($cd, ${makeEl()}, ${arg}${args});`};
+                this.detectDependency(args);
+                return {bind: xNode('action', {
+                    name: arg,
+                    args,
+                    el: element.bindName()
+                }, (ctx, n) => {
+                    if(ctx.inuse.apply && n.args) {
+                        ctx.writeLine(`$runtime.bindAction($cd, ${n.el}, ${n.name}${n.args}, $runtime.__bindActionSubscribe);`);
+                    } else {
+                        ctx.writeLine(`$runtime.bindAction($cd, ${n.el}, ${n.name}${n.args});`);
+                    }
+                })}
             }
             let exp = getExpression();
-            return {bind: `$tick(() => { let $element=${makeEl()}; ${exp}; $$apply(); });`};
+            this.detectDependency(exp);
+            let hasElement = exp.includes('$element');
+            return {bind: xNode('inline-action', {
+                exp,
+                el: hasElement && element.bindName(),
+                element,
+                hasElement
+            }, (ctx, n) => {
+                ctx.writeLine(`$tick(() => {`);
+                ctx.goIndent(() => {
+                    if(n.hasElement) ctx.writeLine(`let $element=${n.el};`);
+                    ctx.writeLine(n.exp);
+                    if(ctx.inuse.apply) ctx.writeLine('$$apply();');
+                });
+                ctx.writeLine(`});`);
+            })}
         } else if(name == 'class') {
             if(node.__skipClass) return {};
-            if(!this.css) return {prop: prop.content};
-            
             node.__skipClass = true;
+
             let props = node.attributes.filter(a => a.name == 'class' || a.name.startsWith('class:'));
 
-            let compound = props.some(prop => {
-                let classes;
+            let compound = false;
+            props.forEach(prop => {
+                let classes = [];
                 if(prop.name == 'class') {
-                    if(prop.value.indexOf('{') >= 0) return true;
-                    classes = prop.value.trim().split(/\s+/);
+                    if(!prop.value) return;
+                    let parsed = this.parseText(prop.value);
+                    for(let p of parsed.parts) {
+                        if(p.type == 'text') {
+                            classes = classes.concat(p.value.trim().split(/\s+/));
+                        } else if(p.type == 'exp') compound = true;
+                    }
                 } else {
                     classes = [prop.name.slice(6)];
                 }
-                return classes.some(name => this.css.isExternalClass(name));
+                return this.config.passClass && classes.some(name => {
+                    if(this.css.isExternalClass(name)) compound=true;
+                    else if(name[0] == '$') {
+                        this.css.markAsExternal(name.substring(1));
+                        compound = true;
+                    }
+                });
             });
 
             if(compound) {
-                let defaultHash = '';
-                if(node.classes.has(this.css.id)) defaultHash = `,'${this.css.id}'`;
+                let classes = Array.from(node.classes);
                 node.classes.clear();
-                this.use.resolveClass = true;
+                if(this.config.passClass) this.require('resolveClass');
                 let exp = props.map(prop => {
                     if(prop.name == 'class') {
                         return this.parseText(prop.value).result;
@@ -4053,39 +4999,110 @@
                         let className = prop.name.slice(6);
                         assert(className);
                         let exp = prop.value ? unwrapExp(prop.value) : className;
+                        this.detectDependency(exp);
                         return `(${exp}) ? \`${this.Q(className)}\` : ''`;
                     }
                 }).join(') + \' \' + (');
-                return {bind: `
-                $watchReadOnly($cd, () => $$resolveClass((${exp})${defaultHash}), value => $runtime.setClassToElement(${makeEl()}, value));
-            `};
+                const bind = xNode('compound-class', {
+                    el: element.bindName(),
+                    exp,
+                    classes,
+                    requireCD
+                }, (ctx, n) => {
+                    let base = '';
+                    if(n.classes.length) {
+                        if(this.css.passingClass) {
+                            base = [];
+                            n.classes.forEach(c => {
+                                if(c.local) base.push(this.css.resolve(c));
+                            });
+                            base = base.join(' ');
+                            if(base) base = `, '${base}'`;
+                        } else {
+                            if(n.classes.some(c => c.local)) base = `,'${this.css.id}'`;
+                        }
+                    }
+
+                    if(ctx.inuse.resolveClass) {
+                        if(ctx.inuse.apply) {
+                            n.requireCD.$value(true);
+                            ctx.write(true, `$runtime.bindClassExp($cd, ${n.el}, () => $$resolveClass((${n.exp})${base}))`);
+                        } else {
+                            ctx.write(true, `$runtime.setClassToElement(${n.el}, $$resolveClass((${n.exp})${base}));`);
+                        }
+                    } else {
+                        if(ctx.inuse.apply) {
+                            n.requireCD.$value(true);
+                            ctx.write(true, `$runtime.bindClassExp($cd, ${n.el}, () => (${n.exp})${base})`);
+                        } else {
+                            ctx.write(true, `$runtime.setClassToElement(${n.el}, ${n.exp}${base});`);
+                        }
+                    }
+                });
+                requireCD.$depends(bind);
+                return {bind};
             } else {
-                let bind = [];
+                let bind = xNode('block');
                 props.forEach(prop => {
                     if(prop.name == 'class') {
-                        prop.value.trim().split(/\s+/).forEach(name => {
+                        prop.value && prop.value.trim().split(/\s+/).forEach(name => {
                             node.classes.add(name);
                         });
                     } else {
                         let className = prop.name.slice(6);
                         assert(className);
                         let exp = prop.value ? unwrapExp(prop.value) : className;
-                        bind.push(`$runtime.bindClass($cd, ${makeEl()}, () => !!(${exp}), '${className}');`);
+                        this.detectDependency(exp);
+
+                        let n = xNode('bindClass', {
+                            $deps: [this.glob.apply],
+                            el: element.bindName(),
+                            className,
+                            exp,
+                            $element: exp.includes('$element'),
+                            requireCD
+                        }, (ctx, n) => {
+                            if(n.$element) {
+                                ctx.writeLine(`{`);
+                                ctx.indent++;
+                                ctx.writeLine(`let $element = ${n.el};`);
+                            }
+                            if(this.glob.apply.value) {
+                                n.requireCD.$value(true);
+                                ctx.writeLine(`$runtime.bindClass($cd, ${n.el}, () => !!(${n.exp}), '${n.className}');`);
+                            } else {
+                                ctx.writeLine(`(${n.exp}) && $runtime.addClass(${n.el}, '${n.className}');`);
+                            }
+                            if(n.$element) {
+                                ctx.indent--;
+                                ctx.writeLine(`}`);
+                            }
+                        });
+                        requireCD.$depends(n);
+                        bind.push(n);
                     }
                 });
-                return {bind: bind.join('\n')};
+                return {bind: bind.body.length ? bind : null};
             }
+        } else if(name[0] == '^') {
+            requireCD.$value(true);
+            return {bindTail: xNode('bindAnchor', {
+                name: name.slice(1) || 'default',
+                el: element.bindName()
+            }, (ctx, n) => {
+                ctx.write(true, `$runtime.attachAnchor($option, $cd, ${n.el}`);
+                if(n.name == 'default') ctx.write(`);`);
+                else ctx.write(`, '${n.name}');`);
+            })};
         } else {
             if(prop.value && prop.value.indexOf('{') >= 0) {
                 const parsed = this.parseText(prop.value);
+                this.detectDependency(parsed);
                 let exp = parsed.result;
-                let hasElement = prop.value.indexOf('$element') >= 0;
+                let hasElement = prop.value.includes('$element');
 
-                if(node.spreadObject) {
-                    return {bind: `
-                    ${node.spreadObject}.prop('${name}', () => ${exp});
-                `};
-                }
+                if(node.spreading) return node.spreading.push(`${name}: ${exp}`);
+
                 const propList = {
                     hidden: true,
                     checked: true,
@@ -4095,118 +5112,120 @@
                     innerHTML: true,
                     innerText: true,
                     placeholder: true,
-                    src: true
+                    src: true,
+                    readonly: 'readOnly'
                 };
-                if(propList[name]) {
-                    if(hasElement) {
-                        return {bind: `{
-                        let $element=${makeEl()};
-                        $watchReadOnly($cd, () => (${exp}), (value) => {$element.${name} = value;});
-                    }`};
+
+                let n = xNode('bindAttribute', {
+                    name,
+                    exp,
+                    hasElement,
+                    el: element.bindName(),
+                    requireCD
+                }, (ctx, data) => {
+                    if(data.hasElement) ctx.writeLine(`let $element=${data.el};`);
+                    if(propList[name]) {
+                        let propName = propList[name] === true ? name : propList[name];
+                        if(ctx.inuse.apply) {
+                            requireCD.$value(true);
+                            ctx.writeLine(`$watchReadOnly($cd, () => (${data.exp}), (value) => {${data.el}.${propName} = value;});`);
+                        } else {
+                            ctx.writeLine(`${data.el}.${propName} = ${data.exp};`);
+                        }
                     } else {
-                        return {bind: `$watchReadOnly($cd, () => (${exp}), (value) => {${makeEl()}.${name} = value;});`};
+                        if(ctx.inuse.apply) {
+                            requireCD.$value(true);
+                            ctx.writeLine(`$runtime.bindAttribute($cd, ${data.el}, '${data.name}', () => (${data.exp}));`);
+                        } else {
+                            ctx.writeLine(`$runtime.bindAttributeBase(${data.el}, '${data.name}', ${data.exp});`);
+                        }
                     }
-                } else {
-                    if(hasElement) {
-                        return {
-                            bind: `{
-                            let $element=${makeEl()};
-                            $runtime.bindAttribute($cd, $element, '${name}', () => (${exp}));
-                        }`
-                        };
-                    } else {
-                        let el = makeEl();
-                        return {
-                            bind: `
-                            $runtime.bindAttribute($cd, ${el}, '${name}', () => (${exp}));
-                        `
-                        };
-                    }
-                }
+                });
+                requireCD.$depends(n);
+
+                return {bind: xNode('block', {
+                    scope: hasElement,
+                    body: [n]
+                })};
             }
 
-            if(node.spreadObject) {
-                return {bind: `
-                ${node.spreadObject}.attr('${name}', '${prop.value}');
-            `};
-            }
+            if(node.spreading) return node.spreading.push(`${name}: \`${this.Q(prop.value)}\``);
 
-            return {
-                prop: prop.content
-            }
+            element.attributes.push({
+                name: prop.name,
+                value: prop.value
+            });
         }
     }
 
-    function makeifBlock(data, topElementName) {
-        let source = [];
-
+    function makeifBlock(data, element, requireCD) {
         let r = data.value.match(/^#if (.*)$/);
         let exp = r[1];
         assert(exp, 'Wrong binding: ' + data.value);
+        this.detectDependency(exp);
+        this.require('$cd');
 
-        let ifBlockName = 'ifBlock' + (this.uniqIndex++);
-        source.push(`function ${ifBlockName}($cd, $parentElement) {`);
         let mainBlock, elseBlock;
 
+        const getBlock = b => {
+            if(b.singleBlock) {
+                return xNode('make-block', {
+                    block: b.singleBlock
+                }, (ctx, n) => {
+                    ctx.write('() => ');
+                    ctx.add(n.block);
+                })
+            }
+            return b.block;
+        };
+
         if(data.bodyMain) {
-            mainBlock = this.buildBlock({body: data.bodyMain}, {protectLastTag: true});
-            elseBlock = this.buildBlock(data, {protectLastTag: true});
-
-            const convert = elseBlock.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-            source.push(`
-            let elsefr = ${convert}(\`${this.Q(elseBlock.tpl)}\`);
-            ${elseBlock.source}
-        `);
+            mainBlock = getBlock(this.buildBlock({body: data.bodyMain}, {protectLastTag: true, allowSingleBlock: true}));
+            elseBlock = getBlock(this.buildBlock(data, {protectLastTag: true, allowSingleBlock: true}));
         } else {
-            mainBlock = this.buildBlock(data, {protectLastTag: true});
+            mainBlock = getBlock(this.buildBlock(data, {protectLastTag: true, allowSingleBlock: true}));
         }
-        const convert = mainBlock.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-        source.push(`
-        let mainfr = ${convert}(\`${this.Q(mainBlock.tpl)}\`);
-        ${mainBlock.source}
-    `);
-
-        if(elseBlock) {
-            source.push(`
-            $runtime.$$ifBlock($cd, $parentElement, () => !!(${exp}), mainfr, ${mainBlock.name}, elsefr, ${elseBlock.name});
-        `);
-        } else {
-            source.push(`
-            $runtime.$$ifBlock($cd, $parentElement, () => !!(${exp}), mainfr, ${mainBlock.name});
-        `);
-        }
-        source.push(`};\n ${ifBlockName}($cd, ${topElementName});`);
         
-        return {
-            source: source.join('\n')
-        }
+        const result = xNode('if:bind', {
+            $deps: [this.glob.apply],
+            requireCD,
+            el: element.bindName(),
+            exp,
+            mainBlock: mainBlock,
+            elseBlock: elseBlock
+        }, (ctx, n) => {
+            if(this.glob.apply.value) {
+                n.requireCD.$value(true);
+                ctx.write(true, `$runtime.ifBlock($cd, ${n.el}, () => !!(${n.exp}),`);
+            } else {
+                this.glob.component.$value(true);
+                ctx.write(true, `$runtime.ifBlockReadOnly($component, ${n.el}, () => !!(${n.exp}),`);
+            }
+
+            ctx.indent++;
+            ctx.write(true);
+            ctx.add(n.mainBlock);
+            if(n.elseBlock) {
+                ctx.write(',');
+                ctx.add(n.elseBlock);
+            }
+            ctx.indent--;
+            ctx.write(true, ');', true);
+        });
+        requireCD.$depends(result);
+        this.glob.component.$depends(result);
+        return result;
     }
 
     function makeEachBlock(data, option) {
-        let source = [];
-
-        let nodeItems = data.body;
-        while(nodeItems.length) {
-            let n = nodeItems[0];
-            if(n.type == 'text' && !n.value.trim()) nodeItems.shift();
-            else break;
-        }
-        while(nodeItems.length) {
-            let n = nodeItems[nodeItems.length - 1];
-            if(n.type == 'text' && !n.value.trim()) nodeItems.pop();
-            else break;
-        }
-        if(!nodeItems.length) nodeItems = [data.body[0]];
-
-        let itemData = this.buildBlock({body: nodeItems}, {protectLastTag: true});
+        this.require('apply');
 
         // #each items as item, index (key)
-        let rx = data.value.match(/^#each\s+(\S+)\s+as\s+(.+)$/);
+        let rx = data.value.match(/^#each\s+(.+)\s+as\s+(.+)$/);
         assert(rx, `Wrong #each expression '${data.value}'`);
         let arrayName = rx[1];
         let right = rx[2];
         let keyName;
-        let keyFunction;
 
         // get keyName
         rx = right.match(/^(.*)\s*\(\s*([^\(\)]+)\s*\)\s*$/);
@@ -4216,23 +5235,33 @@
         }
         right = right.trim();
 
-        let itemName, indexName, keywords, bind0 = '';
+        let itemName, indexName, blockPrefix = null;
         if(right[0] == '{') {
-            rx = right.match(/^\{([^}]+)\}(.*)$/);
+            rx = right.match(/^(\{[^}]+\})(.*)$/);
             assert(rx, `Wrong #each expression '${data.value}'`);
-            keywords = rx[1].trim().split(/\s*\,\s*/);
+            let exp = rx[1], keywords;
+
+            try {
+                keywords = acorn.parse(`(${exp} = $$item)`, {sourceType: 'module', ecmaVersion: 12}).body[0].expression.left.properties.map(p => p.key.name);
+            } catch (e) {
+                throw new Error('Wrong destructuring in each: ' + data.value);
+            }
+
             itemName = '$$item';
             indexName = rx[2].trim();
             if(indexName[0] == ',') indexName = indexName.substring(1).trim();
             indexName = indexName || '$index';
 
-            let assignVars = keywords.map(k => `${k} = $$item.${k}`).join(', ');
-            bind0 = `
-            var ${assignVars};
-            $ctx.cd.prefix.push(() => {
-                ${assignVars};
+            blockPrefix = xNode('each:unwrap', {
+                exp,
+                keywords
+            }, (ctx, n) => {
+                if(this.script.readOnly) ctx.writeLine(`let ${n.exp} = $$item;`);
+                else {
+                    ctx.writeLine(`let ${n.keywords.join(', ')};`);
+                    ctx.writeLine(`$runtime.prefixPush($cd, () => (${n.exp} = $$item));`);
+                }
             });
-        `;
         } else {
             rx = right.trim().split(/\s*\,\s*/);
             assert(rx.length <= 2, `Wrong #each expression '${data.value}'`);
@@ -4242,48 +5271,115 @@
         assert(isSimpleName(itemName), `Wrong name '${itemName}'`);
         assert(isSimpleName(indexName), `Wrong name '${indexName}'`);
 
-        if(keyName == itemName) keyName = null;
+        let keyFunction = null;
+        if(keyName == itemName) {
+            keyName = null;
+            keyFunction = 'noop';
+        }
         if(keyName) assert(detectExpressionType(keyName) == 'identifier', `Wrong key '${keyName}'`);
 
-        if(!keyName) keyFunction = 'let getKey = $runtime.noop;';
-        else if(keyName == indexName) keyFunction = 'function getKey(_, i) {return i;}';
-        else keyFunction = `function getKey(${itemName}) {return ${keyName};}`;
-
-        const convert = itemData.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-
-        source.push(`
-        {
-            function bind($ctx, $template, ${itemName}, ${indexName}) {
-                ${bind0}
-                ${itemData.source};
-                ${itemData.name}($ctx.cd, $template);
-                $ctx.rebind = function(_${indexName}, _${itemName}) {
-                    ${indexName} = _${indexName};
-                    ${itemName} = _${itemName};
-                };
-            };
-
-            ${keyFunction};
-
-            let itemTemplate = ${convert}(\`${this.Q(itemData.tpl)}\`);
-
-            $runtime.$$eachBlock($cd, ${option.elName}, ${option.onlyChild?1:0}, () => (${arrayName}), getKey, itemTemplate, bind);
+        if(keyName) {
+            this.detectDependency(keyName);
+            keyFunction = xNode('function', {
+                inline: true,
+                arrow: true,
+                args: [itemName, 'i'],
+                body: [xNode('block', {
+                    index: indexName,
+                    key: keyName
+                }, (ctx, data) => {
+                    if(data.key == data.index) ctx.writeLine('return i;');
+                    else ctx.writeLine(`return ${data.key};`);
+                })]
+            });
         }
-    `);
+        let rebind;
+        if(!this.script.readOnly) {
+            rebind = xNode('block', {
+                itemName,
+                indexName
+            }, (ctx, n) => {
+                ctx.write(`(_${n.indexName}, _${n.itemName}) => {${n.indexName}=_${n.indexName}; ${n.itemName}=_${n.itemName};}`);
+            });
+        }
 
-        return {
-            source: source.join('\n')
-        };
+        let nodeItems = trimEmptyNodes(data.body);
+        if(!nodeItems.length) nodeItems = [data.body[0]];
+
+        let itemBlock, block = this.buildBlock({body: nodeItems}, {
+            protectLastTag: true,
+            allowSingleBlock: !blockPrefix,
+            each: {
+                blockPrefix,
+                rebind,
+                itemName,
+                indexName
+            }
+        });
+
+        if(block.singleBlock) {
+            itemBlock = xNode('each-component', {
+                block: block.singleBlock,
+                rebind,
+                itemName,
+                indexName
+            }, (ctx, n) => {
+                ctx.write(`$runtime.makeEachSingleBlock((${n.itemName}, ${n.indexName}) => [`);
+                ctx.indent++;
+                ctx.write(true);
+                ctx.add(n.rebind);
+                ctx.write(',', true);
+                ctx.add(n.block);
+                ctx.indent--;
+                ctx.write(true, `])`);
+            });
+        } else itemBlock = block.block;
+
+        const source = xNode('each', {
+            keyFunction,
+            block: itemBlock,
+        }, (ctx, n) => {
+            ctx.writeLine(`$runtime.$$eachBlock($cd, ${option.elName}, ${option.onlyChild?1:0}, () => (${arrayName}),`);
+            ctx.indent++;
+            ctx.write(true);
+            if(n.keyFunction === 'noop') ctx.write('$runtime.noop');
+            else if(n.keyFunction) ctx.add(n.keyFunction);
+            else ctx.write('$runtime.eachDefaultKey');
+            ctx.write(`,`);
+            ctx.add(n.block);
+            ctx.indent--;
+            ctx.write(true, `);`, true);
+        });
+        this.detectDependency(arrayName);
+
+        return {source};
     }
 
-    function makeHtmlBlock(exp, topElementName) {
-        return `$runtime.$$htmlBlock($cd, ${topElementName}, () => (${exp}));\n`;
+    function makeHtmlBlock(exp, label, requireCD) {
+        this.detectDependency(exp);
+        this.require('$cd');
+        const result = xNode('block', {
+            $deps: [this.glob.apply],
+            el: label.bindName(),
+            exp,
+            requireCD
+        }, (ctx, n) => {
+            let cd;
+            if(this.glob.apply.value) {
+                n.requireCD.$value(true);
+                cd = '$cd';
+            } else cd = 'null';
+            ctx.write(true, `$runtime.$$htmlBlock(${cd}, ${n.el}, () => (${n.exp}));`);
+        });
+
+        requireCD.$depends(result);
+        return result;
     }
 
-    function makeAwaitBlock(node, elementName) {
-        let source = [];
+    function makeAwaitBlock(node, element) {
         let valueForThen, exp;
-        let rx = node.value.match(/^#await\s+(\S+)\s+then\s+(\S+)\s*$/);
+
+        let rx = node.value.match(/^#await\s+(.+)\s+then\s+(\S+)\s*$/);
         if(rx) {
             assert(!node.parts.then);
             node.parts.then = node.parts.main;
@@ -4291,22 +5387,17 @@
             exp = rx[1];
             valueForThen = rx[2];
         } else {
-            rx = node.value.match(/^#await\s+(\S+)\s*$/);
+            rx = node.value.match(/^#await\s+(.+)\s*$/);
             assert(rx);
             exp = rx[1].trim();
         }
 
-        let block_main, block_then, block_catch;
-        let build_main, build_then, build_catch;
-        let tpl_main, tpl_then, tpl_catch;
+        let keywords = extractKeywords(exp);
+
+        let parts = [null, null, null];
         if(node.parts.main && node.parts.main.length) {
-            block_main = this.buildBlock({body: node.parts.main}, {protectLastTag: true});
-            source.push(block_main.source);
-            build_main = block_main.name;
-            const convert = block_main.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-            source.push(`const tpl_main = ${convert}(\`${this.Q(block_main.tpl)}\`);`);
-            tpl_main = 'tpl_main';
-        } else tpl_main = 'null';
+            parts[0] = this.buildBlock({body: node.parts.main}, {protectLastTag: true});
+        }
         if(node.parts.then && node.parts.then.length) {
             let args = [];
             if(valueForThen) {
@@ -4319,14 +5410,8 @@
                     args.push(rx[1]);
                 }
             }
-
-            block_then = this.buildBlock({body: node.parts.then, args}, {protectLastTag: true});
-            source.push(block_then.source);
-            build_then = block_then.name;
-            const convert = block_then.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-            source.push(`const tpl_then = ${convert}(\`${this.Q(block_then.tpl)}\`);`);
-            tpl_then = 'tpl_then';
-        } else tpl_then = 'null';
+            parts[1] = this.buildBlock({body: node.parts.then}, {protectLastTag: true, extraArguments: args});
+        }
         if(node.parts.catch && node.parts.catch.length) {
             let args = [];
             let rx = node.parts.catchValue.match(/^[^ ]+\s+(.*)$/);
@@ -4334,218 +5419,735 @@
                 assert(isSimpleName(rx[1]));
                 args.push(rx[1]);
             }
+            parts[2] = this.buildBlock({body: node.parts.catch}, {protectLastTag: true, extraArguments: args});
+        }
 
-            block_catch = this.buildBlock({body: node.parts.catch, args}, {protectLastTag: true});
-            source.push(block_catch.source);
-            build_catch = block_catch.name;
-            const convert = block_catch.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-            source.push(`const tpl_catch = ${convert}(\`${this.Q(block_catch.tpl)}\`);`);
-            tpl_catch = 'tpl_catch';
-        } else tpl_catch = 'null';
+        if(this.script.readOnly) {
+            this.warning('script read-only conflicts with await');
+            return;
+        }
+        this.detectDependency(exp);
+        this.require('apply');
 
-        source.push(`
-        $runtime.$$awaitBlock($cd, ${elementName}, () => ${exp}, $$apply, ${build_main}, ${build_then}, ${build_catch}, ${tpl_main}, ${tpl_then}, ${tpl_catch});
-    `);
-
-        return {source: `{
-        ${source.join('\n')}
-    }`};
+        return xNode('await', {
+            el: element.bindName(),
+            exp,
+            parts,
+            keywords
+        }, (ctx, n) => {
+            ctx.write(true, `$runtime.$$awaitBlock($cd, ${n.el}, () => [${n.keywords.join(', ')}], () => ${n.exp},`);
+            ctx.indent++;
+            n.parts.forEach((part, index) => {
+                if(index) ctx.write(', ');
+                if(part) {
+                    ctx.write(true);
+                    ctx.add(part.block);
+                } else ctx.write('null');
+            });
+            ctx.indent--;
+            ctx.write(');', true);
+        });
     }
 
-    function attachSlot(slotName, label, node) {
-        let placeholder = '';
+    function attachSlot(slotName, node, requireCD) {
+        let props = [], staticProps = true;
 
-        let bind = [];
         if(node.attributes && node.attributes.length) {
             node.attributes.forEach(prop => {
-                let name = prop.name;
-                let value = prop.value;
-                if(name[0] == '{') {
-                    assert(value == null);
-                    value = name;
-                    name = unwrapExp(name);
-                }            assert(value != null);
-                assert(isSimpleName(name));
-                if(value[0] == '{') {
-                    value = unwrapExp(value);
-                    bind.push(`
-                    if('set_${name}' in s) {
-                        $watch($cd, () => (${value}), s.set_${name}, {ro: true, cmp: $runtime.$$compareDeep});
-                    }
-                `);
-                } else {
-                    bind.push(`
-                    if('set_${name}' in s) s.set_${name}(\`${this.Q(value)}\`);
-                `);
-                }
+                let {name, value, ...ip} = this.inspectProp(prop);
+                if(!ip.static) staticProps = false;
+                props.push(xNode('slot-prop', {
+                    name,
+                    value
+                }, (ctx, n) => {
+                    ctx.write(`${n.name}: ${n.value}`);
+                }));
+
             });
         }
-        if(node.body && node.body.length) {
-            let block = this.buildBlock(node);
-            const convert = block.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-            placeholder = ` else {
-            ${block.source};
-            let $tpl = ${convert}(\`${this.Q(block.tpl)}\`);
-            ${block.name}($cd, $tpl);
-            ${label}.parentNode.insertBefore($tpl, ${label}.nextSibling);
-        }`;
-        }
+        let placeholder;
+        if(node.body?.length) placeholder = this.buildBlock(node).block;
 
-        return {source: `{
-        let $slot = $option.slots && $option.slots.${slotName};
-        if($slot) {
-            let s = $slot(${label}, $component);
-            $runtime.cd_onDestroy($cd, s.destroy);
-            ${bind.join('\n')}
-        } ${placeholder};
-    }`};
+        this.require('$context');
+        this.glob.component.$value(true);
+
+        let result = xNode('slot', {
+            $deps: [this.glob.apply],
+            name: slotName,
+            props,
+            staticProps,
+            placeholder,
+            requireCD
+        }, (ctx, n) => {
+            let dynamicProps = this.glob.apply.value && !n.staticProps;
+
+            if(dynamicProps) n.requireCD.$value(true);
+        
+            let missed = '', slotName = n.name == 'default' ? 'null' : n.name;
+            if(dynamicProps) ctx.write(`$runtime.invokeSlot($component, ${slotName}, $context`);
+            else ctx.write(`$runtime.invokeSlotBase($component, ${slotName}, $context`);
+
+            if(n.props.length) {
+                if(dynamicProps) ctx.write(', () => ({');
+                else ctx.write(', {');
+                n.props.forEach((prop, i) => {
+                    if(i) ctx.write(', ');
+                    ctx.add(prop);
+                });
+                ctx.write('}');
+                if(dynamicProps) ctx.write(')');
+            } else missed += ', null';
+
+            if(n.placeholder) {
+                ctx.write(missed, ', ');
+                missed = '';
+                ctx.add(n.placeholder);
+            } else missed += ', null';
+
+            if(dynamicProps) {
+                ctx.write(missed, ', ');
+                if(this.config.immutable) ctx.write(`$runtime.keyComparator`);
+                else ctx.write(`$runtime.$$compareDeep`);
+            }
+            ctx.write(')');
+        });
+        requireCD.$depends(result);
+        return result;
     }
 
-    function makeFragment(node) {
+    function makeFragment(node, requireCD) {
         let rx = node.value.match(/#fragment\:(\S+)(.*)$/);
         assert(rx);
-        let name = rx[1];
-        let args = rx[2] ? rx[2].trim() : null;
-        let head = [];
+        let name = rx[1], external = false;
         assert(isSimpleName(name));
-        if(args) {
-            args = args.split(/\s*,\s*/);
-            args.forEach(name => {
-                assert(isSimpleName(name));
-                head.push(`
-                let ${name};
-                if($$args.${name} != null) {
-                    if(typeof $$args.${name} == 'function') {
-                        $cd.prefix.push(() => {${name} = $$args.${name}()});
-                    } else ${name} = $$args.${name};
+        let props = rx[2] ? rx[2].trim() : null;
+        if(props) {
+            props = props.split(/[\s,]+/).filter(p => {
+                if(p == 'export') {
+                    external = true;
+                    return false;
                 }
-            `);
+                return true;
             });
         }
 
+        if(external) requireCD.$value(true);
+
         let block;
-        if(node.body && node.body.length) block = this.buildBlock(node);
-        else {
-            this.option.warning(`Empty fragment: '${node.value}'`);
-            return {source: `function $fragment_${name}() {};`};
+        if(node.body && node.body.length) {
+            block = this.buildBlock({body: trimEmptyNodes(node.body)}, {inline: true, context: 'fragment', parentElement: '$dom'});
+        } else {
+            this.warning(`Empty fragment: '${node.value}'`);
+            return xNode('empty-fragment', {name}, (ctx, n) => {
+                ctx.writeLine(`function $fragment_${n.name}() {};`);
+            });
         }
 
-        const convert = block.svg ? '$runtime.svgToFragment' : '$$htmlToFragment';
-
-        return {source: `
-        function $fragment_${name}($cd, label, $option) {
-            let $$args = $option.args;
-            ${head.join('\n')}
-
-            ${block.source};
-            let $tpl = ${convert}(\`${this.Q(block.tpl)}\`);
-            ${block.name}($cd, $tpl);
-            label.parentNode.insertBefore($tpl, label.nextSibling);
-        };
-    `};
+        return xNode('fragment', {
+            $compile: [block.source, this.glob.apply],
+            $deps: [block.requireCD],
+            name,
+            props,
+            external,
+            block
+        }, (ctx, n) => {
+            if(ctx.isEmpty(n.block.source)) {
+                ctx.write(true, `let $fragment_${n.name} = $runtime.makeStaticBlock(`);
+                ctx.add(n.block.template);
+                ctx.write(');');
+            } else {
+                ctx.write(true, `function $fragment_${n.name}($props, $events={}, $$fragmentSlot) {`);
+                ctx.indent++;
+        
+                if(n.block.requireCD.value) ctx.write(true, 'let $cd = $runtime.cd_new();');
+        
+                if(n.props?.length) {
+                    if(this.glob.apply.value) {
+                        ctx.writeLine('let ' + n.props.join(', ') + ';');
+                        ctx.writeLine(`$runtime.unwrapProps($cd, $props, ($$) => ({${n.props.join(', ')}} = $$));`);
+                    } else {
+                        ctx.writeLine('let ' + n.props.join(', ') + ';');
+                        ctx.writeLine(`$props && ({${n.props.join(', ')}} = ($runtime.isFunction($props) ? $props() : $props));`);
+                    }
+                }
+        
+                ctx.write(true, 'let $dom = ');
+                ctx.add(n.block.template);
+                ctx.write(';');
+        
+                ctx.add(n.block.source);
+                if(n.block.requireCD.value) ctx.write(true, `return {$cd, $dom};`);
+                else ctx.write(true, `return {$dom};`);
+        
+                ctx.indent--;
+                ctx.writeLine('}');
+            }
+            if(n.external) ctx.writeLine(`$runtime.exportFragment($cd, '${n.name}', $fragment_${n.name});`);
+        });
     }
 
 
-    function attachFragment(node, elementName) {
-        let head = [];
-        let name = node.elArg;
-        assert(isSimpleName(name));
+    function parseAttibutes(attributes) {
+        let props = [];
+        let events = [];
+        let forwardAllEvents;
+        let staticProps = true;
 
-        node.attributes.forEach(prop => {
+        attributes.forEach(prop => {
             let name = prop.name;
-            let value = prop.value;
 
             if(name[0] == '@' || name.startsWith('on:')) {
-                if(name[0] == '@') name = name.substring(1);
-                else name = name.substring(3);
-
-                if(name == '@') {
-                    head.push(`events = $option.events;`);
+                if(name.startsWith('@@')) {
+                    this.require('$events');
+                    if(name == '@@') forwardAllEvents = true;
+                    else {
+                        name = name.substring(2);
+                        events.push({
+                            name,
+                            callback: `$events.${name}`
+                        });
+                    }
                     return;
                 }
 
-                let args = name.split(':');
-                name = args.shift();
-                assert(isSimpleName(name));
-
-                let exp, handler, isFunc;
-                if(value) exp = unwrapExp(value);
-                else {
-                    if(args.length) handler = args.pop();
-                    else {
-                        head.push(`events.${name} = $option.events.${name};`);
-                        return;
-                    }
-                }
-                assert(!handler ^ !exp, prop.content);
-
-                if(exp) {
-                    let type = detectExpressionType(exp);
-                    if(type == 'identifier') {
-                        handler = exp;
-                        exp = null;
-                    } else {
-                        isFunc = (type == 'function');
-                    }
-                }
-
-                let callback;
-                if(isFunc) {
-                    callback = exp;
-                } else if(handler) {
-                    this.checkRootName(handler);
-                    callback = handler;
-                } else {
-                    callback = `($event) => {${this.Q(exp)}}`;
-                }
-                head.push(`events.${name} = ${callback};`);
+                let {event, fn} = this.makeEventProp(prop);
+                events.push({name: event, fn});
             } else {
-                if(name[0] == '{') {
-                    assert(!value);
-                    value = name;
-                    name = unwrapExp(name);
-                }
+                let ip = this.inspectProp(prop);
+                props.push(ip);
+                if(!ip.static) staticProps = false;
+            }
+        });
 
-                assert(isSimpleName(name));
-                assert(value);
-                if(value.indexOf('{') >= 0) {
-                    let exp = unwrapExp(value);
-                    head.push(`args.${name} = () => (${exp});`);
+        return {props, events, forwardAllEvents, staticProps};
+    }
+
+
+    function attachFragment(node) {
+        let name = node.elArg;
+        assert(isSimpleName(name));
+
+        let slot = null;
+        if(node.body?.length) slot = this.buildBlock({body: trimEmptyNodes(node.body)}, {inline: true});
+
+        let {props, events, forwardAllEvents, staticProps} = parseAttibutes.call(this, node.attributes);
+
+        return xNode('call-fragment', {
+            $compile: [slot?.source],
+            $deps: [this.glob.apply],
+            forwardAllEvents,
+            name,
+            events,
+            props,
+            slot,
+            staticProps
+        }, (ctx, n) => {
+            ctx.write(`$fragment_${n.name}(`);
+            let missed = '';
+            ctx.indent++;
+
+            if(n.props.length) {
+                ctx.write(true);
+
+                const writeProps = () => ctx.write('{' + n.props.map(p => p.name == p.value ? p.name : `${p.name}: ${p.value}`).join(', ') + '}');
+
+                if(n.staticProps || !this.glob.apply.value) writeProps();
+                else {
+                    ctx.write(`() => (`);
+                    writeProps();
+                    ctx.write(`)`);
+                }
+            } else missed = 'null';
+
+            if(n.forwardAllEvents) {
+                if(n.events.length) this.warning(`Fragment: mixing binding and forwarding is not supported: '${node.openTag}'`);
+                ctx.write(missed, ', $events');
+                missed = '';
+            } else if(n.events.length) {
+                ctx.write(missed, ',', true, '{');
+                missed = '';
+
+                n.events.forEach((e, i) => {
+                    if(i) ctx.write(', ');
+                    if(e.callback) {
+                        if(e.name == e.callback) ctx.write(e.name);
+                        ctx.write(`${e.name}: ${e.callback}`);
+                    } else {
+                        assert(e.fn);
+                        ctx.write(`${e.name}: `);
+                        ctx.build(e.fn);
+                    }
+                });
+                ctx.write('}');
+            } else missed += ', 0';
+
+            if(n.slot) {
+                ctx.write(missed, ',', true);
+                missed = '';
+                if(ctx.isEmpty(n.slot.source)) {
+                    ctx.write(`$runtime.makeStaticBlock(`);
+                    ctx.add(n.slot.template);
+                    ctx.write(`)`);
                 } else {
-                    head.push(`args.${name} = \`${this.Q(value)}\`;`);
+                    ctx.write(`$runtime.makeBlock(`);
+                    ctx.add(n.slot.template);
+                    ctx.write(`, ($cd, $parentElement) => {`, true);
+                    ctx.indent++;
+                    ctx.add(n.slot.source);
+                    ctx.indent--;
+                    ctx.write(true, `})`);
                 }
             }
 
-        });
+            ctx.indent--;
+            if(n.props.length || n.events.length || n.slot) ctx.write(true, ')');
+            else ctx.write(')');
 
-        return {source: `{
-        let args = {};
-        let events = {};
-        ${head.join('\n')}
-        $fragment_${name}($cd, ${elementName}, {args, events});
-    }`};
+        });
     }
 
-    const version = 'unstable';
+    function attachFragmentSlot(label, requireCD) {
+        requireCD.$value(true);
+
+        return xNode('fragment-slot', {
+            el: label.bindName()
+        }, (ctx, n) => {
+            ctx.write(true, `$runtime.attachBlock($cd, ${n.el}, $$fragmentSlot?.())`);
+        });
+    }
+
+    function attchExportedFragment(node, label, componentName, requireCD) {
+        requireCD.$value(true);
+
+        let data = {
+            name: node.elArg,
+            componentName,
+            label: label.bindName(),
+        };
+
+        let body = trimEmptyNodes(node.body || []);
+        if(body.length) {
+            data.slot = this.buildBlock({body}, {inline: true});
+            data.$compile = [data.slot.source];
+            data.$deps = [data.slot.requireCD];
+            // assert(!data.slot.template.svg, 'SVG is not supported for exported fragment');
+        }
+
+        let pa = parseAttibutes.call(this, node.attributes);
+        data = {...pa, ...data};
+
+        return xNode('attach-exported-fragment', data, (ctx, n) => {
+            ctx.write(true, `$runtime.attachBlock($cd, ${n.label}, $runtime.callExportedFragment($instance_${n.componentName}, '${n.name}'`);
+            ctx.indent++;
+            let missed = '';
+
+            if(n.slot) {
+                ctx.write(',', true);
+
+                if(ctx.isEmpty(n.slot.source)) {
+                    ctx.write(`$runtime.makeStaticBlock(`);
+                    ctx.add(n.slot.template);
+                    ctx.write(`)`);
+                } else {
+                    ctx.write(`$runtime.makeBlockBound($cd, `);
+                    ctx.add(n.slot.template);
+                    ctx.write(`, ($cd, $parentElement) => {`, true);
+                    ctx.indent++;
+                    ctx.add(n.slot.source);
+                    ctx.indent--;
+                    ctx.write(true, `})`);
+                }
+            } else missed = ', null';
+
+            if(n.forwardAllEvents) {
+                if(n.events.length) this.warning(`Fragment: mixing binding and forwarding is not supported: '${node.openTag}'`);
+                ctx.write(missed, ', $events');
+                missed = '';
+            } else if(n.events.length) {
+                ctx.write(missed, ',', true, '{');
+                missed = '';
+
+                n.events.forEach((e, i) => {
+                    if(i) ctx.write(', ');
+                    if(e.callback) {
+                        if(e.name == e.callback) ctx.write(e.name);
+                        ctx.write(`${e.name}: ${e.callback}`);
+                    } else {
+                        assert(e.fn);
+                        ctx.write(`${e.name}: `);
+                        ctx.build(e.fn);
+                    }
+                });
+                ctx.write('}');
+            } else missed += ', null';
+
+            if(n.props.length) {
+                if(missed) ctx.write(missed);
+                missed = '';
+                ctx.write(',', true);
+
+                const writeProps = () => ctx.write('{' + n.props.map(p => p.name == p.value ? p.name : `${p.name}: ${p.value}`).join(', ') + '}');
+
+                if(n.staticProps) writeProps();
+                else {
+                    ctx.write(`() => (`);
+                    writeProps();
+                    ctx.write(`), `);
+                    if(this.config.immutable) ctx.write(`$runtime.keyComparator`);
+                    else ctx.write(`$runtime.$$compareDeep`);
+                }
+
+            }
+
+            ctx.indent--;
+            ctx.write('));');
+        });
+    }
+
+    function attachHead(n, requireCD) {
+        if(n.elArg == 'window' || n.elArg == 'body') {
+            let name = 'el' + (this.uniqIndex++);
+            let block = this.buildBlock({body: [n]}, {malinaElement: true, inline: true, oneElement: name, bindAttributes: true});
+            if(block.source) {
+                return xNode('block', {
+                    name,
+                    target: n.elArg,
+                    source: block.source
+                }, (ctx, n) => {
+                    if(n.target == 'window') ctx.writeLine(`let ${n.name} = window;`);
+                    else ctx.writeLine(`let ${n.name} = document.body;`);
+                    ctx.build(n.source);
+                });
+            }
+        } else if(n.elArg == 'head') {
+            let title;
+            let body = (n.body || []).filter(n => {
+                if(n.type == 'text') return false;
+                if(n.name == 'title') {
+                    title = n;
+                    return false;
+                }
+                return true;
+            });
+
+            let d = {
+                $deps: [this.glob.apply],
+                requireCD
+            };
+            if(title?.body?.[0]) {
+                assert(title.body[0].type == 'text');
+                let r = this.parseText(title.body[0].value);
+                if(r.parts.some(i => i.type == 'exp')) {
+                    d.dynTitle = r.result;
+                } else {
+                    d.title = r.result;
+                }
+            }
+            if(body.length) {
+                let bb = this.buildBlock({body}, {
+                    inline: true,
+                    template: {
+                        name: '$parentElement',
+                        cloneNode: true,
+                        requireFragment: true
+                    }
+                });
+                d.source = bb.source;
+                d.template = bb.template;
+                d.blockCD = bb.requireCD;
+
+                d.$compile = [d.source];
+                d.$deps.push(d.blockCD);
+
+                this.require('$onDestroy');
+            }
+
+            const result = xNode('malina:head', d, (ctx, n) => {
+                if(n.blockCD.value) n.requireCD.$value(true);
+                if(n.title != null) ctx.writeLine(`document.title = ${n.title};`);
+                if(n.dynTitle) {
+                    if(this.glob.apply.value) {
+                        n.requireCD.$value(true);
+                        ctx.writeLine(`$watchReadOnly($cd, () => (${n.dynTitle}), (value) => {document.title = value;});`);
+                    } else ctx.writeLine(`document.title = ${n.dynTitle};`);
+                }
+
+                if(n.template) {
+                    ctx.writeLine(`{`);
+                    ctx.indent++;
+                    ctx.add(n.template);
+                    ctx.add(n.source);
+                    ctx.writeLine(`let a=$parentElement.firstChild, b=$parentElement.lastChild;`);
+                    ctx.writeLine(`$onDestroy(() => {$runtime.$$removeElements(a, b)});`);
+                    ctx.writeLine(`document.head.appendChild($parentElement);`);
+                    ctx.indent--;
+                    ctx.writeLine(`}`);
+                }
+            });
+            requireCD.$depends(result);
+            return result;
+        } else throw 'Wrong tag';
+    }
+
+    function inspectProp(prop) {
+        let {name, value} = prop;
+        if(name[0] == '{') {
+            assert(!prop.value);
+            value = name;
+            name = unwrapExp(name);
+        }
+
+        assert(name.match(/^([\w\$_][\w\d\$_\.\-]*)$/), `Wrong property: '${name}'`);
+        name = toCamelCase(name);
+        if(name == 'class') name = '_class';
+
+        let rawValue, statical = false;
+
+        if(value && value.includes('{')) {
+            const pe = this.parseText(value);
+            this.detectDependency(pe);
+
+            if(pe.parts.length == 1 && pe.parts[0].type == 'exp') {
+                let v = pe.parts[0].value;
+
+                if(isNumber(v)) {
+                    value = v;
+                    rawValue = Number(v);
+                    statical = true;
+                } else if(v == 'true' || v == 'false') {
+                    value = v;
+                    rawValue = v == 'true';
+                    statical = true;
+                } else if(v == 'null') {
+                    value = 'null';
+                    rawValue = null;
+                    statical = true;
+                }
+            }
+
+            if(!statical) value = pe.result;
+        } else if(value) {
+            rawValue = value;
+            value = '`' + this.Q(value) + '`';
+            statical = true;
+        } else {
+            rawValue = true;
+            value = 'true';
+            statical = true;
+        }
+
+        return {name, value, rawValue, static: statical};
+    }
+
+    function attachPortal(node, requireCD) {
+        let body = trimEmptyNodes(node.body || []);
+        if(!body.length) return;
+
+        let bb = this.buildBlock({body}, {
+            inline: true,
+            template: {
+                name: '$parentElement',
+                cloneNode: true,
+                requireFragment: true
+            }
+        });
+
+        this.require('$component');
+
+        let mount = node.attributes.find(a => a.name == 'mount')?.value;
+        if(mount) mount = unwrapExp(mount);
+
+        const result = xNode('portal', {
+            $compile: [bb.source],
+            $deps: [bb.requireCD],
+            mount,
+            source: bb.source,
+            template: bb.template,
+            requireCD
+        }, (ctx, n) => {
+            if(n.$deps[0].value) n.requireCD.$value(true);
+            let label = n.mount || 'document.body';
+            ctx.writeLine('{');
+            ctx.indent++;
+            ctx.add(n.template);
+            ctx.add(n.source);
+            ctx.writeLine(`let $$first = $parentElement[$runtime.firstChild];`);
+            ctx.writeLine(`let $$last = $parentElement.lastChild;`);
+            ctx.writeLine(`$runtime.cd_onDestroy(${n.$deps[0].value ? '$cd' : '$component'}, () => $runtime.$$removeElements($$first, $$last));`);
+            ctx.writeLine(`$tick(() => ${label}.appendChild($parentElement));`);
+            ctx.indent--;
+            ctx.writeLine('}');
+        });
+        requireCD.$depends(result);
+        return result;
+    }
+
+    function makeEventProp(prop, requireElement) {
+        const assert$1 = x => {
+            assert(x, `Wrong event prop: ${prop.content}`);
+        };
+
+        let name = prop.name;
+        if(name.startsWith('@@')) {
+            assert$1(!prop.value);
+            return {forward: true, name};
+        }
+        if(name.startsWith('on:')) name = name.substring(3);
+        else {
+            assert$1(name[0] == '@');
+            name = name.substring(1);
+        }
+
+        let event = '';
+        let modList = [], _mod = '';
+        let handler = '', exp, func;
+        let step = 0;
+        let rootModifier = false;
+        for(let a of name) {
+            if(a == '|') {
+                assert$1(step <= 1);
+                step = 1;
+                if(_mod) modList.push(_mod);
+                _mod = '';
+                continue;
+            }
+            if(a == ':') {
+                assert$1(step < 2);
+                step = 2;
+                continue;
+            }
+            if(step == 0) event += a;
+            else if(step == 1) _mod += a;
+            else if(step == 2) handler += a;
+        }
+        if(_mod) modList.push(_mod);
+
+        if(prop.value) {
+            assert$1(!handler);
+            exp = unwrapExp(prop.value);
+            exp = replaceElementKeyword(exp, requireElement);
+        } else if(!handler) handler = event;
+
+        this.detectDependency(exp || handler);
+
+        let globalFunction = false;
+        if(exp) {
+            let type = detectExpressionType(exp);
+            if(type == 'identifier') {
+                globalFunction = !!this.script.rootFunctions[exp];
+                handler = exp;
+                exp = null;
+            } else if(type == 'function') {
+                func = exp;
+                exp = null;
+            } else if(type?.type == 'function-call') {
+                globalFunction = !!this.script.rootFunctions[type.name];
+            }    }
+
+        // modifiers
+
+        let keyEvent = ['keydown', 'keypress', 'keyup'].includes(event);
+        let keyCodes = {
+            enter: 'Enter',
+            tab: 'Tab',
+            esc: 'Escape',
+            escape: 'Escape',
+            space: ' ',
+            up: 'ArrowUp',
+            down: 'ArrowDown',
+            left: 'ArrowLeft',
+            right: 'ArrowRight'
+        };
+
+        let mods = [];
+        let preventInserted;
+        modList.forEach(opt => {
+            if(opt == 'root') {
+                rootModifier = true;
+                return;
+            }
+            if(opt == 'preventDefault' || opt == 'prevent') {
+                if(preventInserted) return;
+                mods.push('$event.preventDefault();');
+                preventInserted = true;
+                return;
+            } else if(opt == 'stopPropagation' || opt == 'stop') {
+                mods.push('$event.stopPropagation();');
+                return;
+            }
+            if(keyEvent) {
+                if(opt === 'delete') {
+                    mods.push(`if($event.key != 'Backspace' && $event.key != 'Delete') return;`);
+                    return;
+                }
+                let keyCode = keyCodes[opt];
+                if(keyCode) {
+                    mods.push(`if($event.key != '${keyCode}') return;`);
+                    return;
+                }
+            }
+
+            if(opt == 'ctrl') {mods.push(`if(!$event.ctrlKey) return;`); return;}
+            if(opt == 'alt') {mods.push(`if(!$event.altKey) return;`); return;}
+            if(opt == 'shift') {mods.push(`if(!$event.shiftKey) return;`); return;}
+            if(opt == 'meta') {mods.push(`if(!$event.metaKey) return;`); return;}
+
+            throw 'Wrong modificator: ' + opt;
+        });
+        mods = mods.join(' ');
+
+        if(!this.script.readOnly) this.require('apply');
+
+        // this.checkRootName(handler);
+
+        let fn = xNode('event-callback', {
+            exp,
+            handlerName: handler,
+            func,
+            mods,
+            globalFunction
+        }, (ctx, n) => {
+            if(n.handlerName && !ctx.inuse.apply && !n.mods) return ctx.write(n.handlerName);
+            ctx.write(`($event) => { `);
+            if(n.mods) ctx.write(n.mods, ' ');
+            if(n.handlerName) ctx.write(`${n.handlerName}($event);`);
+            else if(n.exp) {
+                if(last(n.exp) != ';') n.exp += ';';
+                ctx.write(`${n.exp}`);
+            } else if(n.func) ctx.write(`(${n.func})($event);`);
+            if(ctx.inuse.apply && !n.globalFunction) ctx.write(` $$apply();`);
+            ctx.write(`}`);
+        });
+
+        return {event, fn, rootModifier};
+    }
+
+    const version = '0.7.0-alpha';
 
 
     async function compile(source, config = {}) {
+        if(config.localConfig !== false && config.path) config = loadConfig(config.path, config);
+
         config = Object.assign({
             name: 'widget',
-            warning: (w) => console.warn('!', w.message),
             exportDefault: true,
             inlineTemplate: false,
             hideLabel: false,
             compact: true,
             autoSubscribe: true,
             cssGenId: null,
-            plugins: []
+            plugins: [],
+            debug: true,
+            css: true,
+            passClass: true,
+            immutable: false
         }, config);
 
         const ctx = {
             source,
             config,
             uniqIndex: 0,
+            warning: config.warning || (w => console.warn('!', w.message || w)),
             
             Q: config.inlineTemplate ? Q2 : Q,
             buildBlock,
@@ -4553,14 +6155,48 @@
             makeEachBlock,
             makeifBlock,
             makeComponent,
+            makeComponentDyn,
             makeHtmlBlock,
             parseText,
             makeAwaitBlock,
             attachSlot,
             makeFragment,
+            attachFragmentSlot,
             attachFragment,
+            attchExportedFragment,
+            attachHead,
+            inspectProp,
+            attachPortal,
+            makeEventProp,
             checkRootName: checkRootName,
-            use: {},
+
+            inuse: {},
+            glob: {
+                apply: xNode('apply', false),
+                component: xNode('$component', false),
+                componentFn: xNode('componentFn', false),
+                rootCD: xNode('root-cd', false)
+            },
+            require: function(...args) {
+                for(let name of args) {
+                    let deps = true;
+                    if(name == '$props:no-deps') {name = '$props'; deps = false;}                if(name == 'apply' && ctx.script.readOnly) name = 'blankApply';
+                    if(ctx.inuse[name] == null) ctx.inuse[name] = 0;
+                    ctx.inuse[name]++;
+                    if(!deps) continue;
+                    if(name == 'apply') ctx.glob.apply.$value(true);
+                    if(name == '$component') ctx.glob.component.$value(true);
+                    if(name == '$attributes') ctx.require('$props');
+                    if(name == '$props' && !ctx.script.readOnly) ctx.require('apply', '$cd');
+                    if(name == '$cd') {
+                        ctx.glob.rootCD.$value(true);
+                        ctx.require('$component');
+                    }
+                    if(name == '$onDestroy') ctx.require('$component');
+                    if(name == '$onMount') ctx.require('$component');
+                }
+            },
+            detectDependency,
 
             DOM: null,
             parseHTML: parse,
@@ -4571,15 +6207,25 @@
             js_parse: parse$1,
             js_transform: transform,
             js_build: build,
-            js_shaking: shaking,
 
             styleNodes: null,
             css: null,
             processCSS,
 
-            runtime: {componentHeader: []},
+            runtime: {},
             result: null,
-            buildRuntime
+            buildRuntime,
+
+            module: {
+                top: xNode('block'),
+                head: xNode('block'),
+                code: xNode('block'),
+                body: xNode('block')
+            },
+
+            xBuild: node => {
+                return xBuild(ctx, node);
+            }
         };
 
         await hook(ctx, 'dom:before');
@@ -4612,7 +6258,7 @@
 
         await hook(ctx, 'css:before');
         ctx.processCSS();
-        if(ctx.css) ctx.css.process(ctx.DOM);
+        if(ctx.css.active()) ctx.css.process(ctx.DOM);
         await hook(ctx, 'css');
 
         await hook(ctx, 'runtime:before');
@@ -4621,28 +6267,21 @@
 
 
         await hook(ctx, 'build:before');
-        ctx.js_shaking();
-        await hook(ctx, 'build:shaking');
-        ctx.js_build();
-        await hook(ctx, 'build:assemble');
-        let code = `
-        import * as $runtime from 'malinajs/runtime.js';
-        import { $watch, $watchReadOnly, $tick } from 'malinajs/runtime.js';
-    `;
-
+        const result = ctx.result = xNode('block');
+        result.push(`import * as $runtime from 'malinajs/runtime.js';`);
+        result.push(`import { $watch, $watchReadOnly, $tick } from 'malinajs/runtime.js';`);
         if(config.hideLabel) {
-            code += `import { $$htmlToFragmentClean as $$htmlToFragment } from 'malinajs/runtime.js';\n`;
+            result.push(`import { $$htmlToFragmentClean as $$htmlToFragment } from 'malinajs/runtime.js';`);
         } else {
-            code += `import { $$htmlToFragment } from 'malinajs/runtime.js';\n`;
+            result.push(`import { $$htmlToFragment } from 'malinajs/runtime.js';`);
         }
+        result.push(ctx.module.top);
+        result.push(makeComponentFn.call(ctx));
 
-        if(config.injectRuntime) code += config.injectRuntime + '\n';
+        ctx.result = xBuild(ctx, result);
 
-        let scriptCode = replace(ctx.script.code, '$$runtimeHeader()', ctx.runtime.header, 1);
-        scriptCode = replace(scriptCode, '$$runtime()', ctx.runtime.body, 1);
-        ctx.result = code + scriptCode;
         await hook(ctx, 'build');
-        return ctx.result;
+        return ctx;
     }
 
     async function hook(ctx, name) {
@@ -4650,6 +6289,104 @@
             const fn = ctx.config.plugins[i][name];
             if(fn) await fn(ctx);
         }
+    }
+
+    function detectDependency(data) {
+        const check = name => {
+            for(let k of ['$props', '$attributes', '$emit', '$context']) {
+                if(name.includes(k)) this.require(k);
+            }
+        };
+
+        if(typeof data == 'string') {
+            check(data);
+        } else {
+            assert(data.parts);
+
+            for(let p of data.parts) {
+                if(p.type == 'exp' || p.type == 'js') check(p.value);
+            }
+        }
+    }
+
+
+    function loadConfig(filename, option) {
+        const fs = require('fs');
+        let result = Object.assign({}, option);
+        if(result.plugins) result.plugins = result.plugins.slice();
+
+        let localConfig;
+        let parts = filename.split(/[\/\\]/);
+        for(let i=parts.length-1;i>1;i--) {
+            let local = parts.slice(0, i).join('/') + '/malina.config.js';
+            if(fs.existsSync(local)) {
+                localConfig = local;
+                break;
+            }
+        }
+
+        if(localConfig) {
+            const confFn = require(localConfig);
+            result = confFn(result, filename);
+        }
+        if(!result.path) result.path = filename;
+        if(!result.name) result.name = filename.match(/([^/\\]+)\.\w+$/)[1];
+
+        return result;
+    }
+
+
+    function makeComponentFn() {
+        let componentFn = xNode('componentFn', {
+            $deps: [this.glob.apply, this.glob.rootCD],
+            body: [this.module.head, this.module.code, this.module.body],
+        }, (ctx, n) => {
+            let component = xNode('function', {
+                args: ['$option'],
+                inline: true,
+                arrow: true,
+                body: n.body
+            });
+
+            if(this.glob.apply.value) {
+                ctx.add(this.glob.componentFn);
+                ctx.write('$runtime.makeComponent(');
+                component.args.push('$$apply');
+                ctx.add(component);
+                ctx.write(', $runtime.$base);', true);
+            } else if(this.glob.rootCD.value || ctx.inuse.$cd || ctx.inuse.$component || ctx.inuse.$context || ctx.inuse.blankApply) {
+                ctx.add(this.glob.componentFn);
+                if(ctx.inuse.blankApply) {
+                    component.body[0].body.unshift(xNode('block', (ctx) => {
+                        ctx.writeLine('let $$apply = $runtime.noop;');
+                    }));
+                }
+
+                ctx.write('$runtime.makeComponent(');
+                ctx.add(component);
+                ctx.write(');', true);
+            } else {
+                this.glob.componentFn.$value('thin');
+                ctx.add(this.glob.componentFn);
+                ctx.write('($option={}) => {', true);
+                ctx.goIndent(() => {
+                    ctx.add(xNode('block', {body: n.body}));
+                });
+                ctx.write(true, '}');
+            }
+        });
+
+        return xNode('block', {
+            $compile: [this.module.head, this.module.code, this.module.body],
+            name: this.config.name,
+            componentFn
+        }, (ctx, n) => {
+            ctx.writeIndent();
+            if(this.config.exportDefault) ctx.write('export default ');
+            else ctx.write(`const ${n.name} = `);
+            ctx.add(this.glob.apply);
+            ctx.add(n.componentFn);
+        });
     }
 
     exports.compile = compile;

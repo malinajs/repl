@@ -19,7 +19,7 @@
     let prev = current_context;
     try {
       current_context = context;
-      return fn();
+      fn();
     } finally {
       current_context = prev;
     }
@@ -671,42 +671,6 @@
     }
   };
 
-  const walk = (node, fn) => {
-    switch(node.type) {
-      case 'node':
-      case 'slot':
-      case 'block':
-      case 'fragment':
-      case 'root':
-        if(node.body) fn(node.body, node);
-        break
-      case 'each':
-        if(node.mainBlock) fn(node.mainBlock, node);
-        if(node.elseBlock) fn(node.elseBlock, node);
-        break
-      case 'await':
-        if(node.parts.main) fn(node.parts.main, node);
-        if(node.parts.then) fn(node.parts.then, node);
-        if(node.parts.catch) fn(node.parts.catch, node);
-        break
-      case 'if':
-        node.parts.forEach(p => {
-          if(p.body) fn(p.body, node);
-        });
-        if(node.elsePart) fn(node.elsePart, node);
-        break
-      case 'text':
-      case 'comment':
-      case 'script':
-      case 'style':
-      case 'systag':
-      case 'template':
-        break
-      default:
-        throw `Not implemented: ${node.type}`;
-    }
-  };
-
   function compactDOM() {
     let data = this.DOM;
 
@@ -746,7 +710,29 @@
           }
         } else {
           if(node.type == 'node' && (node.name == 'pre' || node.name == 'textarea')) continue;
-          walk(node, go);
+          switch(node.type) {
+            case 'node':
+            case 'slot':
+            case 'block':
+            case 'fragment':
+              if(node.body) go(node.body, node);
+              break
+            case 'each':
+              if(node.mainBlock) go(node.mainBlock, node);
+              if(node.elseBlock) go(node.elseBlock, node);
+              break
+            case 'await':
+              if(node.parts.main) go(node.parts.main, node);
+              if(node.parts.then) go(node.parts.then, node);
+              if(node.parts.catch) go(node.parts.catch, node);
+              break
+            case 'if':
+              node.parts.forEach(p => {
+                if(p.body) go(p.body, node);
+              });
+              if(node.elsePart) go(node.elsePart, node);
+              break
+          }
         }
       }
 
@@ -853,25 +839,6 @@
     data.body = trimNodes(data.body);
 
     go(data.body);
-  }
-
-  function compactFull() {
-    const go = (body) => {
-      let i = 0;
-      while (i < body.length) {
-        let n = body[i];
-        if(n.type == 'text') {
-          n.value = n.value.trim();
-          if(!n.value) {
-            body.splice(i, 1);
-            continue;
-          }
-        } else walk(n, go);
-        i++;
-      }
-    };
-
-    walk(this.DOM, go);
   }
 
   class Reader {
@@ -1315,33 +1282,22 @@
     assert(step == 0, 'Wrong expression: ' + source);
     let staticText = null;
     if(!parts.some(p => p.type == 'exp')) staticText = parts.map(p => p.type == 'text' ? p.value : '').join('');
-
-    let pe = {
-      parts,
-      staticText,
-      binding: parts.length == 1 && parts[0].type == 'exp' ? parts[0].value : null,
-      getResult() {
-        let result = [];
-        this.parts.forEach(p => {
-          if(p.type == 'js') return;
-          if(p.type == 'exp') result.push(p);
-          else {
-            let l = last(result);
-            if(l?.type == 'text') l.value += p.value;
-            else result.push({ ...p });
-          }
-        });
-
-        return '`' + result.map(p => p.type == 'text' ? Q(p.value) : '${' + p.value + '}').join('') + '`';
+    let result = [];
+    parts.forEach(p => {
+      if(p.type == 'js') return;
+      if(p.type == 'exp') result.push(p);
+      else {
+        let l = last(result);
+        if(l?.type == 'text') l.value += p.value;
+        else result.push({ ...p });
       }
-    };
-    pe.result = pe.getResult();
-    return pe;
+    });
+    result = '`' + result.map(p => p.type == 'text' ? Q(p.value) : '${' + p.value + '}').join('') + '`';
+    return { result, parts, staticText };
   }
 
 
-  const parseBinding = (source) => {
-    const reader = new Reader(source);
+  const parseBinding = (reader) => {
     let start = reader.index;
 
     assert(reader.read() === '{', 'Bind error');
@@ -1384,7 +1340,7 @@
       const raw = reader.sub(start);
       return {
         raw,
-        value: raw.substring(1, raw.length - 1).trim(),
+        value: raw.substring(1, raw.length - 1),
       };
     }
   };
@@ -1423,7 +1379,7 @@
             const value = raw.substring(1, raw.length - 1);
             result.push({name, value, raw, content: r.sub(start)});
           } else {
-            const value = r.readIf(/^[^\s<>]+/);
+            const value = r.readIf(/^\S+/);
             result.push({name, value, raw: value, content: r.sub(start)});
           }
         } else {
@@ -2224,8 +2180,7 @@
               let bindText = xNode('bindText', {
                 $wait: ['apply'],
                 el: textNode.bindName(),
-                exp: pe.result,
-                parsedExpression: pe
+                exp: pe.result
               }, (ctx, n) => {
                 if(this.inuse.apply) {
                   ctx.writeLine(`$runtime.bindText(${n.el}, () => ${n.exp});`);
@@ -2663,7 +2618,7 @@
         each: option.each,
         parentElement: option.parentElement
       }, (ctx, n) => {
-        if(n.each) {
+        if(n.each && !ctx.isEmpty(n.innerBlock)) {
           ctx.write('$runtime.makeEachBlock(');
         } else {
           ctx.write('$runtime.makeBlock(');
@@ -5772,13 +5727,13 @@
 
         if(node.spreading) return node.spreading.push(`${name}: ${exp}`);
 
-        if(node.name == 'option' && name == 'value' && parsed.binding) {
+        if(node.name == 'option' && name == 'value') {
           return {
             bind: xNode('bindOptionValue', {
               el: element.bindName(),
-              value: parsed.binding
+              exp
             }, (ctx, n) => {
-              ctx.write(true, `$runtime.selectOption(${n.el}, () => (${n.value}));`);
+              ctx.write(true, `$runtime.selectOption(${n.el}, () => (${n.exp}));`);
             })
           }
         }
@@ -5799,7 +5754,7 @@
         let n = xNode('bindAttribute', {
           $wait: ['apply'],
           name,
-          exp: propList[name] && parsed.binding ? parsed.binding : exp,
+          exp,
           hasElement,
           el: element.bindName()
         }, (ctx, data) => {
@@ -6617,34 +6572,42 @@
     name = toCamelCase(name);
     if(name == 'class') name = '_class';
 
-    let statical = false;
+    let rawValue, statical = false;
 
     if(value && value.includes('{')) {
-      const pe = parseBinding(value);
-      const v = pe.value;
-      this.detectDependency(v);
+      const pe = this.parseText(value);
+      this.detectDependency(pe);
 
-      if(isNumber(v)) {
-        value = v;
-        statical = true;
-      } else if(v == 'true' || v == 'false') {
-        value = v;
-        statical = true;
-      } else if(v == 'null') {
-        value = 'null';
-        statical = true;
-      } else {
-        value = v;
+      if(pe.parts.length == 1 && pe.parts[0].type == 'exp') {
+        let v = pe.parts[0].value;
+
+        if(isNumber(v)) {
+          value = v;
+          rawValue = Number(v);
+          statical = true;
+        } else if(v == 'true' || v == 'false') {
+          value = v;
+          rawValue = v == 'true';
+          statical = true;
+        } else if(v == 'null') {
+          value = 'null';
+          rawValue = null;
+          statical = true;
+        }
       }
+
+      if(!statical) value = pe.result;
     } else if(value) {
+      rawValue = value;
       value = '`' + Q(value) + '`';
       statical = true;
     } else {
+      rawValue = true;
       value = 'true';
       statical = true;
     }
 
-    return { name, value, static: statical, mod };
+    return { name, value, rawValue, static: statical, mod };
   }
 
   function attachPortal(node) {
@@ -6865,7 +6828,7 @@
     });
   }
 
-  const version = '0.7.6';
+  const version = '0.7.2-a10';
 
 
   async function compile(source, config = {}) {
@@ -6945,7 +6908,7 @@
       parseHTML: function() {
         this.DOM = parseHTML(this.source);
       },
-      compactDOM: config.compact == 'full' ? compactFull : compactDOM,
+      compactDOM,
 
       script: null,
       scriptNodes: null,
@@ -7046,7 +7009,7 @@
   async function hook(ctx, name) {
     for(let i = 0; i < ctx.config.plugins.length; i++) {
       const fn = ctx.config.plugins[i][name];
-      if(fn) await use_context(ctx, () => fn(ctx));
+      if(fn) await fn(ctx);
     }
   }
 

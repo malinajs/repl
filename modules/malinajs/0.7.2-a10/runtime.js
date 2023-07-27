@@ -998,7 +998,7 @@ const eachDefaultKey = (item, index, array) => isObject(array[0]) ? item : index
 const makeEachBlock = (fr, fn) => {
   return (item, index) => {
     let $dom = fr.cloneNode(true);
-    return [$dom, fn?.($dom, item, index)];
+    return [$dom, fn($dom, item, index)];
   };
 };
 
@@ -1287,30 +1287,18 @@ const keepAlive = (store, keyFn, builder) => {
 
 const selectElement = (el, getter, setter) => {
   addEvent(el, 'change', () => {
-    let value = [];
-    el.querySelectorAll(':checked').forEach(o => {
-      value.push(o.$$value ? o.$$value() : o.value);
-    });
-    value = el.multiple ? value : value[0];
-    setter(value);
-    w.value = value;
+    let op = el.querySelector(':checked');
+    if(op?.$$value) {
+      let value = op.$$value();
+      setter(value);
+      w.value = value;
+    }
   });
   const update = () => {
-    let value = w.value;
-    if(el.multiple) {
-      if(isArray(value)) {
-        for(let o of el.options) {
-          const option_value = o.$$value ? o.$$value() : o.value;
-          o.selected = value.indexOf(option_value) != -1;
-        }
+    for(let op of el.options) {
+      if(op.$$value?.() === w.value) {
+        op.selected = true;
         return;
-      }
-    } else {
-      for(let o of el.options) {
-        if((o.$$value ? o.$$value() : o.value) === value) {
-          o.selected = true;
-          return;
-        }
       }
     }
     el.selectedIndex = -1;

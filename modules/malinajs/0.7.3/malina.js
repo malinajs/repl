@@ -1340,8 +1340,7 @@
   }
 
 
-  const parseBinding = (source) => {
-    const reader = new Reader(source);
+  const parseBinding = (reader) => {
     let start = reader.index;
 
     assert(reader.read() === '{', 'Bind error');
@@ -1384,7 +1383,7 @@
       const raw = reader.sub(start);
       return {
         raw,
-        value: raw.substring(1, raw.length - 1).trim(),
+        value: raw.substring(1, raw.length - 1),
       };
     }
   };
@@ -2663,7 +2662,7 @@
         each: option.each,
         parentElement: option.parentElement
       }, (ctx, n) => {
-        if(n.each) {
+        if(n.each && !ctx.isEmpty(n.innerBlock)) {
           ctx.write('$runtime.makeEachBlock(');
         } else {
           ctx.write('$runtime.makeBlock(');
@@ -6617,34 +6616,42 @@
     name = toCamelCase(name);
     if(name == 'class') name = '_class';
 
-    let statical = false;
+    let rawValue, statical = false;
 
     if(value && value.includes('{')) {
-      const pe = parseBinding(value);
-      const v = pe.value;
-      this.detectDependency(v);
+      const pe = this.parseText(value);
+      this.detectDependency(pe);
 
-      if(isNumber(v)) {
-        value = v;
-        statical = true;
-      } else if(v == 'true' || v == 'false') {
-        value = v;
-        statical = true;
-      } else if(v == 'null') {
-        value = 'null';
-        statical = true;
-      } else {
-        value = v;
+      if(pe.parts.length == 1 && pe.parts[0].type == 'exp') {
+        let v = pe.parts[0].value;
+
+        if(isNumber(v)) {
+          value = v;
+          rawValue = Number(v);
+          statical = true;
+        } else if(v == 'true' || v == 'false') {
+          value = v;
+          rawValue = v == 'true';
+          statical = true;
+        } else if(v == 'null') {
+          value = 'null';
+          rawValue = null;
+          statical = true;
+        }
       }
+
+      if(!statical) value = pe.result;
     } else if(value) {
+      rawValue = value;
       value = '`' + Q(value) + '`';
       statical = true;
     } else {
+      rawValue = true;
       value = 'true';
       statical = true;
     }
 
-    return { name, value, static: statical, mod };
+    return { name, value, rawValue, static: statical, mod };
   }
 
   function attachPortal(node) {
@@ -6865,7 +6872,7 @@
     });
   }
 
-  const version = '0.7.6';
+  const version = '0.7.2-a12';
 
 
   async function compile(source, config = {}) {
