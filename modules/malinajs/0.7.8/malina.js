@@ -4982,9 +4982,8 @@
 
     this.require('$context');
 
-    let deepChecking = this.config.deepCheckingProps;
     let reference = null;
-    let propsFn = [], propsSetter = [], $class = [], staticProps = true;
+    let propsFn = [], propsSetter = [], $class = [], staticProps = true, deepChecking = false;
     let slotBlocks = [];
     let anchorBlocks = [];
 
@@ -5135,12 +5134,6 @@
         let inner, outer;
         if(name[0] == ':') inner = name.substring(1);
         else inner = name.substring(5);
-        let mods = inner.split('|');
-        inner = mods.shift();
-        mods.forEach(mod => {
-          if (mod == 'deep') deepChecking = true;
-          else throw new Error('Wrong modifier: ' + mod);
-        });
         if(value) outer = unwrapExp(value);
         else outer = inner;
         assert(isSimpleName(inner), `Wrong property: '${inner}'`);
@@ -6872,7 +6865,7 @@
     });
   }
 
-  const version = '0.7.9';
+  const version = '0.7.8';
 
 
   async function compile(source, config = {}) {
@@ -6891,7 +6884,6 @@
       css: true,
       passClass: true,
       immutable: false,
-      deepCheckingProps: false,
       useGroupReferencing: true
     }, config);
 
