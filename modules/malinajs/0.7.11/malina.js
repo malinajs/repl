@@ -1,14 +1,12 @@
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('acorn'), require('astring'), require('css-tree')) :
   typeof define === 'function' && define.amd ? define(['exports', 'acorn', 'astring', 'css-tree'], factory) :
-  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.malina = {}, global.acorn, global.astring, global["css-tree"]));
-})(this, (function (exports, acorn, astring, csstree) { 'use strict';
+  (global = global || self, factory(global.malina = {}, global.acorn, global.astring, global['css-tree']));
+}(this, (function (exports, acorn, astring, csstree) { 'use strict';
 
-  function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e : { 'default': e }; }
-
-  var acorn__default = /*#__PURE__*/_interopDefaultLegacy(acorn);
-  var astring__default = /*#__PURE__*/_interopDefaultLegacy(astring);
-  var csstree__default = /*#__PURE__*/_interopDefaultLegacy(csstree);
+  acorn = acorn && Object.prototype.hasOwnProperty.call(acorn, 'default') ? acorn['default'] : acorn;
+  astring = astring && Object.prototype.hasOwnProperty.call(astring, 'default') ? astring['default'] : astring;
+  csstree = csstree && Object.prototype.hasOwnProperty.call(csstree, 'default') ? csstree['default'] : csstree;
 
   let current_context;
 
@@ -74,7 +72,7 @@
   function detectExpressionType(name) {
     if(isSimpleName(name)) return 'identifier';
 
-    let ast = acorn__default["default"].parse(name, { allowReturnOutsideFunction: true, ecmaVersion: 'latest' });
+    let ast = acorn.parse(name, { allowReturnOutsideFunction: true, ecmaVersion: 'latest' });
 
     function checkIdentificator(body) {
       if(body.length != 1) return;
@@ -141,7 +139,7 @@
 
 
   const extractKeywords = (exp) => {
-    let ast = acorn__default["default"].parse(exp, { sourceType: 'module', ecmaVersion: 'latest' });
+    let ast = acorn.parse(exp, { sourceType: 'module', ecmaVersion: 'latest' });
 
     const keys = new Set();
     const rec = (n) => {
@@ -199,8 +197,8 @@
 
   const parseJS = (exp, option) => {
     let self = {};
-    if(option === true) self.ast = acorn__default["default"].parse(exp, { ecmaVersion: 'latest' });
-    else self.ast = acorn__default["default"].parseExpressionAt(exp, 0, { ecmaVersion: 'latest' });
+    if(option === true) self.ast = acorn.parse(exp, { ecmaVersion: 'latest' });
+    else self.ast = acorn.parseExpressionAt(exp, 0, { ecmaVersion: 'latest' });
 
     self.transform = function(fn) {
       const rec = (n, pk) => {
@@ -231,7 +229,7 @@
     };
 
     self.build = function(data) {
-      return astring__default["default"].generate(data || self.ast, { indent: '', lineEnd: '' });
+      return astring.generate(data || self.ast, { indent: '', lineEnd: '' });
     };
     return self;
   };
@@ -965,17 +963,17 @@
     const reader = new Reader(source);
 
     const readScript = (reader) => {
-      class ScriptParser extends acorn__default["default"].Parser {
+      class ScriptParser extends acorn.Parser {
         readToken_lt_gt(code) {
           if (this.input.slice(this.pos, this.pos + 9) == '</script>') {
-            return this.finishToken(acorn__default["default"].tokTypes.eof);
+            return this.finishToken(acorn.tokTypes.eof);
           }
           return super.readToken_lt_gt(code);
         }
 
         scan() {
           this.nextToken();
-          while (this.type !== acorn__default["default"].tokTypes.eof) {
+          while (this.type !== acorn.tokTypes.eof) {
             this.parseStatement(null, true, null);
           }
           return this.end;
@@ -1221,7 +1219,7 @@
       elArg = reader.read(/^[^\s>/]+/);
     }
 
-    let attributes = parseAttibutes$1(reader, {closedByTag: true});
+    let attributes = parseAttibutes(reader, {closedByTag: true});
 
     let closedTag = false;
     if(reader.readIf('/>')) closedTag = true;
@@ -1372,7 +1370,7 @@
   };
 
 
-  const parseAttibutes$1 = (source, option={}) => {
+  const parseAttibutes = (source, option={}) => {
     const r = new Reader(source);
     let result = [];
 
@@ -1452,7 +1450,7 @@
         if(isBlockComment) return;
         this.script.comments.push({ start, end, value });
       };
-      this.script.ast = acorn__default["default"].parse(source, { sourceType: 'module', ecmaVersion: 'latest', onComment });
+      this.script.ast = acorn.parse(source, { sourceType: 'module', ecmaVersion: 'latest', onComment });
 
       if(source.includes('$props')) this.require('$props');
       if(source.includes('$attributes')) this.require('$attributes');
@@ -1633,10 +1631,10 @@
           target = ex.left.name;
           if(!(target in rootVariables)) resultBody.push(makeVariable(target));
         } else if(ex.left.type == 'MemberExpression') {
-          target = astring__default["default"].generate(ex.left);
+          target = astring.generate(ex.left);
         } else throw 'Error';
         assertExpression(ex.right);
-        const exp = astring__default["default"].generate(ex.right);
+        const exp = astring.generate(ex.right);
         watchers.push(xNode('watch-assign', {
           $wait: ['apply'],
           target,
@@ -1648,7 +1646,7 @@
       } else if(n.body.expression.type == 'SequenceExpression') {
         const ex = n.body.expression.expressions;
         const handler = last(ex);
-        let callback = astring__default["default"].generate(handler);
+        let callback = astring.generate(handler);
         if(handler.type == 'ArrowFunctionExpression' || handler.type == 'FunctionExpression') ; else if(detectExpressionType(callback) == 'identifier') {
           callback = `(v) => { ${callback}(v); }`;
         } else {
@@ -1659,7 +1657,7 @@
           assertExpression(ex[0]);
           watchers.push(xNode('watch-expression', {
             $wait: ['apply'],
-            exp: astring__default["default"].generate(ex[0]),
+            exp: astring.generate(ex[0]),
             callback
           }, (ctx, n) => {
             if(this.inuse.apply) {
@@ -1678,7 +1676,7 @@
 
           watchers.push(xNode('watch-expression', {
             $wait: ['apply'],
-            exp: astring__default["default"].generate(exp),
+            exp: astring.generate(exp),
             callback
           }, (ctx, n) => {
             if(this.inuse.apply) ctx.write(true, `$watch(() => ${n.exp}, ($args) => { (${n.callback}).apply(null, $args); }, {cmp: $runtime.deepComparator(1)});`);
@@ -1737,7 +1735,7 @@
             if(d.init.type == 'Literal') {
               p.value = d.init.raw;
             } else {
-              p.value = astring__default["default"].generate(d.init);
+              p.value = astring.generate(d.init);
             }
           }
           result.props.push(p);
@@ -1869,12 +1867,12 @@
         if(statement.type != 'Raw') state.write(lineEnd);
       }
     }
-  }, astring__default["default"].baseGenerator);
+  }, astring.baseGenerator);
 
 
   xNode.init.ast = (ctx, node) => {
     if(!node.body.length) return;
-    let code = astring__default["default"].generate({
+    let code = astring.generate({
       type: 'CustomBlock',
       body: node.body
     }, { generator, startingIndentLevel: 0 });
@@ -4557,7 +4555,7 @@
 
     const selector2str = (sel) => {
       if(!sel.children) sel = { type: 'Selector', children: sel };
-      return csstree__default["default"].generate(sel);
+      return csstree.generate(sel);
     };
 
     const convertAst = (node, parent) => {
@@ -4572,7 +4570,7 @@
     };
 
     const parseCSS = (content, option) => {
-      let ast = csstree__default["default"].parse(content, option);
+      let ast = csstree.parse(content, option);
       return convertAst(ast, null);
     };
 
@@ -4593,7 +4591,7 @@
       let ast = parseCSS(styleNode.content);
       astList.push(ast);
 
-      csstree__default["default"].walk(ast, function(node) {
+      csstree.walk(ast, function(node) {
         if(node.type == 'Declaration') {
           if(node.property == 'animation' || node.property == 'animation-name') {
             let c = node.value.children[0];
@@ -4834,7 +4832,7 @@
       });
       resolveHashes();
 
-      return astList.map(ast => csstree__default["default"].generate(ast)).join('');
+      return astList.map(ast => csstree.generate(ast)).join('');
     };
   }
 
@@ -6296,7 +6294,7 @@
   }
 
 
-  function parseAttibutes(attributes) {
+  function parseAttibutes$1(attributes) {
     let props = [];
     let events = [];
     let forwardAllEvents;
@@ -6341,7 +6339,7 @@
     let slot = null;
     if(node.body?.length) slot = this.buildBlock({ body: trimEmptyNodes(node.body) }, { inline: true });
 
-    let { props, events, forwardAllEvents, staticProps } = parseAttibutes.call(this, node.attributes);
+    let { props, events, forwardAllEvents, staticProps } = parseAttibutes$1.call(this, node.attributes);
 
     return xNode('call-fragment', {
       $compile: [slot?.source],
@@ -6441,7 +6439,7 @@
       // assert(!data.slot.template.svg, 'SVG is not supported for exported fragment');
     }
 
-    let pa = parseAttibutes.call(this, node.attributes);
+    let pa = parseAttibutes$1.call(this, node.attributes);
     data = { ...pa, ...data };
 
     return xNode('attach-exported-fragment', data, (ctx, n) => {
@@ -6831,7 +6829,7 @@
     let key = null;
     let args = node.value.substr(6);
     if(args) {
-      args = parseAttibutes$1(args);
+      args = parseAttibutes(args);
       const a = args.find(a => a.name == 'key');
       if(a) {
         let value = a.value;
@@ -6854,7 +6852,7 @@
     });
   }
 
-  const version = '0.7.12';
+  const version = '0.7.11';
 
 
   async function compile(source, config = {}) {
@@ -7115,5 +7113,5 @@
 
   Object.defineProperty(exports, '__esModule', { value: true });
 
-}));
+})));
 //# sourceMappingURL=malina.js.map

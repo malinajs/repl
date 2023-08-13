@@ -178,13 +178,11 @@ const keyComparator = (w, value) => {
 
 
 const fire = w => {
-  let value = w.fn();
-  if(w.cmp) w.cmp(w, value);
+  if(w.cmp) w.cmp(w, w.fn());
   else {
-    w.value = value;
+    w.value = w.fn();
     w.cb(w.value);
   }
-  return value;
 };
 
 function $digest($cd, flag) {
@@ -375,7 +373,8 @@ const callComponentDyn = (component, context, option = {}, propFn, cmp, setter, 
       $component.$push?.(value);
       $component.$apply?.();
     }, { value: {}, idle: true, cmp });
-    option.props = fire(parentWatch);
+    fire(parentWatch);
+    option.props = parentWatch.value;
   }
 
   if(classFn) {
