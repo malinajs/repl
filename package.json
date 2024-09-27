@@ -18,7 +18,7 @@
         "malinajs": "0.6.6",
         "node-watch": "^0.7.1",
         "prismjs": "^1.24.0",
-        "rollup": "^2.50.1",
+        "rollup": "^2.79.2",
         "storik": "^1.0.3"
     }
 }
