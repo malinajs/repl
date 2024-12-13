@@ -49,8 +49,14 @@ function $watch(fn, callback, option) {
   return w;
 }
 
+function $watchCustom(fn, callback, option) {
+  let w = $watch(fn, callback, option);
+  let cd = current_cd;
+  return () => removeItem(cd.watchers, w);
+}
+
 function addEvent(el, event, callback) {
-  if(!callback) return;
+  if (!callback) return;
   el.addEventListener(event, callback);
 
   $onDestroy(() => {
@@ -60,7 +66,7 @@ function addEvent(el, event, callback) {
 
 function removeItem(array, item) {
   let i = array.indexOf(item);
-  if(i >= 0) array.splice(i, 1);
+  if (i >= 0) array.splice(i, 1);
 }
 
 function $ChangeDetector(parent) {
@@ -71,14 +77,14 @@ function $ChangeDetector(parent) {
 }
 
 const cd_component = cd => {
-  while(cd.parent) cd = cd.parent;
+  while (cd.parent) cd = cd.parent;
   return cd.component;
 };
 
 const cd_new = (parent) => new $ChangeDetector(parent);
 
 const cd_attach = (parent, cd) => {
-  if(cd) {
+  if (cd) {
     cd.parent = parent;
     parent.children.push(cd);
   }
@@ -91,50 +97,50 @@ const isArray = (a) => Array.isArray(a);
 const _compareArray = (a, b) => {
   let a0 = isArray(a);
   let a1 = isArray(b);
-  if(a0 !== a1) return true;
-  if(!a0) return a !== b;
-  if(a.length !== b.length) return true;
-  for(let i = 0; i < a.length; i++) {
-    if(a[i] !== b[i]) return true;
+  if (a0 !== a1) return true;
+  if (!a0) return a !== b;
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return true;
   }
   return false;
 };
 
 
 function compareArray(w, value) {
-  if(!_compareArray(w.value, value)) return 0;
-  if(isArray(value)) w.value = value.slice();
+  if (!_compareArray(w.value, value)) return 0;
+  if (isArray(value)) w.value = value.slice();
   else w.value = value;
   w.cb(w.value);
 }
 
 
 const _compareDeep = (a, b, lvl) => {
-  if(lvl < 0 || !a || !b) return a !== b;
-  if(a === b) return false;
+  if (lvl < 0 || !a || !b) return a !== b;
+  if (a === b) return false;
   let o0 = isObject(a);
   let o1 = isObject(b);
-  if(!(o0 && o1)) return a !== b;
+  if (!(o0 && o1)) return a !== b;
 
   let a0 = isArray(a);
   let a1 = isArray(b);
-  if(a0 !== a1) return true;
+  if (a0 !== a1) return true;
 
   if (a0) {
-    if(a.length !== b.length) return true;
-    for(let i = 0; i < a.length; i++) {
-      if(_compareDeep(a[i], b[i], lvl - 1)) return true;
+    if (a.length !== b.length) return true;
+    for (let i = 0; i < a.length; i++) {
+      if (_compareDeep(a[i], b[i], lvl - 1)) return true;
     }
   } else if (a instanceof Date) {
-    if(b instanceof Date) return +a !== +b;
+    if (b instanceof Date) return +a !== +b;
   } else {
     let set = {};
-    for(let k in a) {
-      if(_compareDeep(a[k], b[k], lvl - 1)) return true;
+    for (let k in a) {
+      if (_compareDeep(a[k], b[k], lvl - 1)) return true;
       set[k] = true;
     }
-    for(let k in b) {
-      if(set[k]) continue;
+    for (let k in b) {
+      if (set[k]) continue;
       return true;
     }
   }
@@ -143,14 +149,14 @@ const _compareDeep = (a, b, lvl) => {
 };
 
 function cloneDeep(d, lvl) {
-  if(lvl < 0 || !d) return d;
+  if (lvl < 0 || !d) return d;
 
-  if(isObject(d)) {
-    if(d instanceof Date) return d;
-    if(d instanceof Element) return d;
-    if(isArray(d)) return d.map(i => cloneDeep(i, lvl - 1));
+  if (isObject(d)) {
+    if (d instanceof Date) return d;
+    if (d instanceof Element) return d;
+    if (isArray(d)) return d.map(i => cloneDeep(i, lvl - 1));
     let r = {};
-    for(let k in d) r[k] = cloneDeep(d[k], lvl - 1);
+    for (let k in d) r[k] = cloneDeep(d[k], lvl - 1);
     return r;
   }
   return d;
@@ -170,18 +176,20 @@ const compareDeep = deepComparator(10);
 
 const keyComparator = (w, value) => {
   let diff = false;
-  for(let k in value) {
-    if(w.value[k] != value[k]) diff = true;
-    w.value[k] = value[k];
+  for (let k in value) {
+    if (w.value[k] != value[k]) {
+      diff = true;
+      w.value[k] = value[k];
+    }
   }
   diff && !w.idle && w.cb(value);
-  w.idle = false;
+  w.idle && (w.idle = false);
 };
 
 
 const fire = w => {
   let value = w.fn();
-  if(w.cmp) w.cmp(w, value);
+  if (w.cmp) w.cmp(w, value);
   else {
     w.value = value;
     w.cb(w.value);
@@ -192,18 +200,18 @@ const fire = w => {
 function $digest($cd, flag) {
   let loop = 10;
   let w;
-  while(loop >= 0) {
+  while (loop >= 0) {
     let index = 0;
     let queue = [];
     let i, value, cd = $cd, changes = 0;
-    while(cd) {
-      for(i = 0; i < cd.prefix.length; i++) cd.prefix[i]();
-      for(i = 0; i < cd.watchers.length; i++) {
+    while (cd) {
+      for (i = 0; i < cd.prefix.length; i++) cd.prefix[i]();
+      for (i = 0; i < cd.watchers.length; i++) {
         w = cd.watchers[i];
         value = w.fn();
-        if(w.value !== value) {
+        if (w.value !== value) {
           flag[0] = 0;
-          if(w.cmp) {
+          if (w.cmp) {
             w.cmp(w, value);
           } else {
             w.cb(w.value = value);
@@ -211,13 +219,13 @@ function $digest($cd, flag) {
           changes += flag[0];
         }
       }
-      if(cd.children.length) queue.push.apply(queue, cd.children);
+      if (cd.children.length) queue.push.apply(queue, cd.children);
       cd = queue[index++];
     }
     loop--;
-    if(!changes) break;
+    if (!changes) break;
   }
-  if(loop < 0) __app_onerror('Infinity changes: ', w);
+  if (loop < 0) __app_onerror('Infinity changes: ', w);
 }
 
 let templatecache = {};
@@ -233,11 +241,11 @@ const createTextNode = (text) => document.createTextNode(text);
 
 const htmlToFragment = (html, option) => {
   let result = templatecache[html];
-  if(!result) {
+  if (!result) {
     let t = document.createElement('template');
     t.innerHTML = html.replace(/<>/g, '<!---->');
     result = t.content;
-    if(!(option & 2) && result.firstChild == result.lastChild) result = result.firstChild;
+    if (!(option & 2) && result.firstChild == result.lastChild) result = result.firstChild;
     templatecache[html] = result;
   }
 
@@ -246,18 +254,18 @@ const htmlToFragment = (html, option) => {
 
 const htmlToFragmentClean = (html, option) => {
   let result = templatecache[html];
-  if(!result) {
+  if (!result) {
     let t = document.createElement('template');
     t.innerHTML = html.replace(/<>/g, '<!---->');
     result = t.content;
 
     let it = document.createNodeIterator(result, 128);
     let n;
-    while(n = it.nextNode()) {
-      if(!n.nodeValue) n.parentNode.replaceChild(document.createTextNode(''), n);
+    while (n = it.nextNode()) {
+      if (!n.nodeValue) n.parentNode.replaceChild(document.createTextNode(''), n);
     }
 
-    if(!(option & 2) && result.firstChild == result.lastChild) result = result.firstChild;
+    if (!(option & 2) && result.firstChild == result.lastChild) result = result.firstChild;
     templatecache[html] = result;
   }
 
@@ -266,16 +274,13 @@ const htmlToFragmentClean = (html, option) => {
 
 
 function svgToFragment(content) {
-  if(templatecacheSvg[content]) return templatecacheSvg[content].cloneNode(true);
+  if (templatecacheSvg[content]) return templatecacheSvg[content].cloneNode(true);
   let t = document.createElement('template');
   t.innerHTML = '<svg>' + content + '</svg>';
 
-  let result, svg = t.content.firstChild;
-  if (svg.firstChild == svg.lastChild) result = svg.firstChild;
-  else {
-    result = document.createDocumentFragment();
-    while(svg.firstChild) result.appendChild(svg.firstChild);
-  }
+  let result = document.createDocumentFragment();
+  let svg = t.content.firstChild;
+  while (svg.firstChild) result.appendChild(svg.firstChild);
   templatecacheSvg[content] = result.cloneNode(true);
   return result;
 }
@@ -283,10 +288,10 @@ function svgToFragment(content) {
 
 const iterNodes = (el, last, fn) => {
   let next;
-  while(el) {
+  while (el) {
     next = el.nextSibling;
     fn(el);
-    if(el == last) break;
+    if (el == last) break;
     el = next;
   }
 };
@@ -306,7 +311,7 @@ function $tick(fn) {
 function makeEmitter(option) {
   return (name, detail) => {
     let fn = option.events?.[name];
-    if(!fn) return;
+    if (!fn) return;
     let e = document.createEvent('CustomEvent');
     e.initCustomEvent(name, false, false, detail);
     fn(e);
@@ -324,7 +329,7 @@ const makeApply = () => {
   let planned, flag = [0];
   let apply = r => {
     flag[0]++;
-    if(planned) return r;
+    if (planned) return r;
     planned = true;
     $tick(() => {
       try {
@@ -367,7 +372,7 @@ const makeComponent = (init) => {
 const callComponent = (component, context, option = {}) => {
   option.context = { ...context };
   let $component = safeCall(() => component(option));
-  if($component instanceof Node) $component = { $dom: $component };
+  if ($component instanceof Node) $component = { $dom: $component };
   return $component;
 };
 
@@ -375,7 +380,7 @@ const callComponent = (component, context, option = {}) => {
 const callComponentDyn = (component, context, option = {}, propFn, cmp, setter, classFn) => {
   let $component, parentWatch;
 
-  if(propFn) {
+  if (propFn) {
     parentWatch = $watch(propFn, value => {
       $component.$push?.(value);
       $component.$apply?.();
@@ -383,7 +388,7 @@ const callComponentDyn = (component, context, option = {}, propFn, cmp, setter, 
     option.props = fire(parentWatch);
   }
 
-  if(classFn) {
+  if (classFn) {
     fire($watch(classFn, value => {
       option.$class = value;
       $component?.$apply?.();
@@ -391,7 +396,7 @@ const callComponentDyn = (component, context, option = {}, propFn, cmp, setter, 
   }
 
   $component = callComponent(component, context, option);
-  if(setter && $component?.$exportedProps) {
+  if (setter && $component?.$exportedProps) {
     let parentCD = current_cd, w = new WatchObject($component.$exportedProps, value => {
       setter(value);
       cd_component(parentCD).$apply();
@@ -414,10 +419,10 @@ const attachDynComponent = (label, exp, bind, parentLabel) => {
 
   $watch(exp, (component) => {
     destroy();
-    if($cd) cd_detach($cd);
-    if(first) removeElements(first, parentLabel ? null : label.previousSibling);
+    if ($cd) cd_detach($cd);
+    if (first) removeElements(first, parentLabel ? null : label.previousSibling);
 
-    if(component) {
+    if (component) {
       destroyList = current_destroyList = [];
       current_mountList = [];
       $cd = current_cd = cd_new(parentCD);
@@ -425,7 +430,7 @@ const attachDynComponent = (label, exp, bind, parentLabel) => {
         const $dom = bind(component).$dom;
         cd_attach(parentCD, $cd);
         first = $dom.nodeType == 11 ? $dom.firstChild : $dom;
-        if(parentLabel) label.appendChild($dom);
+        if (parentLabel) label.appendChild($dom);
         else label.parentNode.insertBefore($dom, label);
         safeGroupCall2(current_mountList, destroyList);
       } finally {
@@ -440,16 +445,16 @@ const attachDynComponent = (label, exp, bind, parentLabel) => {
 
 const autoSubscribe = (...list) => {
   list.forEach(i => {
-    if(isFunction(i.subscribe)) {
+    if (isFunction(i.subscribe)) {
       let unsub = i.subscribe(current_component.$apply);
-      if(isFunction(unsub)) $onDestroy(unsub);
+      if (isFunction(unsub)) $onDestroy(unsub);
     }
   });
 };
 
 
 const addStyles = (id, content) => {
-  if(document.head.querySelector('style#' + id)) return;
+  if (document.head.querySelector('style#' + id)) return;
   let style = document.createElement('style');
   style.id = id;
   style.innerHTML = content;
@@ -462,7 +467,7 @@ const addClass = (el, className) => el.classList.add(className);
 
 const bindClass = (element, fn, className) => {
   $watch(fn, value => {
-    if(value) addClass(element, className);
+    if (value) addClass(element, className);
     else element.classList.remove(className);
   }, { value: false });
 };
@@ -491,7 +496,7 @@ const bindStyle = (element, name, fn) => {
 
 
 const bindAttributeBase = (element, name, value) => {
-  if(value != null) element.setAttribute(name, value);
+  if (value != null) element.setAttribute(name, value);
   else element.removeAttribute(name);
 };
 
@@ -506,11 +511,11 @@ const bindAttribute = (element, name, fn) => {
 
 const bindAction = (element, action, fn, subscribe) => {
   let handler, value;
-  if(fn) {
+  if (fn) {
     value = fn();
     handler = action.apply(null, [element].concat(value));
   } else handler = action(element);
-  if(isFunction(handler)) $onDestroy(handler);
+  if (isFunction(handler)) $onDestroy(handler);
   else {
     $onDestroy(handler?.destroy);
     subscribe?.(fn, handler, value);
@@ -520,7 +525,7 @@ const bindAction = (element, action, fn, subscribe) => {
 
 
 const __bindActionSubscribe = (fn, handler, value) => {
-  if(handler?.update && fn) {
+  if (handler?.update && fn) {
     $watch(fn, args => {
       handler.update.apply(handler, args);
     }, { cmp: deepComparator(1), value: cloneDeep(value, 1) });
@@ -539,32 +544,32 @@ const bindInput = (element, name, get, set) => {
 
 
 const makeClassResolver = ($option, classMap, metaClass, mainName) => {
-  if(!$option.$class) $option.$class = {};
-  if(!mainName && metaClass.main) mainName = 'main';
+  if (!$option.$class) $option.$class = {};
+  if (!mainName && metaClass.main) mainName = 'main';
   return (line, defaults) => {
     let result = {};
-    if(defaults) result[defaults] = 1;
+    if (defaults) result[defaults] = 1;
     line.trim().split(/\s+/).forEach(name => {
       let meta;
-      if(name[0] == '$') {
+      if (name[0] == '$') {
         name = name.substring(1);
         meta = true;
       }
       let h = metaClass[name] || meta;
-      if(h) {
+      if (h) {
         let className = ($option.$class[name === mainName ? '$$main' : name] || '').trim();
-        if(className) {
+        if (className) {
           result[className] = 1;
-        } else if(h !== true) {
+        } else if (h !== true) {
           result[name] = 1;
           result[h] = 1;
         }
       }
       let h2 = classMap[name];
-      if(h2) {
+      if (h2) {
         result[name] = 1;
         result[h2] = 1;
-      } else if(!h) {
+      } else if (!h) {
         result[name] = 1;
       }
     });
@@ -606,20 +611,20 @@ const spreadAttributes = (el, fn) => {
   const props = Object.getOwnPropertyDescriptors(el.__proto__);
   let prev = {};
   const set = (k, v) => {
-    if(k == 'style') el.style.cssText = v;
-    else if(props[k]?.set) el[k] = v;
+    if (k == 'style') el.style.cssText = v;
+    else if (props[k]?.set) el[k] = v;
     else bindAttributeBase(el, k, v);
   };
   const apply = (state) => {
-    for(let k in state) {
+    for (let k in state) {
       let value = state[k];
-      if(prev[k] != value) {
+      if (prev[k] != value) {
         set(k, value);
         prev[k] = value;
       }
     }
-    for(let k in prev) {
-      if(!(k in state)) {
+    for (let k in prev) {
+      if (!(k in state)) {
         set(k, null);
         delete prev[k];
       }
@@ -636,8 +641,8 @@ const spreadAttributes = (el, fn) => {
 
 const callExportedFragment = (childComponent, name, slot, events, props, cmp) => {
   let push, $dom, fn = childComponent.$exported?.[name];
-  if(!fn) return;
-  if(cmp) {
+  if (!fn) return;
+  if (cmp) {
     let result;
     let w = $watch(props, (value) => {
       result = value;
@@ -653,10 +658,10 @@ const callExportedFragment = (childComponent, name, slot, events, props, cmp) =>
 
 const exportFragment = (component, name, fn) => {
   let childCD = current_cd;
-  if(!component.$exported) component.$exported = {};
+  if (!component.$exported) component.$exported = {};
   component.$exported[name] = (props, events, slot) => {
     let prev = current_cd, apply;
-    if(childCD) {
+    if (childCD) {
       let $cd = current_cd = cd_new();
       cd_attach(childCD, $cd);
       $onDestroy(() => cd_detach($cd));
@@ -682,8 +687,8 @@ const prefixPush = fn => {
 
 
 const unwrapProps = (props, fn) => {
-  if(props) {
-    if(isFunction(props)) prefixPush(() => fn(props()));
+  if (props) {
+    if (isFunction(props)) prefixPush(() => fn(props()));
     else fn(props);
   }
 };
@@ -715,17 +720,17 @@ const makeBlockBound = (fr, fn) => {
 
 
 const attachBlock = (label, $dom) => {
-  if(!$dom) return;
+  if (!$dom) return;
   insertAfter(label, $dom.$dom || $dom);
 };
 
 const addBlock = (parent, $dom) => {
-  if(!$dom) return;
+  if (!$dom) return;
   parent.appendChild($dom.$dom || $dom);
 };
 
 const insertBlock = (label, $dom) => {
-  if(!$dom) return;
+  if (!$dom) return;
   label.parentNode.insertBefore($dom.$dom || $dom, label);
 };
 
@@ -736,8 +741,8 @@ const mergeEvents = (...callbacks) => {
 
 const mergeAllEvents = ($events, local) => {
   let result = Object.assign({}, $events);
-  for(let e in local) {
-    if(result[e]) result[e] = mergeEvents($events[e], local[e]);
+  for (let e in local) {
+    if (result[e]) result[e] = mergeEvents($events[e], local[e]);
     else result[e] = local[e];
   }
   return result;
@@ -746,28 +751,28 @@ const mergeAllEvents = ($events, local) => {
 const makeRootEvent = (root) => {
   let events = {}, nodes = [];
 
-  if(root.nodeType == 11) {
+  if (root.nodeType == 11) {
     let n = root.firstElementChild;
-    while(n) {
+    while (n) {
       nodes.push(n);
       n = n.nextElementSibling;
     }
   } else nodes = [root];
 
   $onDestroy(() => {
-    for(let eventName in events) {
+    for (let eventName in events) {
       nodes.forEach(n => n.removeEventListener(eventName, events[eventName]));
     }
   });
   return (target, eventName, callback) => {
     const key = `_$$${eventName}`;
-    if(!events[eventName]) {
+    if (!events[eventName]) {
       let handler = events[eventName] = ($event) => {
         let top = $event.currentTarget;
         let el = $event.target;
-        while(el) {
+        while (el) {
           el[key]?.($event);
-          if(el == top || $event.cancelBubble) break;
+          if (el == top || $event.cancelBubble) break;
           el = el.parentNode;
         }
       };
@@ -784,7 +789,7 @@ const mount = (label, component, option) => {
     app = component(option);
     let $dom = app.$dom;
     delete app.$dom;
-    if($dom.nodeType == 11) {
+    if ($dom.nodeType == 11) {
       first = $dom.firstChild;
       last = $dom.lastChild;
     } else first = last = $dom;
@@ -817,7 +822,7 @@ const refer = (active, line) => {
   let result = [], i, v;
   const code = (x, d) => x.charCodeAt() - d;
 
-  for(i = 0; i < line.length; i++) {
+  for (i = 0; i < line.length; i++) {
     let a = line[i];
     switch (a) {
       case '>':
@@ -830,17 +835,17 @@ const refer = (active, line) => {
         break;
       case '!':
         v = code(line[++i], 48) * 42 + code(line[++i], 48);
-        while(v--) active = active.nextSibling;
+        while (v--) active = active.nextSibling;
         break;
       case '#':
         active = result[code(line[++i], 48) * 26 + code(line[++i], 48)];
         break;
       default:
         v = code(a, 0);
-        if(v >= 97) active = result[v - 97];
+        if (v >= 97) active = result[v - 97];
         else {
           v -= 48;
-          while(v--) active = active.nextSibling;
+          while (v--) active = active.nextSibling;
         }
     }
   }
@@ -849,7 +854,7 @@ const refer = (active, line) => {
 
 let create = (tag, html) => {
   let fr;
-  if(tag.parentElement instanceof SVGElement) {
+  if (tag.parentElement instanceof SVGElement) {
     let t = document.createElement('template');
     t.innerHTML = '<svg>' + html + '</svg>';
     fr = t.content.firstChild;
@@ -866,13 +871,13 @@ let create = (tag, html) => {
 function htmlBlock(tag, fn) {
   let firstElement;
   let destroy = () => {
-    if(!firstElement) return;
+    if (!firstElement) return;
     removeElements(firstElement, tag.previousSibling);
     firstElement = null;
   };
   $watch(fn, (html) => {
     destroy();
-    if(html) firstElement = create(tag, html);
+    if (html) firstElement = create(tag, html);
   });
 }
 
@@ -895,25 +900,25 @@ function ifBlock(label, fn, parts, parentLabel) {
       current_destroyList = current_mountList = current_cd = null;
     }
     cd_attach(parentCD, $cd);
-    if($dom.nodeType == 11) {
+    if ($dom.nodeType == 11) {
       first = $dom.firstChild;
       last = $dom.lastChild;
     } else first = last = $dom;
-    if(parentLabel) label.appendChild($dom);
+    if (parentLabel) label.appendChild($dom);
     else label.parentNode.insertBefore($dom, label);
     safeGroupCall2(mountList, destroyList, 1);
   }
 
   function destroyBlock() {
-    if(!first) return;
+    if (!first) return;
     destroyResults = [];
     safeGroupCall2(destroyList, destroyResults);
     destroyList.length = 0;
-    if($cd) {
+    if ($cd) {
       cd_detach($cd);
       $cd = null;
     }
-    if(destroyResults.length) {
+    if (destroyResults.length) {
       let f = first, l = last;
       Promise.allSettled(destroyResults).then(() => {
         removeElements(f, l);
@@ -925,16 +930,16 @@ function ifBlock(label, fn, parts, parentLabel) {
 
   $watch(fn, (value) => {
     destroyBlock();
-    if(value != null) createBlock(parts[value]);
+    if (value != null) createBlock(parts[value]);
   });
 }
 
 
 function ifBlockReadOnly(label, fn, parts, parentLabel) {
   let value = fn();
-  if(value != null) {
+  if (value != null) {
     const $dom = parts[value]();
-    if(parentLabel) label.appendChild($dom);
+    if (parentLabel) label.appendChild($dom);
     else label.parentNode.insertBefore($dom, label);
   }
 }
@@ -944,11 +949,11 @@ function awaitBlock(label, parentLabel, relation, fn, build_main, build_then, bu
   $onDestroy(() => safeGroupCall(destroyList));
 
   function destroyBlock() {
-    if(!first) return;
+    if (!first) return;
 
     safeGroupCall(destroyList);
     destroyList.length = 0;
-    if($cd) {
+    if ($cd) {
       cd_detach($cd);
       $cd = null;
     }
@@ -959,7 +964,7 @@ function awaitBlock(label, parentLabel, relation, fn, build_main, build_then, bu
   function render(builder, value) {
     destroyBlock();
 
-    if(!builder) return;
+    if (!builder) return;
     destroyList = current_destroyList = [];
     $cd = current_cd = cd_new(parentCD);
     let $dom, mountList = current_mountList = [];
@@ -969,11 +974,11 @@ function awaitBlock(label, parentLabel, relation, fn, build_main, build_then, bu
       current_destroyList = current_mountList = current_cd = null;
     }
     cd_attach(parentCD, $cd);
-    if($dom.nodeType == 11) {
+    if ($dom.nodeType == 11) {
       first = $dom.firstChild;
       last = $dom.lastChild;
     } else first = last = $dom;
-    if(parentLabel) label.appendChild($dom);
+    if (parentLabel) label.appendChild($dom);
     else label.parentNode.insertBefore($dom, label);
     safeGroupCall2(mountList, destroyList, 1);
     cd_component(parentCD).$apply();
@@ -981,17 +986,17 @@ function awaitBlock(label, parentLabel, relation, fn, build_main, build_then, bu
 
   $watch(relation, () => {
     let p = fn();
-    if(status !== 1) render(build_main);
+    if (status !== 1) render(build_main);
     status = 1;
-    if(p && p instanceof Promise) {
+    if (p && p instanceof Promise) {
       promise = p;
       promise.then(value => {
         status = 2;
-        if(promise !== p) return;
+        if (promise !== p) return;
         render(build_then, value);
       }).catch(value => {
         status = 3;
-        if(promise !== p) return;
+        if (promise !== p) return;
         render(build_catch, value);
       });
     }
@@ -1026,7 +1031,7 @@ const makeEachElseBlock = (fn) => {
     const parentNode = mode ? label : label.parentNode;
     try {
       let $dom = fn();
-      if($dom.nodeType == 11) {
+      if ($dom.nodeType == 11) {
         first = $dom.firstChild;
         last = $dom.lastChild;
       } else first = last = $dom;
@@ -1042,7 +1047,7 @@ const makeEachElseBlock = (fn) => {
       destroyResults = [];
       safeGroupCall2(destroyList, destroyResults);
 
-      if(destroyResults.length) {
+      if (destroyResults.length) {
         const f = first, l = last;
         iterNodes(f, l, n => n.$$removing = true);
         Promise.allSettled(destroyResults).then(() => iterNodes(f, l, n => n.remove()));
@@ -1073,30 +1078,30 @@ function $$eachBlock(label, mode, fn, getKey, bind, buildElseBlock) {
   buildElseBlock && $onDestroy(() => elseBlock?.());
 
   $watch(fn, (array) => {
-    if(!array) array = [];
-    if(typeof (array) == 'number') array = [...Array(array)].map((_, i) => i + 1);
-    else if(!isArray(array)) array = [];
+    if (!array) array = [];
+    if (typeof (array) == 'number') array = [...Array(array)].map((_, i) => i + 1);
+    else if (!isArray(array)) array = [];
 
     let newMapping = new Map();
     let parentNode = mode ? label : label.parentNode;
 
-    if(mapping.size) {
+    if (mapping.size) {
       let ctx, count = 0;
       vi++;
-      for(let i = 0; i < array.length; i++) {
+      for (let i = 0; i < array.length; i++) {
         ctx = mapping.get(getKey(array[i], i, array));
-        if(ctx) {
+        if (ctx) {
           ctx.a = vi;
           count++;
         }
       }
 
-      if(!count && firstNode) {
+      if (!count && firstNode) {
         destroyResults = [];
         eachCD.children.length = 0;
         destroyAll();
 
-        if(destroyResults.length) {
+        if (destroyResults.length) {
           p_promise = 1;
           let removedNodes = [];
           iterNodes(firstNode, onlyChild ? null : label.previousSibling, n => {
@@ -1105,17 +1110,17 @@ function $$eachBlock(label, mode, fn, getKey, bind, buildElseBlock) {
           });
           Promise.allSettled(destroyResults).then(() => removedNodes.forEach(n => n.remove()));
         } else {
-          if(onlyChild) label.textContent = '';
+          if (onlyChild) label.textContent = '';
           else removeElements(firstNode, label.previousSibling);
         }
 
         destroyResults = null;
-      } else if(count < mapping.size) {
+      } else if (count < mapping.size) {
         eachCD.children = [];
         destroyResults = [];
         let removedNodes = [];
         mapping.forEach(ctx => {
-          if(ctx.a == vi) {
+          if (ctx.a == vi) {
             ctx.$cd && eachCD.children.push(ctx.$cd);
             return;
           }
@@ -1123,7 +1128,7 @@ function $$eachBlock(label, mode, fn, getKey, bind, buildElseBlock) {
           iterNodes(ctx.first, ctx.last, n => removedNodes.push(n));
         });
 
-        if(destroyResults.length) {
+        if (destroyResults.length) {
           p_promise = 1;
           removedNodes.forEach(n => n.$$removing = true);
           Promise.allSettled(destroyResults).then(() => removedNodes.forEach(n => n.remove()));
@@ -1134,7 +1139,7 @@ function $$eachBlock(label, mode, fn, getKey, bind, buildElseBlock) {
       }
     }
 
-    if(elseBlock && array.length) {
+    if (elseBlock && array.length) {
       elseBlock();
       elseBlock = null;
     }
@@ -1142,33 +1147,33 @@ function $$eachBlock(label, mode, fn, getKey, bind, buildElseBlock) {
     let i, item, next_ctx, ctx, nextEl, key;
     let nextNode = mode ? null : label;
     i = array.length;
-    while(i--) {
+    while (i--) {
       item = array[i];
       key = getKey(item, i, array);
-      if(next_ctx) {
+      if (next_ctx) {
         ctx = next_ctx;
         next_ctx = null;
       } else ctx = mapping.get(key);
-      if(ctx) {
+      if (ctx) {
         nextEl = nextNode ? nextNode.previousSibling : parentNode.lastChild;
-        if(p_promise) while(nextEl && nextEl.$$removing) nextEl = nextEl.previousSibling;
-        if(nextEl != ctx.last) {
+        if (p_promise) while (nextEl && nextEl.$$removing) nextEl = nextEl.previousSibling;
+        if (nextEl != ctx.last) {
           let insert = true;
 
-          if(ctx.first == ctx.last && (i > 0) && nextEl) {
+          if (ctx.first == ctx.last && (i > 0) && nextEl) {
             next_ctx = mapping.get(getKey(array[i - 1], i - 1, array));
-            if(next_ctx && nextEl.previousSibling === next_ctx.last) {
+            if (next_ctx && nextEl.previousSibling === next_ctx.last) {
               parentNode.replaceChild(ctx.first, nextEl);
               insert = false;
             }
           }
 
-          if(insert) {
+          if (insert) {
             let next, el = ctx.first;
-            while(el) {
+            while (el) {
               next = el.nextSibling;
               parentNode.insertBefore(el, nextNode);
-              if(el == ctx.last) break;
+              if (el == ctx.last) break;
               el = next;
             }
           }
@@ -1187,14 +1192,14 @@ function $$eachBlock(label, mode, fn, getKey, bind, buildElseBlock) {
         }
         ctx = { $cd, rebind };
         cd_attach(eachCD, $cd);
-        if($dom.nodeType == 11) {
+        if ($dom.nodeType == 11) {
           ctx.first = $dom.firstChild;
           ctx.last = $dom.lastChild;
         } else ctx.first = ctx.last = $dom;
         parentNode.insertBefore($dom, nextNode);
         nextNode = ctx.first;
         safeGroupCall2(m, d, 1);
-        if(d.length) {
+        if (d.length) {
           ctx.d = d;
           p_destroy = 1;
         }
@@ -1205,7 +1210,7 @@ function $$eachBlock(label, mode, fn, getKey, bind, buildElseBlock) {
     mapping.clear();
     mapping = newMapping;
 
-    if(!array.length && !elseBlock && buildElseBlock) {
+    if (!array.length && !elseBlock && buildElseBlock) {
       elseBlock = buildElseBlock(label, mode, parentCD);
     }
   }, { cmp: compareArray });
@@ -1219,13 +1224,13 @@ const invokeSlotBase = ($component, slotName, $context, props, placeholder) => {
 const invokeSlot = ($component, slotName, $context, propsFn, placeholder, cmp) => {
   let $slot = $component.$option.slots?.[slotName || 'default'];
 
-  if($slot) {
+  if ($slot) {
     let push, w = new WatchObject(propsFn, value => push(value));
     Object.assign(w, { value: {}, cmp, idle: true });
     fire(w);
     let $dom = $slot($component, $context, w.value);
-    if($dom.$dom) {
-      if($dom.push) {
+    if ($dom.$dom) {
+      if ($dom.push) {
         push = $dom.push;
         current_cd.watchers.push(w);
       }
@@ -1239,7 +1244,7 @@ const makeSlot = (fr, fn) => {
   let parentCD = current_cd;
   return (callerComponent, $context, props) => {
     let $dom = fr.cloneNode(true), prev = current_cd;
-    if(parentCD) {
+    if (parentCD) {
       let $cd = current_cd = cd_new();
       cd_attach(parentCD, $cd);
       $onDestroy(() => cd_detach($cd));
@@ -1254,18 +1259,18 @@ const makeSlot = (fr, fn) => {
 };
 
 const keepAlive = (store, keyFn, builder) => {
-  if(!store.$$d) store.$$d = [];
+  if (!store.$$d) store.$$d = [];
   const key = keyFn();
   let block = store.get(key);
   const parentCD = current_cd;
 
   $onDestroy(() => {
-    if(!block.fr) block.fr = new DocumentFragment();
+    if (!block.fr) block.fr = new DocumentFragment();
     iterNodes(block.first, block.last, n => block.fr.appendChild(n));
     cd_detach(block.$cd);
   });
 
-  if(block) {
+  if (block) {
     cd_attach(parentCD, block.$cd);
     return block.fr;
   } else {
@@ -1279,13 +1284,13 @@ const keepAlive = (store, keyFn, builder) => {
       current_cd = parentCD;
     }
     cd_attach(parentCD, $cd);
-    if($dom.nodeType == 11) {
+    if ($dom.nodeType == 11) {
       first = $dom.firstChild;
       last = $dom.lastChild;
     } else first = last = $dom;
 
     store.$$d.push(() => safeGroupCall(destroyList));
-    store.set(key, block = {first, last, $cd});
+    store.set(key, block = { first, last, $cd });
 
     return $dom;
   }
@@ -1303,17 +1308,17 @@ const selectElement = (el, getter, setter) => {
   });
   const update = () => {
     let value = w.value;
-    if(el.multiple) {
-      if(isArray(value)) {
-        for(let o of el.options) {
+    if (el.multiple) {
+      if (isArray(value)) {
+        for (let o of el.options) {
           const option_value = o.$$value ? o.$$value() : o.value;
           o.selected = value.indexOf(option_value) != -1;
         }
         return;
       }
     } else {
-      for(let o of el.options) {
-        if((o.$$value ? o.$$value() : o.value) === value) {
+      for (let o of el.options) {
+        if ((o.$$value ? o.$$value() : o.value) === value) {
           o.selected = true;
           return;
         }
@@ -1325,7 +1330,7 @@ const selectElement = (el, getter, setter) => {
 
   let debounce = 0;
   el.$$update = () => {
-    if(debounce) return;
+    if (debounce) return;
     debounce = 1;
     $tick(() => {
       debounce = 0;
@@ -1336,7 +1341,7 @@ const selectElement = (el, getter, setter) => {
 
 const selectOption = (op, getter) => {
   op.$$value = getter;
-  if(op.parentElement?.$$update) op.parentElement.$$update();
+  if (op.parentElement?.$$update) op.parentElement.$$update();
   else $tick(() => op.parentElement?.$$update?.());
 };
 
@@ -1345,8 +1350,8 @@ const radioButton = (el, getValue, getter, setter) => {
     el.checked = getValue() === value;
   });
   addEvent(el, 'change', () => {
-    if(el.checked) setter(w.value = getValue());
+    if (el.checked) setter(w.value = getValue());
   });
 };
 
-export { $$eachBlock, $context, $digest, $onDestroy, $onMount, $tick, $watch, WatchObject, __app_onerror, __bindActionSubscribe, addBlock, addClass, addEvent, addStyles, attachAnchor, attachBlock, attachDynComponent, autoSubscribe, awaitBlock, bindAction, bindAttribute, bindAttributeBase, bindClass, bindClassExp, bindInput, bindStyle, bindText, callComponent, callComponentDyn, callExportedFragment, cd_attach, cd_component, cd_detach, cd_new, cloneDeep, compareArray, compareDeep, configure, createTextNode, current_cd, current_component, current_destroyList, current_mountList, deepComparator, destroyResults, eachDefaultKey, exportFragment, fire, htmlBlock, htmlBlockStatic, htmlToFragment, htmlToFragmentClean, ifBlock, ifBlockReadOnly, insertAfter, insertBlock, invokeSlot, invokeSlotBase, isArray, isFunction, iterNodes, keepAlive, keyComparator, makeAnchor, makeApply, makeBlock, makeBlockBound, makeClassResolver, makeComponent, makeEachBlock, makeEachElseBlock, makeEachSingleBlock, makeEmitter, makeExternalProperty, makeRootEvent, makeSlot, mergeAllEvents, mergeEvents, mount, mountStatic, noop, prefixPush, radioButton, refer, removeElements, removeItem, selectElement, selectOption, setClassToElement, spreadAttributes, svgToFragment, unwrapProps };
+export { $$eachBlock, $context, $digest, $onDestroy, $onMount, $tick, $watch, $watchCustom, WatchObject, __app_onerror, __bindActionSubscribe, addBlock, addClass, addEvent, addStyles, attachAnchor, attachBlock, attachDynComponent, autoSubscribe, awaitBlock, bindAction, bindAttribute, bindAttributeBase, bindClass, bindClassExp, bindInput, bindStyle, bindText, callComponent, callComponentDyn, callExportedFragment, cd_attach, cd_component, cd_detach, cd_new, cloneDeep, compareArray, compareDeep, configure, createTextNode, current_cd, current_component, current_destroyList, current_mountList, deepComparator, destroyResults, eachDefaultKey, exportFragment, fire, htmlBlock, htmlBlockStatic, htmlToFragment, htmlToFragmentClean, ifBlock, ifBlockReadOnly, insertAfter, insertBlock, invokeSlot, invokeSlotBase, isArray, isFunction, iterNodes, keepAlive, keyComparator, makeAnchor, makeApply, makeBlock, makeBlockBound, makeClassResolver, makeComponent, makeEachBlock, makeEachElseBlock, makeEachSingleBlock, makeEmitter, makeExternalProperty, makeRootEvent, makeSlot, mergeAllEvents, mergeEvents, mount, mountStatic, noop, prefixPush, radioButton, refer, removeElements, removeItem, selectElement, selectOption, setClassToElement, spreadAttributes, svgToFragment, unwrapProps };
